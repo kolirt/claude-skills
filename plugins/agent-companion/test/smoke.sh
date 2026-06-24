@@ -146,4 +146,27 @@ printf 'mhijack\n' > "$DATA/verifiers.conf"
 ( cd "$TMP" && run review ); rc=$?
 [ "$rc" = 64 ] && echo "OK bad-args-64" || { echo "FAIL bad-args expected 64 got $rc"; exit 1; }
 
+# --- missing request file -> exit 64 ---
+printf 'mpass\n' > "$DATA/verifiers.conf"
+( cd "$TMP" && run review medium "$TMP/does-not-exist.md" ) >/dev/null 2>&1; rc=$?
+[ "$rc" = 64 ] && echo "OK missing-reqfile-64" || { echo "FAIL missing-reqfile expected 64 got $rc"; exit 1; }
+
+# --- unknown mode (typo) -> exit 64, NOT a silent non-gating exit 0 ---
+printf 'mpass\n' > "$DATA/verifiers.conf"
+( cd "$TMP" && run reveiw medium "$TMP/req.md" ) >/dev/null 2>&1; rc=$?
+[ "$rc" = 64 ] && echo "OK unknown-mode-64" || { echo "FAIL unknown-mode expected 64 got $rc"; exit 1; }
+
+# --- classify_verdict unit matrix: every mode + wrong-mode fail-closed ---
+( . "$ROOT/lib/verdict.sh"
+  mk() { printf '%s\nREQUEST_ID: NONCE\n' "$1" > "$TMP/uv"; }
+  ok() { [ "$(classify_verdict "$TMP/uv" NONCE "$2")" = "$3" ] || { echo "FAIL classify $1"; exit 1; }; }
+  mk "STATUS: PASS";               ok p1 review   PASS
+  mk "STATUS: CHANGES_REQUESTED";  ok p2 review   CHANGES
+  mk "STATUS: ADVICE";             ok p3 consult  PASS
+  mk "STATUS: AUDIT_COMPLETE";     ok p4 audit    PASS
+  mk "STATUS: DIAGNOSIS_COMPLETE"; ok p5 diagnose PASS
+  mk "STATUS: PASS";               ok p6 audit    FAIL   # wrong-mode status -> fail-closed
+) || exit 1
+echo "OK classify-matrix"
+
 echo "ALL SMOKE OK"

@@ -33,6 +33,7 @@ case "$cmd" in
     ;;
   set)
     name="${1:?usage: synthesizer.sh set <claude|adapter|none>}"
+    [ "$name" = off ] && name=none   # normalize: `set off` is an alias for `none`
     if ! valid "$name"; then
       echo "unknown synthesizer: $name (use 'claude', an adapter name, or 'none')" >&2; exit 1
     fi

@@ -6,6 +6,13 @@ if [ "$#" -lt 3 ]; then
   echo "usage: verify.sh <mode> <effort> <request-file>" >&2; exit 64
 fi
 MODE="$1"; EFFORT="$2"; REQUEST_FILE="$3"
+# An unknown mode (e.g. a typo'd "reveiw") must NOT fall through to the non-gating
+# default exit 0 — that would silently "pass" a review. Reject it as an invocation error.
+case "$MODE" in
+  review|consult|audit|diagnose) ;;
+  *) echo "unknown mode: $MODE (use review|consult|audit|diagnose)" >&2; exit 64;;
+esac
+[ -f "$REQUEST_FILE" ] || { echo "request file not found: $REQUEST_FILE" >&2; exit 64; }
 
 # Resolve bundled root WITHOUT changing the caller's cwd (so git diff targets the user repo).
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
