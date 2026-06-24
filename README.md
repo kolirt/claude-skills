@@ -23,6 +23,9 @@ Native Claude Code plugin marketplace.
   Add a new agent by dropping an adapter in `plugins/agent-companion/adapters/`
   and listing it. See `skills/creating-plugins`.
 
+  When 2+ verifiers run, a **synthesizer** can consolidate their reports into one
+  (so the session isn't flooded): `/agent-companion:synthesizer set <claude|adapter|none>`.
+
 ## Develop
 
 Create new plugins with the `creating-plugins` skill

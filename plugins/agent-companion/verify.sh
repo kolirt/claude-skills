@@ -67,6 +67,22 @@ _with_timeout() {
 
 T="${AGENT_COMPANION_TIMEOUT:-180}"
 
+# --- synthesizer helpers (consolidate N verdicts into one, off-context) ---
+synth_available() { # <name>
+  case "$1" in
+    claude) command -v claude >/dev/null 2>&1 ;;
+    *) [ -f "$ROOT/adapters/$1.sh" ] && bash "$ROOT/adapters/$1.sh" probe >/dev/null 2>&1 ;;
+  esac
+}
+run_synth() { # <name> <prompt-file> <out-file>
+  local n="$1" p="$2" o="$3"
+  if [ "$n" = claude ]; then
+    _with_timeout "$T" claude -p "$(cat "$p")" --allowedTools "Read Grep Glob" > "$o" 2>/dev/null
+  else
+    _with_timeout "$T" bash "$ROOT/adapters/$n.sh" run "$p" "$EFFORT" "$o"
+  fi
+}
+
 # Probe synchronously and partition (fail-closed): runlist = probe 0; skiplist = probe 64
 # (unavailable → graceful degrade); faillist = missing adapter OR any other probe code.
 runlist=(); skiplist=(); faillist=()
@@ -90,33 +106,72 @@ if [ "${#runlist[@]}" -gt 0 ]; then
   wait
 fi
 
-# Aggregate. run rc!=0 (incl. timeout) => FAIL regardless of verdict content (fail-closed).
+# Classify each ran verifier (rc!=0/timeout => FAIL, fail-closed); record class to a
+# file; build the COMPACT status lines (one per verifier) that always go to context.
 overall_changes=0; overall_fail=0
-summary="$RUN/summary.txt"; : > "$summary"
+status="$RUN/status.txt"; : > "$status"
 if [ "${#runlist[@]}" -gt 0 ]; then
   for v in "${runlist[@]}"; do
     rc="$(cat "$RUN/$v/rc" 2>/dev/null || echo 1)"
     if [ "$rc" != 0 ]; then cls=FAIL; else cls="$(classify_verdict "$RUN/$v/verdict" "$REQID" "$MODE")"; fi
-    printf '[%s] %s\n' "$v" "$cls" >> "$summary"
+    printf '%s' "$cls" > "$RUN/$v/cls"
+    printf '[%s] %s\n' "$v" "$cls" >> "$status"
     [ "$cls" = CHANGES ] && overall_changes=1
     [ "$cls" = FAIL ] && overall_fail=1
-    # Always include each verifier's verdict body so Claude can synthesize a consult
-    # advice panel / union audit findings (not only on non-PASS).
-    { echo "--- $v ($cls) ---"; cat "$RUN/$v/verdict" 2>/dev/null; echo; } >> "$summary"
   done
 fi
 if [ "${#faillist[@]}" -gt 0 ]; then
   overall_fail=1
-  for f in "${faillist[@]}"; do printf '[%s] FAIL (%s)\n' "${f%%:*}" "${f#*:}" >> "$summary"; done
+  for f in "${faillist[@]}"; do printf '[%s] FAIL (%s)\n' "${f%%:*}" "${f#*:}" >> "$status"; done
 fi
 if [ "${#skiplist[@]}" -gt 0 ]; then
-  for s in "${skiplist[@]}"; do printf '[%s] SKIP (unavailable)\n' "$s" >> "$summary"; done
+  for s in "${skiplist[@]}"; do printf '[%s] SKIP (unavailable)\n' "$s" >> "$status"; done
 fi
 # "Considered" = anything not skipped (run or failed-probe). Only an all-skipped panel is exit 64.
 considered_count=$(( ${#runlist[@]} + ${#faillist[@]} ))
 
-cat "$summary"
+emit_bodies() { # <only-nonpass:0|1>
+  local v cls only="$1"
+  for v in "${runlist[@]}"; do
+    cls="$(cat "$RUN/$v/cls" 2>/dev/null)"
+    [ "$only" = 1 ] && [ "$cls" = PASS ] && continue
+    printf '\n--- %s (%s) ---\n' "$v" "$cls"; cat "$RUN/$v/verdict" 2>/dev/null
+  done
+  printf '\n(full verdicts on disk: %s/<verifier>/verdict)\n' "$RUN"
+}
 
+# Compact status always first.
+cat "$status"
+
+# Detail / synthesis. Synthesizer only kicks in with >=2 reports (1 is already "consolidated").
+SYNTH=""; SCONF="$DATA/synthesizer.conf"; [ -f "$SCONF" ] && SYNTH="$(head -n1 "$SCONF" | tr -d '[:space:]')"
+nreports=${#runlist[@]}
+
+if [ "$nreports" -ge 2 ] && [ -n "$SYNTH" ] && [ "$SYNTH" != none ] && synth_available "$SYNTH"; then
+  sp="$RUN/synth-prompt.txt"
+  { printf 'You are consolidating independent %s reports from several agents into ONE concise report.\n' "$MODE"
+    printf 'Deduplicate overlapping points, group by file/severity, note agreement vs disagreement, and give one overall takeaway. Do not invent content beyond the reports.\n\n'
+    for v in "${runlist[@]}"; do
+      printf -- '--- %s (%s) ---\n' "$v" "$(cat "$RUN/$v/cls" 2>/dev/null)"
+      cat "$RUN/$v/verdict" 2>/dev/null; printf '\n'
+    done
+  } > "$sp"
+  if run_synth "$SYNTH" "$sp" "$RUN/consolidated.txt" && [ -s "$RUN/consolidated.txt" ]; then
+    printf '\n=== consolidated report (by %s · %s agents) ===\n' "$SYNTH" "$nreports"
+    cat "$RUN/consolidated.txt"
+  else
+    printf '\n(synthesizer "%s" unavailable/failed — showing reports directly)\n' "$SYNTH"
+    case "$MODE" in review) emit_bodies 1 ;; *) emit_bodies 0 ;; esac
+  fi
+elif [ "$nreports" -eq 1 ]; then
+  v="${runlist[0]}"; printf '\n--- %s (%s) ---\n' "$v" "$(cat "$RUN/$v/cls" 2>/dev/null)"; cat "$RUN/$v/verdict" 2>/dev/null
+elif [ "$nreports" -ge 2 ]; then
+  # No synthesizer: review needs only the actionable (non-PASS); consult/audit/diagnose
+  # need every report (the advice/findings/diagnosis ARE the deliverable).
+  case "$MODE" in review) emit_bodies 1 ;; *) emit_bodies 0 ;; esac
+fi
+
+# Exit code stays deterministic from raw classifications (NOT the synthesizer text).
 if [ "$considered_count" -eq 0 ]; then
   echo "no verifier available — review skipped" >&2; exit 64
 fi
@@ -124,6 +179,6 @@ case "$MODE" in
   review)
     if [ "$overall_fail" = 1 ] || [ "$overall_changes" = 1 ]; then exit 10; fi
     exit 0;;
-  *) # consult/audit are non-gating; FAIL of an agent is reported, not fatal
+  *) # consult/audit/diagnose are non-gating; an agent FAIL is reported, not fatal
     exit 0;;
 esac

@@ -65,4 +65,33 @@ printf 'mpass\nmprobe\n' > "$DATA/verifiers.conf"
 out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
 [ "$rc" = 10 ] && echo "$out" | grep -q '\[mprobe\] FAIL' && echo "OK probe-unknown blocks" || { echo "FAIL probe-unknown handling: $rc"; exit 1; }
 
+# --- synthesizer ---
+cat > "$ROOT/adapters/msynth.sh" <<'A'
+#!/usr/bin/env bash
+[ "$1" = probe ] && exit 0
+printf 'CONSOLIDATED_OK (merged report)\n' > "$4"
+A
+chmod +x "$ROOT/adapters/msynth.sh"
+
+# 2 reports + synthesizer -> consolidated output; gate still deterministic (mchg => exit 10)
+printf 'mpass\nmchg\n' > "$DATA/verifiers.conf"
+printf 'msynth\n' > "$DATA/synthesizer.conf"
+out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
+echo "$out" | grep -q 'consolidated report (by msynth' && echo "$out" | grep -q 'CONSOLIDATED_OK' && [ "$rc" = 10 ] \
+  && echo "OK synth-2reports" || { echo "FAIL synth-2reports rc=$rc"; echo "$out"; exit 1; }
+
+# 1 report + synthesizer set -> NO synthesis (single report returned as-is)
+printf 'mpass\n' > "$DATA/verifiers.conf"
+out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
+! echo "$out" | grep -q 'consolidated report' && [ "$rc" = 0 ] \
+  && echo "OK synth-skip-1report" || { echo "FAIL synth-1report rc=$rc"; echo "$out"; exit 1; }
+
+# synthesizer=none + 2 reports -> compact listing, no consolidation
+printf 'mpass\nmchg\n' > "$DATA/verifiers.conf"
+printf 'none\n' > "$DATA/synthesizer.conf"
+out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
+! echo "$out" | grep -q 'consolidated report' && [ "$rc" = 10 ] \
+  && echo "OK synth-none" || { echo "FAIL synth-none rc=$rc"; echo "$out"; exit 1; }
+rm -f "$DATA/synthesizer.conf"
+
 echo "ALL SMOKE OK"

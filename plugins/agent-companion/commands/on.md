@@ -17,4 +17,18 @@ Read its STDOUT (the combined per-verifier summary) and its exit code:
 
 Manage which agents are active with `/agent-companion:verifiers`. Plugin updates are handled by native `/plugin update`.
 
+**First-run synthesizer choice.** When 2+ verifiers are active their reports can flood the
+session, so a synthesizer agent can consolidate them into one. On enabling, check it once:
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/synthesizer.sh" show
+```
+If it reports `synthesizer: unset` AND 2+ verifiers are active, ask the user which agent should
+consolidate multi-agent reports — `claude` (best quality, uses Claude limits), an external
+adapter (e.g. `codex`/`grok`), or `none` — then persist their choice:
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/synthesizer.sh" set <choice>
+```
+Ask only when unset; afterwards it is remembered. It can be changed anytime with
+`/agent-companion:synthesizer`.
+
 Confirm: "agent-companion enabled — I am the manager."
