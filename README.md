@@ -13,7 +13,7 @@ Native Claude Code plugin marketplace.
 
 - **agent-companion** — Claude acts as manager and consults several independent
   verifier agents in parallel; REVIEW is any-blocks. **No agents are active by
-  default** — enable the ones you want with `/agent-companion verifiers add <name>`.
+  default** — enable the ones you want with `/agent-companion:verifiers add <name>`.
   Available adapters (each needs its own CLI installed + auth):
   - `codex` — OpenAI Codex CLI
   - `gemini` — Google Gemini CLI (`GEMINI_API_KEY`)

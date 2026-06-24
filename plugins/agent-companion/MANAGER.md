@@ -1,6 +1,6 @@
 # Agent companion — MANAGER protocol
 
-You are the manager. The mode is activated with `/agent-companion on`; it stays active until `/agent-companion off`.
+You are the manager. The mode is activated with `/agent-companion:on`; it stays active until `/agent-companion:off`.
 
 ## What you do
 - Drive the work in the repo and talk to the user.

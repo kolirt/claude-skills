@@ -47,11 +47,11 @@ const isCompanion = computed(() => props.id === 'agent-companion')
       <section class="block reveal" style="animation-delay: 0.32s">
         <h2 class="block__h"><span class="faint">03</span> {{ t('skill.h.commands') }}</h2>
         <dl class="defs">
-          <dt><span class="accent">/agent-companion on</span></dt>
+          <dt><span class="accent">/agent-companion:on</span></dt>
           <dd>{{ t('skill.cmd.on') }}</dd>
-          <dt><span class="accent">/agent-companion off</span></dt>
+          <dt><span class="accent">/agent-companion:off</span></dt>
           <dd>{{ t('skill.cmd.off') }}</dd>
-          <dt><span class="accent">/agent-companion verifiers</span> <span class="dim">[list | add &lt;name&gt; | remove &lt;name&gt;]</span></dt>
+          <dt><span class="accent">/agent-companion:verifiers</span> <span class="dim">[list | add &lt;name&gt; | remove &lt;name&gt;]</span></dt>
           <dd v-html="t('skill.cmd.verifiers')" />
         </dl>
       </section>

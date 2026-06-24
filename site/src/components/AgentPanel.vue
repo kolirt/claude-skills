@@ -14,7 +14,7 @@ const verifiers = [
     <div class="panel__mgr reveal" style="animation-delay: 0.05s">
       <span class="tag">{{ t('ap.manager') }}</span>
       <span class="node node--mgr">claude</span>
-      <span class="dim node__sub">/agent-companion on</span>
+      <span class="dim node__sub">/agent-companion:on</span>
     </div>
 
     <div class="panel__bus">
