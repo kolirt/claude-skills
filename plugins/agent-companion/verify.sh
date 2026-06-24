@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 set -uo pipefail
-MODE="${1:?usage: verify.sh <mode> <effort> <request-file>}"
-EFFORT="${2:?missing effort}"
-REQUEST_FILE="${3:?missing request-file}"
+# Bad invocation is an environment/invocation error → exit 64 (NOT the shell's default 1),
+# so the dispatcher's exit contract is exactly 0/10/64 with no leaks.
+if [ "$#" -lt 3 ]; then
+  echo "usage: verify.sh <mode> <effort> <request-file>" >&2; exit 64
+fi
+MODE="$1"; EFFORT="$2"; REQUEST_FILE="$3"
 
 # Resolve bundled root WITHOUT changing the caller's cwd (so git diff targets the user repo).
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
@@ -75,6 +78,11 @@ _with_timeout() {
 }
 
 T="${AGENT_COMPANION_TIMEOUT:-180}"
+if ! command -v timeout >/dev/null 2>&1 && ! command -v gtimeout >/dev/null 2>&1; then
+  echo "agent-companion: no 'timeout'/'gtimeout' on PATH — per-verifier timeout is DISABLED" \
+       "(relying on each CLI's own limits; a hung CLI can stall the panel)." \
+       "Install coreutils for a hard cap." >&2
+fi
 
 # --- synthesizer helpers (consolidate N verdicts into one, off-context) ---
 synth_available() { # <name>
@@ -158,24 +166,43 @@ cat "$status"
 SYNTH=""; SCONF="$DATA/synthesizer.conf"; [ -f "$SCONF" ] && SYNTH="$(head -n1 "$SCONF" | tr -d '[:space:]')"
 nreports=${#runlist[@]}
 
-if [ "$nreports" -ge 2 ] && [ -n "$SYNTH" ] && [ "$SYNTH" != none ] && synth_available "$SYNTH"; then
+# Only valid (non-FAIL) verdicts are eligible for consolidation. A FAIL verdict
+# (rc!=0, empty, or wrong format) carries no trustworthy findings and must not
+# pollute the synthesized report; it is surfaced separately below.
+synthlist=()
+for v in "${runlist[@]}"; do
+  [ "$(cat "$RUN/$v/cls" 2>/dev/null)" = FAIL ] || synthlist+=("$v")
+done
+nsynth=${#synthlist[@]}
+
+if [ "$nsynth" -ge 2 ] && [ -n "$SYNTH" ] && [ "$SYNTH" != none ] && synth_available "$SYNTH"; then
   sp="$RUN/synth-prompt.txt"
   { printf 'You are consolidating independent %s reports from several agents into ONE report.\n' "$MODE"
-    printf 'Rules:\n'
-    printf '- Keep EVERY distinct finding. Merge only TRUE duplicates; never drop a unique issue.\n'
-    printf '- Tag each finding with its source agent(s) and a locator (file:line, or a short quote/id)\n'
-    printf '  so a reader can find it in the raw report without re-reading everything.\n'
-    printf '- Group by file/severity; note where agents agree vs disagree; end with one overall takeaway.\n'
-    printf '- Do not invent anything beyond the reports.\n\n'
-    for v in "${runlist[@]}"; do
+    # %s\n form, NOT a bare format string: several rule lines begin with "-", which
+    # printf would otherwise parse as an option flag.
+    printf '%s\n' \
+      'Rules:' \
+      '- Keep EVERY distinct finding. Merge only TRUE duplicates; never drop a unique issue.' \
+      '- Tag each finding with its source agent(s) and a locator (file:line, or a short quote/id)' \
+      '  so a reader can find it in the raw report without re-reading everything.' \
+      '- Group by file/severity; note where agents agree vs disagree; end with one overall takeaway.' \
+      '- Do not invent anything beyond the reports.' \
+      ''
+    for v in "${synthlist[@]}"; do
       printf -- '--- %s (%s) ---\n' "$v" "$(cat "$RUN/$v/cls" 2>/dev/null)"
       cat "$RUN/$v/verdict" 2>/dev/null; printf '\n'
     done
   } > "$sp"
   if run_synth "$SYNTH" "$sp" "$RUN/consolidated.txt" && [ -s "$RUN/consolidated.txt" ]; then
-    printf '\n=== consolidated report (by %s · %s agents) ===\n' "$SYNTH" "$nreports"
+    printf '\n=== consolidated report (by %s · %s agents) ===\n' "$SYNTH" "$nsynth"
     cat "$RUN/consolidated.txt"
     printf '\n(raw per-verifier verdicts for drill-down: %s/<verifier>/verdict)\n' "$RUN"
+    # FAIL verdicts were excluded from the consolidation; surface them directly so a
+    # review block (or a misbehaving adapter) isn't hidden behind the summary.
+    for v in "${runlist[@]}"; do
+      [ "$(cat "$RUN/$v/cls" 2>/dev/null)" = FAIL ] || continue
+      printf '\n--- %s (FAIL — excluded from consolidation) ---\n' "$v"; cat "$RUN/$v/verdict" 2>/dev/null
+    done
   else
     printf '\n(synthesizer "%s" unavailable/failed — showing reports directly)\n' "$SYNTH"
     case "$MODE" in review) emit_bodies 1 ;; *) emit_bodies 0 ;; esac

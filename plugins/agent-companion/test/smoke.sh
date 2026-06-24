@@ -94,4 +94,56 @@ out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
   && echo "OK synth-none" || { echo "FAIL synth-none rc=$rc"; echo "$out"; exit 1; }
 rm -f "$DATA/synthesizer.conf"
 
+# --- markdown-wrapped verdict (e.g. Grok Build emits **STATUS:**/**REQUEST_ID:**) ---
+# classify_verdict must tolerate emphasis decoration, else a valid PASS reads as FAIL.
+cat > "$ROOT/adapters/mmd.sh" <<'A'
+#!/usr/bin/env bash
+[ "$1" = probe ] && exit 0
+printf '**STATUS: PASS**\n**REQUEST_ID: %s**\n' "$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')" > "$4"
+A
+chmod +x "$ROOT/adapters/mmd.sh"
+printf 'mmd\n' > "$DATA/verifiers.conf"
+( cd "$TMP" && run review medium "$TMP/req.md" ); rc=$?
+[ "$rc" = 0 ] && echo "OK markdown-wrapped-pass" || { echo "FAIL markdown-wrapped expected 0 got $rc"; exit 1; }
+
+# key-only emphasis: **STATUS**: PASS / **REQUEST_ID**: <nonce> (bold around the key only)
+cat > "$ROOT/adapters/mmd2.sh" <<'A'
+#!/usr/bin/env bash
+[ "$1" = probe ] && exit 0
+printf '**STATUS**: PASS\n**REQUEST_ID**: %s\n' "$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')" > "$4"
+A
+chmod +x "$ROOT/adapters/mmd2.sh"
+printf 'mmd2\n' > "$DATA/verifiers.conf"
+( cd "$TMP" && run review medium "$TMP/req.md" ); rc=$?
+[ "$rc" = 0 ] && echo "OK markdown-key-only-pass" || { echo "FAIL markdown-key-only expected 0 got $rc"; exit 1; }
+
+# --- synthesizer excludes FAIL verdicts (M3) ---
+# 2 valid reports (mpass + mchg) get consolidated; mfail is excluded yet surfaced.
+printf 'mpass\nmchg\nmfail\n' > "$DATA/verifiers.conf"
+printf 'msynth\n' > "$DATA/synthesizer.conf"
+out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
+echo "$out" | grep -q 'consolidated report (by msynth · 2 agents' \
+  && echo "$out" | grep -q 'FAIL — excluded from consolidation' && [ "$rc" = 10 ] \
+  && echo "OK synth-excludes-fail" || { echo "FAIL synth-excludes-fail rc=$rc"; echo "$out"; exit 1; }
+rm -f "$DATA/synthesizer.conf"
+
+# --- echoed-prompt hijack: a valid verdict that ALSO echoes the prompt (carrying a
+# bare nonce with no STATUS above it) must still classify from the real STATUS anchor ---
+cat > "$ROOT/adapters/mhijack.sh" <<'A'
+#!/usr/bin/env bash
+[ "$1" = probe ] && exit 0
+n="$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')"
+{ printf 'STATUS: PASS\nREQUEST_ID: %s\n\n' "$n"
+  printf '## Echoed request for reference\n'
+  printf 'REQUEST_ID: %s\n' "$n"; } > "$4"
+A
+chmod +x "$ROOT/adapters/mhijack.sh"
+printf 'mhijack\n' > "$DATA/verifiers.conf"
+( cd "$TMP" && run review medium "$TMP/req.md" ); rc=$?
+[ "$rc" = 0 ] && echo "OK echoed-prompt-not-hijacked" || { echo "FAIL echoed-prompt expected 0 got $rc"; exit 1; }
+
+# --- bad invocation (missing args) -> exit 64, not the shell default 1 ---
+( cd "$TMP" && run review ); rc=$?
+[ "$rc" = 64 ] && echo "OK bad-args-64" || { echo "FAIL bad-args expected 64 got $rc"; exit 1; }
+
 echo "ALL SMOKE OK"

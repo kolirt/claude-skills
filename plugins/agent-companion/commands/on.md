@@ -11,9 +11,9 @@ At decision / review / audit points, run the panel dispatcher (do NOT change dir
 bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" <mode> <effort> <request-file>
 ```
 Read its STDOUT (the combined per-verifier summary) and its exit code:
-`0` PASS/ADVICE/AUDIT_COMPLETE · `10` blocked: CHANGES_REQUESTED or a verifier FAIL (see the summary) · `64` no verifier available.
+`0` PASS/ADVICE/AUDIT_COMPLETE/DIAGNOSIS_COMPLETE · `10` blocked: CHANGES_REQUESTED or a verifier FAIL (see the summary) · `64` env/invocation error (not a git repo, or no verifier reachable).
 
-**Graceful degrade:** exit `64` means no verifier was reachable — continue as manager and tell the user CONSULT/REVIEW is unavailable, the step proceeding without verification.
+**Graceful degrade:** exit `64` is an environment error, not a verdict. If no verifier was reachable, continue as manager and tell the user CONSULT/REVIEW is unavailable, the step proceeding without verification. If instead it is "not a git repo", fix the working directory and re-run — do not proceed as if verified.
 
 Manage which agents are active with `/agent-companion:verifiers`. Plugin updates are handled by native `/plugin update`.
 

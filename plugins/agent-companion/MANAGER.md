@@ -65,7 +65,7 @@ Each Superpowers stage produces an artifact that MUST pass through the verifier 
 Gate semantics: do not move to the next stage while the artifact sits at `CHANGES_REQUESTED` — fix and re-REVIEW (cap ~3 rounds, then escalate to the user). Use `high` effort for spec and plan gates and final execution review; `medium` for routine per-task reviews.
 
 ## Verifier panel
-A CONSULT, REVIEW, or AUDIT invocation runs ALL active verifiers in parallel. For REVIEW, the result is **any-blocks** gated: the overall verdict is PASS only if every considered verifier returns PASS; any CHANGES_REQUESTED or FAIL response from any verifier blocks the gate. Verifiers that returned SKIP or FAIL are listed by name in the summary so you can act on them individually.
+A CONSULT, REVIEW, AUDIT, or DIAGNOSE invocation runs ALL active verifiers in parallel. For REVIEW, the result is **any-blocks** gated: the overall verdict is PASS only if every considered verifier returns PASS; any CHANGES_REQUESTED or FAIL response from any verifier blocks the gate. Verifiers that returned SKIP or FAIL are listed by name in the summary so you can act on them individually.
 
 ## Reading the output (synthesizer + drill-down)
 If a synthesizer is configured, STDOUT is ONE consolidated report (the raw per-verifier verdicts are kept on disk, not dumped into your context) — this is intentional, to save context. The consolidated report tags each finding with its source agent + a locator (file:line / short id), and prints the path to the raw verdicts.
@@ -79,11 +79,15 @@ To keep that saving real: act on the consolidated report directly when it suffic
    - AUDIT: `MODE: audit` + `SCOPE` (paths/globs/subsystem) + `FOCUS` (security|correctness|perf|arch|all).
    - DIAGNOSE: `MODE: diagnose` + `SCOPE` (paths/globs/subsystem) + `SYMPTOMS` (observed bug(s)/repro). No `FOCUS` — the symptoms already focus the investigation.
 2. Run: `bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" <mode> <effort> <request-file>`.
-3. Read STDOUT (the verdict content) and the EXIT CODE:
-   - `0`  → PASS / ADVICE / AUDIT_COMPLETE / DIAGNOSIS_COMPLETE
-   - `10` → CHANGES_REQUESTED (fix and repeat; cap ~3 rounds, then escalate)
-   - `20` → failed verification — do NOT treat the work as verified; report the failure to the user.
-   - `64` → invocation/environment error (bad args, not a git repo) — this is NOT a verdict; fix the call.
+3. Read STDOUT (the verdict content) and the EXIT CODE. The script emits exactly three codes:
+   - `0`  → PASS / ADVICE / AUDIT_COMPLETE / DIAGNOSIS_COMPLETE. Non-gating modes
+     (consult/audit/diagnose) always exit `0` even if an individual verifier FAILed —
+     read the compact `[name] STATUS` lines to see per-verifier outcomes.
+   - `10` → review blocked: at least one verifier returned CHANGES_REQUESTED **or** FAIL.
+     Fix and repeat (cap ~3 rounds, then escalate). Only `review` ever returns `10`.
+   - `64` → invocation/environment error, NOT a verdict: either not a git repo, or no
+     verifier was reachable (all skipped). Do NOT treat the work as verified — fix the
+     call or enable a verifier, and tell the user the step ran without verification.
 
 ## Effort (tiered)
 - `high` — architecture, security, migrations, final pre-merge reviews, any CONSULT with 2+ options.
