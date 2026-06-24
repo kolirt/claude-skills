@@ -26,8 +26,17 @@ while IFS= read -r line; do
   VERIFIERS+=("$line")
 done < <(cat "$CONF" 2>/dev/null)
 
-REQID="$(head -c16 /dev/urandom | xxd -p)"
-KEY="$(printf '%s' "$REPO" | shasum -a 256 | cut -c1-16)"
+# Portable random nonce + repo key (xxd / shasum may be absent on minimal Linux).
+REQID="$(head -c16 /dev/urandom 2>/dev/null | xxd -p 2>/dev/null | tr -d '\n')"
+[ -n "$REQID" ] || REQID="$(head -c16 /dev/urandom 2>/dev/null | od -An -tx1 | tr -d ' \n')"
+[ -n "$REQID" ] || REQID="$$-$(date +%s 2>/dev/null)"
+if command -v shasum >/dev/null 2>&1; then
+  KEY="$(printf '%s' "$REPO" | shasum -a 256 | cut -c1-16)"
+elif command -v sha256sum >/dev/null 2>&1; then
+  KEY="$(printf '%s' "$REPO" | sha256sum | cut -c1-16)"
+else
+  KEY="$(printf '%s' "$REPO" | cksum | tr -d ' ' | cut -c1-16)"
+fi
 RUN="$DATA/handoff/$KEY/run-$REQID"; mkdir -p "$RUN"
 find "$DATA/handoff" -maxdepth 2 -name 'run-*' -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
 
@@ -77,9 +86,9 @@ synth_available() { # <name>
 run_synth() { # <name> <prompt-file> <out-file>
   local n="$1" p="$2" o="$3"
   if [ "$n" = claude ]; then
-    _with_timeout "$T" claude -p "$(cat "$p")" --allowedTools "Read Grep Glob" > "$o" 2>/dev/null
+    _with_timeout "$T" claude -p "$(cat "$p")" --allowedTools "Read Grep Glob" > "$o" 2>"$RUN/synth.stderr.log"
   else
-    _with_timeout "$T" bash "$ROOT/adapters/$n.sh" run "$p" "$EFFORT" "$o"
+    _with_timeout "$T" bash "$ROOT/adapters/$n.sh" run "$p" "$EFFORT" "$o" 2>"$RUN/synth.stderr.log"
   fi
 }
 
@@ -101,7 +110,9 @@ fi
 if [ "${#runlist[@]}" -gt 0 ]; then
   for v in "${runlist[@]}"; do
     vdir="$RUN/$v"; mkdir -p "$vdir"
-    ( _with_timeout "$T" bash "$ROOT/adapters/$v.sh" run "$PROMPT" "$EFFORT" "$vdir/verdict"; echo $? > "$vdir/rc" ) &
+    # capture adapter/CLI stderr to a per-verifier log (on disk) so a silent failure
+    # like a rejected CLI flag is diagnosable instead of an empty FAIL.
+    ( _with_timeout "$T" bash "$ROOT/adapters/$v.sh" run "$PROMPT" "$EFFORT" "$vdir/verdict" 2>"$vdir/stderr.log"; echo $? > "$vdir/rc" ) &
   done
   wait
 fi

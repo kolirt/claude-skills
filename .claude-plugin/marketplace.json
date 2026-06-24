@@ -8,7 +8,7 @@
       "name": "agent-companion",
       "source": "./plugins/agent-companion",
       "description": "Claude runs as manager and consults several independent verifier agents in parallel \u2014 each returns its own verdict.",
-      "version": "0.1.3"
+      "version": "0.1.4"
     }
   ]
 }

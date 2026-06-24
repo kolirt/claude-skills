@@ -14,11 +14,13 @@ Native Claude Code plugin marketplace.
 - **agent-companion** — Claude acts as manager and consults several independent
   verifier agents in parallel; REVIEW is any-blocks. **No agents are active by
   default** — enable the ones you want with `/agent-companion:verifiers add <name>`.
-  Available adapters (each needs its own CLI installed + auth):
+  Available adapters (each needs its own CLI installed and authenticated by ANY
+  method that CLI supports — browser/OAuth login, config file, or API key; an
+  unauthenticated CLI is skipped, not required to use a specific key):
   - `codex` — OpenAI Codex CLI
-  - `gemini` — Google Gemini CLI (`GEMINI_API_KEY`)
-  - `grok` — Grok CLI · **Grok Build** model, xAI (`XAI_API_KEY`)
-  - `grok-composer` — Grok CLI · **Composer 2.5 Fast** model, Cursor (same CLI/subscription, `XAI_API_KEY`)
+  - `gemini` — Google Gemini CLI
+  - `grok` — Grok CLI · **Grok Build** model (xAI)
+  - `grok-composer` — Grok CLI · **Composer 2.5 Fast** model (Cursor); same Grok CLI/subscription
 
   Add a new agent by dropping an adapter in `plugins/agent-companion/adapters/`
   and listing it. See `skills/creating-plugins`.

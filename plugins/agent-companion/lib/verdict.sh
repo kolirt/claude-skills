@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 # Shared verdict classification. Sourced by the dispatcher.
 # classify_verdict <out-file> <reqid> <mode> -> prints PASS|CHANGES|FAIL
-# Mode-aware: in review only "STATUS: PASS" is a PASS; a verdict whose STATUS
-# does not match the mode is FAIL (fail-closed). The REQUEST_ID nonce must be the
-# line immediately after the last STATUS line.
+# Anchor on the UNIQUE nonce line ("REQUEST_ID: <reqid>") — unguessable, so it can't
+# appear by accident in the verdict body — and require the STATUS to be the line
+# immediately ABOVE it. This is robust even if the body quotes "STATUS:" lines.
+# Mode-aware + fail-closed: a STATUS that doesn't match the mode is FAIL.
 classify_verdict() {
   local out="$1" reqid="$2" mode="$3"
   [ -s "$out" ] || { echo FAIL; return; }
-  local start; start="$(grep -n '^STATUS: ' "$out" | tail -1 | cut -d: -f1)"
-  [ -n "$start" ] || { echo FAIL; return; }
-  local first second
-  first="$(sed -n "${start}p" "$out")"
-  second="$(sed -n "$((start+1))p" "$out")"
-  [ "$second" = "REQUEST_ID: ${reqid}" ] || { echo FAIL; return; }
+  local rl; rl="$(grep -nFx "REQUEST_ID: ${reqid}" "$out" | tail -1 | cut -d: -f1)"
+  [ -n "$rl" ] && [ "$rl" -gt 1 ] || { echo FAIL; return; }
+  local first; first="$(sed -n "$((rl - 1))p" "$out")"
   case "$mode" in
     review)
       case "$first" in
