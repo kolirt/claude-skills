@@ -23,8 +23,11 @@ session, so a synthesizer agent can consolidate them into one. On enabling, chec
 bash "${CLAUDE_PLUGIN_ROOT}/synthesizer.sh" show
 ```
 If it reports `synthesizer: unset` AND 2+ verifiers are active, ask the user which agent should
-consolidate multi-agent reports — `claude` (best quality, uses Claude limits), an external
-adapter (e.g. `codex`/`grok`), or `none` — then persist their choice:
+consolidate multi-agent reports. Offer **exactly** the candidates printed on the `candidates:`
+line of `synthesizer.sh show` — present EACH one as its own distinct option (do NOT merge,
+drop, or abbreviate any; e.g. `grok` and `grok-composer` are different models and must both
+appear). Note only that `claude` uses Claude limits while the rest are external CLIs. Then
+persist their choice:
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/synthesizer.sh" set <choice>
 ```

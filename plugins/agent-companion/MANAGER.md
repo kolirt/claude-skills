@@ -67,6 +67,11 @@ Gate semantics: do not move to the next stage while the artifact sits at `CHANGE
 ## Verifier panel
 A CONSULT, REVIEW, or AUDIT invocation runs ALL active verifiers in parallel. For REVIEW, the result is **any-blocks** gated: the overall verdict is PASS only if every considered verifier returns PASS; any CHANGES_REQUESTED or FAIL response from any verifier blocks the gate. Verifiers that returned SKIP or FAIL are listed by name in the summary so you can act on them individually.
 
+## Reading the output (synthesizer + drill-down)
+If a synthesizer is configured, STDOUT is ONE consolidated report (the raw per-verifier verdicts are kept on disk, not dumped into your context) — this is intentional, to save context. The consolidated report tags each finding with its source agent + a locator (file:line / short id), and prints the path to the raw verdicts.
+
+To keep that saving real: act on the consolidated report directly when it suffices. When you need the exact detail of a SPECIFIC finding (to fix it, or for a high-stakes call), read **only the relevant fragment** of that agent's raw verdict — grep for the locator/keyword, or Read a small line range at the printed path — **never `cat` the whole verdict back into context**. The gate decision (exit code) never needs the raw files at all.
+
 ## How to invoke the verifier
 1. Compose the request CONTENT in a temp file (do NOT compute handoff paths):
    - REVIEW: `MODE: review` + `TASK`/`DECISION`/`CHANGED`/`ACCEPTANCE`.

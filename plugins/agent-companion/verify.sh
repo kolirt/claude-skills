@@ -160,8 +160,13 @@ nreports=${#runlist[@]}
 
 if [ "$nreports" -ge 2 ] && [ -n "$SYNTH" ] && [ "$SYNTH" != none ] && synth_available "$SYNTH"; then
   sp="$RUN/synth-prompt.txt"
-  { printf 'You are consolidating independent %s reports from several agents into ONE concise report.\n' "$MODE"
-    printf 'Deduplicate overlapping points, group by file/severity, note agreement vs disagreement, and give one overall takeaway. Do not invent content beyond the reports.\n\n'
+  { printf 'You are consolidating independent %s reports from several agents into ONE report.\n' "$MODE"
+    printf 'Rules:\n'
+    printf '- Keep EVERY distinct finding. Merge only TRUE duplicates; never drop a unique issue.\n'
+    printf '- Tag each finding with its source agent(s) and a locator (file:line, or a short quote/id)\n'
+    printf '  so a reader can find it in the raw report without re-reading everything.\n'
+    printf '- Group by file/severity; note where agents agree vs disagree; end with one overall takeaway.\n'
+    printf '- Do not invent anything beyond the reports.\n\n'
     for v in "${runlist[@]}"; do
       printf -- '--- %s (%s) ---\n' "$v" "$(cat "$RUN/$v/cls" 2>/dev/null)"
       cat "$RUN/$v/verdict" 2>/dev/null; printf '\n'
@@ -170,6 +175,7 @@ if [ "$nreports" -ge 2 ] && [ -n "$SYNTH" ] && [ "$SYNTH" != none ] && synth_ava
   if run_synth "$SYNTH" "$sp" "$RUN/consolidated.txt" && [ -s "$RUN/consolidated.txt" ]; then
     printf '\n=== consolidated report (by %s · %s agents) ===\n' "$SYNTH" "$nreports"
     cat "$RUN/consolidated.txt"
+    printf '\n(raw per-verifier verdicts for drill-down: %s/<verifier>/verdict)\n' "$RUN"
   else
     printf '\n(synthesizer "%s" unavailable/failed — showing reports directly)\n' "$SYNTH"
     case "$MODE" in review) emit_bodies 1 ;; *) emit_bodies 0 ;; esac
