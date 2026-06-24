@@ -53,6 +53,8 @@ const isCompanion = computed(() => props.id === 'agent-companion')
           <dd>{{ t('skill.cmd.off') }}</dd>
           <dt><span class="accent">/agent-companion:verifiers</span> <span class="dim">[list | add &lt;name&gt; | remove &lt;name&gt;]</span></dt>
           <dd v-html="t('skill.cmd.verifiers')" />
+          <dt><span class="accent">/agent-companion:synthesizer</span> <span class="dim">[show | set &lt;name&gt; | off]</span></dt>
+          <dd>{{ t('skill.cmd.synth') }}</dd>
         </dl>
       </section>
 

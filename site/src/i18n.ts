@@ -48,6 +48,8 @@ const en: Dict = {
   'skill.cmd.on': 'Claude starts acting as the manager (per the bundled MANAGER protocol).',
   'skill.cmd.verifiers':
     "Manage which verifier agents are active. <code>add</code> needs a matching adapter.",
+  'skill.cmd.synth':
+    "Choose the agent that consolidates the verifiers’ reports into one (so 2+ reports don’t flood the session), or turn it off.",
   'skill.mode.consult.tag': '— forward-looking',
   'skill.mode.consult':
     'At a decision fork, the verifier agents weigh in with advice; Claude synthesizes their input before choosing.',
