@@ -7,7 +7,11 @@ REQUEST_FILE="${3:?missing request-file}"
 # Resolve bundled root WITHOUT changing the caller's cwd (so git diff targets the user repo).
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 ROOT="${CLAUDE_PLUGIN_ROOT:-$SELF}"
-DATA="${CLAUDE_PLUGIN_DATA:-$ROOT/.data}"
+# Persistent state. Prefer the plugin data dir; if Claude Code didn't export it
+# (observed: CLAUDE_PLUGIN_DATA can be unset in slash-command Bash), fall back to a
+# STABLE home path — NOT $ROOT/.data, which is under the ephemeral versioned dir and
+# would be lost on every plugin update.
+DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
 . "$ROOT/lib/verdict.sh"
 
 # Resolve the USER repo from the caller's cwd (no cd). Required, like the source tool.

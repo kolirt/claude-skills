@@ -8,7 +8,10 @@ set -uo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 ROOT="${CLAUDE_PLUGIN_ROOT:-$SELF}"
-DATA="${CLAUDE_PLUGIN_DATA:-$ROOT/.data}"
+# Stable persistent location: CLAUDE_PLUGIN_DATA when exported, else a fixed home
+# path (NOT $ROOT/.data — that sits under the ephemeral versioned dir and would be
+# wiped on every plugin update, losing the user's active-verifier selection).
+DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
 CONF="$DATA/verifiers.conf"
 DEFAULT="$ROOT/verifiers.conf"
 
