@@ -14,7 +14,7 @@
       "name": "auditing-prs",
       "source": "./plugins/auditing-prs",
       "description": "Audit GitHub Pull Requests end-to-end via gh \u2014 fetch, draft, publish review comments with consistent conventions, and resolve issues when fixes land; optional agent-companion verifier panel for independent task-completion checks.",
-      "version": "0.1.1"
+      "version": "0.1.2"
     }
   ]
 }

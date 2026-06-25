@@ -496,12 +496,15 @@ skill runs solo as described above.
 It slots in **between Step 2 (your own reconciliation done) and Step 3 (the
 draft)**.
 
-This skill's only job here is to **adapt the PR to how the companion works** —
-gather the inputs and put the PR code where the panel can read it — and then
-**defer to the agent-companion manager protocol** to actually run the
-verification. How the panel is dispatched (its command, modes, request format,
-and verdict/exit contract) is the companion's concern, not this skill's; follow
-the companion protocol for it.
+This skill has two jobs here: **adapt the PR to how the companion works** (gather
+the inputs and put the PR code where the panel can read it), and define **what
+kind of check** the panel runs — an acceptance **review** of the PR against the
+asks, where each verifier independently judges every ask, NOT an open-ended
+discovery audit. Even when the user says "audit the PR", the panel step here is
+this acceptance review (the asks are the acceptance criteria). Picking the kind of
+check is this skill's side of the contract; everything else is the companion's:
+**defer to the agent-companion manager protocol** for how the panel is dispatched
+(its command, request format, and verdict/exit transport) and follow it for that.
 
 ### What this skill must provide (its side of the contract)
 
@@ -536,8 +539,13 @@ the companion protocol for it.
    Issue 2 is fixed in file X") — give the task and the code and let each verifier
    reach its own conclusion against the code at HEAD.
 
-3. **What you want judged.** Each ask, independently: delivered / partial / not
-   done (against HEAD, with evidence), plus any new problems the PR introduces.
+3. **What you want judged — per ask, independently.** This is an acceptance
+   review, not defect discovery. The asks (every tracker requirement + every
+   prior Issue, in their original wording) are the acceptance criteria. Each
+   verifier returns, for **every** ask, one of `done | partial | not_done |
+   cannot-verify-offline` with `file:line` evidence at HEAD — and additionally
+   flags any new problems the PR introduces. Do not collapse this into a generic
+   "find bugs" pass; the per-ask completion verdict is the point.
 
 ### How to treat the result
 
