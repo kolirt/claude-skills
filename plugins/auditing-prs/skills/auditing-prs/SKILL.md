@@ -509,18 +509,25 @@ the companion protocol for it.
    materialize the PR as a detached worktree at the exact head SHA and point the
    verification at it as its scope:
    ```bash
-   # Fetch the PR head by the resolved repo URL — do NOT assume a local remote
-   # named "origin" points at {owner}/{repo} (it may be a fork, mirror, or absent).
-   REPO_URL=$(gh repo view {owner}/{repo} --json url -q .url)
-   git fetch "$REPO_URL" "pull/{N}/head"            # works for fork PRs too
-   HEAD_SHA=$(git rev-parse FETCH_HEAD)             # pin to what was just fetched
+   HEAD_SHA=$(gh pr view {N} --repo {owner}/{repo} --json headRefOid -q .headRefOid)
+   # Fetch via an EXISTING local remote so its configured auth/protocol is reused
+   # (the clone may be SSH, a host alias, gh's https helper, …). Pick the remote
+   # whose URL contains {owner}/{repo}; fall back to origin. Do NOT build an https
+   # URL from `gh repo view --json url` — git can't auth a bare https URL on an
+   # SSH clone ("could not read Username for https://…").
+   REMOTE=$(git remote -v | awk -v r="{owner}/{repo}" 'index($2,r){print $1; exit}')
+   REMOTE=${REMOTE:-origin}
+   git fetch "$REMOTE" "pull/{N}/head"              # PR head ref (works for forks)
+   # Confirm the exact PR head is now present (a fork PR may need its own remote).
+   git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null \
+     || { echo "PR head $HEAD_SHA not fetched from $REMOTE — resolve the remote first"; }
    WT="$(mktemp -d)/pr-{N}"
    git worktree add --detach "$WT" "$HEAD_SHA"
    trap 'git worktree remove --force "$WT" 2>/dev/null' EXIT   # clean up always
    ```
-   `--detach` at the exact fetched SHA means a head that moves mid-audit can't
-   change what was verified. Reuse this `HEAD_SHA` for your own `contents`-API
-   reads so you and the panel judge one snapshot.
+   `--detach` at the exact head SHA means a head that moves mid-audit can't change
+   what was verified. Reuse this `HEAD_SHA` for your own `contents`-API reads so
+   you and the panel judge one snapshot.
 
 2. **Raw context, never your conclusions** (the independence invariant). Provide
    the full tracker ticket (summary + description + all comments) and the full PR
