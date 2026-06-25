@@ -7,11 +7,12 @@ Native Claude Code plugin marketplace.
 ```text
 /plugin marketplace add kolirt/claude-skills
 /plugin install agent-companion@claude-skills
+/plugin install auditing-prs@claude-skills
 ```
 
 ## Plugins
 
-- **agent-companion** — Claude acts as manager and consults several independent
+- **agent-companion** — Claude runs as manager and consults several independent
   verifier agents in parallel; REVIEW is any-blocks. **No agents are active by
   default** — enable the ones you want with `/agent-companion:verifiers add <name>`.
   Available adapters (each needs its own CLI installed and authenticated by ANY
@@ -27,6 +28,24 @@ Native Claude Code plugin marketplace.
 
   When 2+ verifiers run, a **synthesizer** can consolidate their reports into one
   (so the session isn't flooded): `/agent-companion:synthesizer set <claude|adapter|none>`.
+
+- **auditing-prs** — End-to-end GitHub Pull Request reviews via the `gh` CLI:
+  fetch the PR (plus optional issue-tracker context), draft the review in chat,
+  publish inline + summary comments with consistent conventions, and resolve
+  threads when fixes land. Works on any repository and any GitHub host. When
+  `agent-companion` is enabled, the PR is independently verified by its panel
+  before drafting.
+
+## Structure
+
+- [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) — marketplace manifest; lists every plugin and its version (source of truth)
+- [`plugins/agent-companion/`](plugins/agent-companion) — verifier-panel manager plugin
+  ([`verify.sh`](plugins/agent-companion/verify.sh) dispatcher · [`MANAGER.md`](plugins/agent-companion/MANAGER.md) · [`adapters/`](plugins/agent-companion/adapters) · [`commands/`](plugins/agent-companion/commands))
+- [`plugins/auditing-prs/`](plugins/auditing-prs) — GitHub PR review plugin
+  ([`skills/auditing-prs/`](plugins/auditing-prs/skills/auditing-prs))
+- [`skills/creating-plugins/`](skills/creating-plugins) — skill for scaffolding and validating new plugins
+- [`site/`](site) — Vite + Vue web catalog, data-driven from `marketplace.json`
+- [`build-site.sh`](build-site.sh) — generates `site/public/data.json` from the manifests (version-validated; the generated file is gitignored)
 
 ## Develop
 

@@ -12,7 +12,7 @@ const en: Dict = {
   'home.boot': 'plugin marketplace add',
   'home.title': "A marketplace for<br /><span class='accent'>Claude Code</span> plugins.",
   'home.lede':
-    "Install agents, commands and skills straight into Claude Code with <span class='accent'>/plugin</span>. The flagship: <strong class='accent'>agent-companion</strong> — Claude does the work, then has it checked by several independent agents at once.",
+    "Install agents, commands and skills straight into Claude Code with <span class='accent'>/plugin</span>. Each plugin is self-contained — <strong class='accent'>add the marketplace, install what you need</strong>, and it's ready to use.",
   'home.addLabel': 'add the marketplace',
   'home.plugins': 'plugins',
   'home.search': 'search plugins…',
