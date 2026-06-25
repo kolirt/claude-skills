@@ -72,10 +72,12 @@ If a synthesizer is configured, STDOUT is ONE consolidated report (the raw per-v
 
 To keep that saving real: act on the consolidated report directly when it suffices. When you need the exact detail of a SPECIFIC finding (to fix it, or for a high-stakes call), read **only the relevant fragment** of that agent's raw verdict — grep for the locator/keyword, or Read a small line range at the printed path — **never `cat` the whole verdict back into context**. The gate decision (exit code) never needs the raw files at all.
 
-`collect` ends its stdout with a `=== verdicts ===` block — one `<verifier>\t<STATE>\t<verdict-path>`
-row per agent (path is clickable; `n/a` for SKIP/probe-FAIL). Surface this table to the user so they
-can open any agent's raw verdict. Everything above the block is the same consolidated/legacy report
-as before.
+Right after the `[<verifier>] STATUS` lines, `collect` prints a `=== verdicts ===` block — one
+`<verifier>\t<STATE>\t<verdict-path>` row per agent (path is clickable; `n/a` for SKIP/probe-FAIL).
+The consolidated/legacy report follows below it. **You MUST surface this table verbatim to the user
+in your reply** — it is not optional and must not stay hidden under the collapsed tool output. The
+harness collapses long `collect` stdout, so reproduce the `=== verdicts ===` rows (agent · state ·
+clickable path) in your own message every time, so the user can open any agent's raw verdict.
 
 ## How to invoke the verifier
 1. Compose the request CONTENT in a temp file (REVIEW/CONSULT/AUDIT/DIAGNOSE fields as before).
@@ -95,6 +97,10 @@ as before.
        SAME `<RUN_DIR>` — never re-run `prepare` for this request), then `collect` again.
        Cap ~2 retries, then escalate to the user.
      - `NO_VERIFIER` / "not a git repo" → graceful degrade, tell the user the step ran unverified.
+6. SURFACE — MANDATORY: reproduce the `=== verdicts ===` table (agent · state · clickable
+   verdict path) from `collect`'s stdout in your reply, plus your synthesis of the findings. Do
+   NOT leave the table hidden under the collapsed tool output — the user needs the clickable
+   paths. (See "Reading the output".)
 
 Non-Claude-Code / scripted callers may still use the synchronous form
 `bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" <mode> <effort> <request-file>` (or `run <mode> <effort>

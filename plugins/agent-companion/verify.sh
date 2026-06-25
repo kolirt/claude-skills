@@ -346,9 +346,10 @@ cmd_collect() {
     exit 64
   fi
 
-  # bodies/synthesis + verdict table
-  emit_detail "$run" "$mode" "$synth" "$runnable"
+  # verdict table FIRST (clickable per-agent paths, visible without expanding the long
+  # synthesis below), then bodies/synthesis.
   emit_table "$run" "$runnable" "$skip" "$fail"
+  emit_detail "$run" "$mode" "$synth" "$runnable"
 
   # finalize markers (terminal result) and gate
   : > "$run/complete"; rm -f "$run/.inflight"
