@@ -72,22 +72,34 @@ If a synthesizer is configured, STDOUT is ONE consolidated report (the raw per-v
 
 To keep that saving real: act on the consolidated report directly when it suffices. When you need the exact detail of a SPECIFIC finding (to fix it, or for a high-stakes call), read **only the relevant fragment** of that agent's raw verdict — grep for the locator/keyword, or Read a small line range at the printed path — **never `cat` the whole verdict back into context**. The gate decision (exit code) never needs the raw files at all.
 
+`collect` ends its stdout with a `=== verdicts ===` block — one `<verifier>\t<STATE>\t<verdict-path>`
+row per agent (path is clickable; `n/a` for SKIP/probe-FAIL). Surface this table to the user so they
+can open any agent's raw verdict. Everything above the block is the same consolidated/legacy report
+as before.
+
 ## How to invoke the verifier
-1. Compose the request CONTENT in a temp file (do NOT compute handoff paths):
-   - REVIEW: `MODE: review` + `TASK`/`DECISION`/`CHANGED`/`ACCEPTANCE`.
-   - CONSULT: `MODE: consult` + `QUESTION`/`CONTEXT`/`OPTIONS` (options or `PROPOSE`)/`CRITERIA`/`LEANING`.
-   - AUDIT: `MODE: audit` + `SCOPE` (paths/globs/subsystem) + `FOCUS` (security|correctness|perf|arch|all).
-   - DIAGNOSE: `MODE: diagnose` + `SCOPE` (paths/globs/subsystem) + `SYMPTOMS` (observed bug(s)/repro). No `FOCUS` — the symptoms already focus the investigation.
-2. Run: `bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" <mode> <effort> <request-file>`.
-3. Read STDOUT (the verdict content) and the EXIT CODE. The script emits exactly three codes:
-   - `0`  → PASS / ADVICE / AUDIT_COMPLETE / DIAGNOSIS_COMPLETE. Non-gating modes
-     (consult/audit/diagnose) always exit `0` even if an individual verifier FAILed —
-     read the compact `[name] STATUS` lines to see per-verifier outcomes.
-   - `10` → review blocked: at least one verifier returned CHANGES_REQUESTED **or** FAIL.
-     Fix and repeat (cap ~3 rounds, then escalate). Only `review` ever returns `10`.
-   - `64` → invocation/environment error, NOT a verdict: either not a git repo, or no
-     verifier was reachable (all skipped). Do NOT treat the work as verified — fix the
-     call or enable a verifier, and tell the user the step ran without verification.
+1. Compose the request CONTENT in a temp file (REVIEW/CONSULT/AUDIT/DIAGNOSE fields as before).
+2. PREPARE — freeze the run and get the agent list (do NOT cd):
+   `bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" prepare <mode> <effort> <request-file>`
+   Parse stdout TSV: `RUN_DIR\t<path>`, one `RUNNABLE\t<v>` + `SPAWN\t<v>\t<command>` per runnable
+   agent, plus `SKIP`/`FAIL` lines. Exit 64 here = env/invocation error (not a git repo, bad mode,
+   missing request file) — degrade gracefully, do not proceed as verified.
+3. SPAWN — launch EACH `SPAWN` command line VERBATIM as its OWN native background Bash task (one per
+   agent). The harness draws the live per-agent status rows; their output/exit is NOT the verdict.
+4. WAIT for all background tasks to finish.
+5. COLLECT — gate and read results:
+   `bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" collect <RUN_DIR>`
+   The exit code and stdout of `collect` are the ONLY verdict (never the SPAWN tasks' status):
+   - `0` PASS/non-gating · `10` review blocked · `64` see stderr token:
+     - `INCOMPLETE` → some agents have no `rc`; re-spawn ONLY the `MISSING\t<v>` agents (reusing the
+       SAME `<RUN_DIR>` — never re-run `prepare` for this request), then `collect` again.
+       Cap ~2 retries, then escalate to the user.
+     - `NO_VERIFIER` / "not a git repo" → graceful degrade, tell the user the step ran unverified.
+
+Non-Claude-Code / scripted callers may still use the synchronous form
+`bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" <mode> <effort> <request-file>` (or `run <mode> <effort>
+<request-file>`), which runs the whole panel and prints the same consolidated output — but without
+live per-agent state.
 
 ## Effort (tiered)
 - `high` — architecture, security, migrations, final pre-merge reviews, any CONSULT with 2+ options.

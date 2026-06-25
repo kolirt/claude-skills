@@ -1,235 +1,388 @@
 #!/usr/bin/env bash
 set -uo pipefail
-# Bad invocation is an environment/invocation error → exit 64 (NOT the shell's default 1),
-# so the dispatcher's exit contract is exactly 0/10/64 with no leaks.
-if [ "$#" -lt 3 ]; then
-  echo "usage: verify.sh <mode> <effort> <request-file>" >&2; exit 64
-fi
-MODE="$1"; EFFORT="$2"; REQUEST_FILE="$3"
-# An unknown mode (e.g. a typo'd "reveiw") must NOT fall through to the non-gating
-# default exit 0 — that would silently "pass" a review. Reject it as an invocation error.
-case "$MODE" in
-  review|consult|audit|diagnose) ;;
-  *) echo "unknown mode: $MODE (use review|consult|audit|diagnose)" >&2; exit 64;;
-esac
-[ -f "$REQUEST_FILE" ] || { echo "request file not found: $REQUEST_FILE" >&2; exit 64; }
 
 # Resolve bundled root WITHOUT changing the caller's cwd (so git diff targets the user repo).
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 ROOT="${CLAUDE_PLUGIN_ROOT:-$SELF}"
-# Persistent state. Prefer the plugin data dir; if Claude Code didn't export it
-# (observed: CLAUDE_PLUGIN_DATA can be unset in slash-command Bash), fall back to a
-# STABLE home path — NOT $ROOT/.data, which is under the ephemeral versioned dir and
-# would be lost on every plugin update.
 DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
 . "$ROOT/lib/verdict.sh"
+T="${AGENT_COMPANION_TIMEOUT:-180}"
 
-# Resolve the USER repo from the caller's cwd (no cd). Required, like the source tool.
-REPO="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not a git repo" >&2; exit 64; }
+# ---------- pure helpers ----------
+gen_reqid() {
+  local id
+  id="$(head -c16 /dev/urandom 2>/dev/null | xxd -p 2>/dev/null | tr -d '\n')"
+  [ -n "$id" ] || id="$(head -c16 /dev/urandom 2>/dev/null | od -An -tx1 | tr -d ' \n')"
+  [ -n "$id" ] || id="$$-$(date +%s 2>/dev/null)"
+  printf '%s' "$id"
+}
+repo_key() {
+  if   command -v shasum    >/dev/null 2>&1; then printf '%s' "$1" | shasum -a 256 | cut -c1-16
+  elif command -v sha256sum >/dev/null 2>&1; then printf '%s' "$1" | sha256sum    | cut -c1-16
+  else printf '%s' "$1" | cksum | tr -d ' ' | cut -c1-16; fi
+}
+# argv-safe single-quote escaping for one literal (handles spaces, ", $, `, ')
+sq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 
-# Active verifiers: user override in DATA wins, else bundled default.
-# (read-loop, not mapfile — works on macOS bash 3.2)
-CONF="$DATA/verifiers.conf"; [ -f "$CONF" ] || CONF="$ROOT/verifiers.conf"
-VERIFIERS=()
-while IFS= read -r line; do
-  case "$line" in ''|'#'*) continue;; esac
-  VERIFIERS+=("$line")
-done < <(cat "$CONF" 2>/dev/null)
+manifest_get()  { awk -F'\t' -v k="$2" '$1==k{print $2; exit}' "$1/manifest" 2>/dev/null; }
+manifest_list() { awk -F'\t' -v k="$2" '$1==k{print $2}'       "$1/manifest" 2>/dev/null; }
+manifest_valid() {
+  local m="$1/manifest" k
+  [ -f "$m" ] || return 1
+  for k in mode effort reqid repo root; do
+    awk -F'\t' -v k="$k" '$1==k{f=1} END{exit f?0:1}' "$m" || return 1
+  done
+  return 0
+}
 
-# Portable random nonce + repo key (xxd / shasum may be absent on minimal Linux).
-REQID="$(head -c16 /dev/urandom 2>/dev/null | xxd -p 2>/dev/null | tr -d '\n')"
-[ -n "$REQID" ] || REQID="$(head -c16 /dev/urandom 2>/dev/null | od -An -tx1 | tr -d ' \n')"
-[ -n "$REQID" ] || REQID="$$-$(date +%s 2>/dev/null)"
-if command -v shasum >/dev/null 2>&1; then
-  KEY="$(printf '%s' "$REPO" | shasum -a 256 | cut -c1-16)"
-elif command -v sha256sum >/dev/null 2>&1; then
-  KEY="$(printf '%s' "$REPO" | sha256sum | cut -c1-16)"
-else
-  KEY="$(printf '%s' "$REPO" | cksum | tr -d ' ' | cut -c1-16)"
-fi
-RUN="$DATA/handoff/$KEY/run-$REQID"; mkdir -p "$RUN"
-find "$DATA/handoff" -maxdepth 2 -name 'run-*' -type d -mtime +1 -exec rm -rf {} + 2>/dev/null || true
+validate_invocation() { # <mode> <request-file>
+  case "$1" in review|consult|audit|diagnose) ;;
+    *) echo "unknown mode: $1 (use review|consult|audit|diagnose)" >&2; exit 64;; esac
+  [ -f "$2" ] || { echo "request file not found: $2" >&2; exit 64; }
+}
 
-# Build the object under review against the resolved USER repo explicitly (git -C "$REPO"):
-# tracked diff + untracked files (like the original pair tool), so reviews of newly added
-# files are not empty. Scope modes skip the diff.
-case "$MODE" in
-  audit|diagnose) : ;;  # scope-centric; request carries SCOPE
-  *)
-    git -C "$REPO" --no-pager diff HEAD > "$RUN/diff.patch" 2>/dev/null || : > "$RUN/diff.patch"
-    git -C "$REPO" ls-files --others --exclude-standard -z \
-      | while IFS= read -r -d '' f; do
-          git -C "$REPO" --no-pager diff --no-index -- /dev/null "$f" >> "$RUN/diff.patch" 2>/dev/null || true
-        done ;;
-esac
+read_verifiers() { # -> active verifier names, one per line
+  local conf="$DATA/verifiers.conf"; [ -f "$conf" ] || conf="$ROOT/verifiers.conf"
+  local line
+  while IFS= read -r line; do
+    case "$line" in ''|'#'*) continue;; esac
+    printf '%s\n' "$line"
+  done < <(cat "$conf" 2>/dev/null)
+}
 
-# Compose the per-verifier prompt = VERIFIER.md + request + nonce + repo context.
-PROMPT="$RUN/prompt.txt"
-{ cat "$ROOT/VERIFIER.md" 2>/dev/null || true
-  cat "$REQUEST_FILE"
-  printf '\nREQUEST_ID: %s\n' "$REQID"
-  [ -s "$RUN/diff.patch" ] && printf 'DIFF_PATCH: %s\n' "$RUN/diff.patch"
-  printf 'REPO_ROOT: %s\n' "$REPO"
-} > "$PROMPT"
+build_diff() { # <repo> <out>
+  git -C "$1" --no-pager diff HEAD > "$2" 2>/dev/null || : > "$2"
+  git -C "$1" ls-files --others --exclude-standard -z \
+    | while IFS= read -r -d '' f; do
+        git -C "$1" --no-pager diff --no-index -- /dev/null "$f" >> "$2" 2>/dev/null || true
+      done
+}
 
-# Portable timeout: use timeout/gtimeout when available, else run WITHOUT a timeout.
-# (macOS ships no `timeout`; a pure-bash fallback that backgrounds `sleep` leaks an fd
-# into command substitution and hangs callers, so we intentionally skip it. Per-verifier
-# timeout therefore requires coreutils `timeout`/`gtimeout`; without it, an adapter relies
-# on its own CLI limits — documented degradation.)
+build_prompt() { # <mode> <req> <reqid> <repo> <run>
+  { cat "$ROOT/VERIFIER.md" 2>/dev/null || true
+    cat "$2"
+    printf '\nREQUEST_ID: %s\n' "$3"
+    [ -s "$5/diff.patch" ] && printf 'DIFF_PATCH: %s\n' "$5/diff.patch"
+    printf 'REPO_ROOT: %s\n' "$4"
+  } > "$5/prompt.txt"
+}
+
 _with_timeout() {
   local t="$1"; shift
   if   command -v timeout  >/dev/null 2>&1; then timeout  "$t" "$@"
   elif command -v gtimeout >/dev/null 2>&1; then gtimeout "$t" "$@"
   else "$@"; fi
 }
+warn_no_timeout() {
+  if ! command -v timeout >/dev/null 2>&1 && ! command -v gtimeout >/dev/null 2>&1; then
+    echo "agent-companion: no 'timeout'/'gtimeout' on PATH — per-verifier timeout is DISABLED" \
+         "(relying on each CLI's own limits; a hung CLI can stall the panel)." \
+         "Install coreutils for a hard cap." >&2
+  fi
+}
 
-T="${AGENT_COMPANION_TIMEOUT:-180}"
-if ! command -v timeout >/dev/null 2>&1 && ! command -v gtimeout >/dev/null 2>&1; then
-  echo "agent-companion: no 'timeout'/'gtimeout' on PATH — per-verifier timeout is DISABLED" \
-       "(relying on each CLI's own limits; a hung CLI can stall the panel)." \
-       "Install coreutils for a hard cap." >&2
-fi
-
-# --- synthesizer helpers (consolidate N verdicts into one, off-context) ---
-synth_available() { # <name>
+synth_available() {
   case "$1" in
     claude) command -v claude >/dev/null 2>&1 ;;
     *) [ -f "$ROOT/adapters/$1.sh" ] && bash "$ROOT/adapters/$1.sh" probe >/dev/null 2>&1 ;;
   esac
 }
-run_synth() { # <name> <prompt-file> <out-file>
-  local n="$1" p="$2" o="$3"
+run_synth() { # <name> <prompt-file> <out-file> <run>
+  local n="$1" p="$2" o="$3" run="$4" eff
+  eff="$(manifest_get "$run" effort)"; [ -n "$eff" ] || eff=medium  # frozen effort; medium fallback
   if [ "$n" = claude ]; then
-    _with_timeout "$T" claude -p "$(cat "$p")" --allowedTools "Read Grep Glob" > "$o" 2>"$RUN/synth.stderr.log"
+    _with_timeout "$T" claude -p "$(cat "$p")" --allowedTools "Read Grep Glob" > "$o" 2>"$run/synth.stderr.log"
   else
-    _with_timeout "$T" bash "$ROOT/adapters/$n.sh" run "$p" "$EFFORT" "$o" 2>"$RUN/synth.stderr.log"
+    _with_timeout "$T" bash "$ROOT/adapters/$n.sh" run "$p" "$eff" "$o" 2>"$run/synth.stderr.log"
   fi
 }
 
-# Probe synchronously and partition (fail-closed): runlist = probe 0; skiplist = probe 64
-# (unavailable → graceful degrade); faillist = missing adapter OR any other probe code.
-runlist=(); skiplist=(); faillist=()
-if [ "${#VERIFIERS[@]}" -gt 0 ]; then
-  for v in "${VERIFIERS[@]}"; do
+# ---------- emit (shared by cmd_run and, later, cmd_collect) ----------
+# Status lines: one per verifier, exactly like the monolith's status.txt.
+emit_status_lines() { # <run> <runnable_nl> <skip_nl> <fail_nl>
+  # ORDER must match the monolith's status.txt: runnable -> fail -> skip.
+  local run="$1" v cls
+  while IFS= read -r v; do [ -n "$v" ] || continue
+    cls="$(cat "$run/$v/cls" 2>/dev/null)"; printf '[%s] %s\n' "$v" "$cls"
+  done <<EOF
+$2
+EOF
+  while IFS= read -r v; do [ -n "$v" ] || continue
+    printf '[%s] FAIL (%s)\n' "${v%%	*}" "${v#*	}"
+  done <<EOF
+$4
+EOF
+  while IFS= read -r v; do [ -n "$v" ] || continue
+    printf '[%s] SKIP (unavailable)\n' "${v%%	*}"
+  done <<EOF
+$3
+EOF
+}
+
+# Detail/synth/drill-down — ported from the monolith (lines 159-223 of the original).
+emit_detail() { # <run> <mode> <synth> <runnable_nl>
+  local run="$1" mode="$2" synth="$3" v cls
+  # synthlist = non-FAIL runnable verdicts
+  local synthlist=() nsynth=0
+  while IFS= read -r v; do [ -n "$v" ] || continue
+    [ "$(cat "$run/$v/cls" 2>/dev/null)" = FAIL ] || { synthlist+=("$v"); nsynth=$((nsynth+1)); }
+  done <<EOF
+$4
+EOF
+  local nrep=0; while IFS= read -r v; do [ -n "$v" ] && nrep=$((nrep+1)); done <<EOF
+$4
+EOF
+
+  if [ "$nsynth" -ge 2 ] && [ -n "$synth" ] && [ "$synth" != none ] && synth_available "$synth"; then
+    local sp="$run/synth-prompt.txt"
+    { printf 'You are consolidating independent %s reports from several agents into ONE report.\n' "$mode"
+      printf '%s\n' \
+        'Rules:' \
+        '- Keep EVERY distinct finding. Merge only TRUE duplicates; never drop a unique issue.' \
+        '- Tag each finding with its source agent(s) and a locator (file:line, or a short quote/id)' \
+        '  so a reader can find it in the raw report without re-reading everything.' \
+        '- Group by file/severity; note where agents agree vs disagree; end with one overall takeaway.' \
+        '- Do not invent anything beyond the reports.' \
+        ''
+      for v in "${synthlist[@]:-}"; do [ -n "$v" ] || continue
+        printf -- '--- %s (%s) ---\n' "$v" "$(cat "$run/$v/cls" 2>/dev/null)"
+        cat "$run/$v/verdict" 2>/dev/null; printf '\n'
+      done
+    } > "$sp"
+    if run_synth "$synth" "$sp" "$run/consolidated.txt" "$run" && [ -s "$run/consolidated.txt" ]; then
+      printf '\n=== consolidated report (by %s · %s agents) ===\n' "$synth" "$nsynth"
+      cat "$run/consolidated.txt"
+      printf '\n(raw per-verifier verdicts for drill-down: %s/<verifier>/verdict)\n' "$run"
+      while IFS= read -r v; do [ -n "$v" ] || continue
+        [ "$(cat "$run/$v/cls" 2>/dev/null)" = FAIL ] || continue
+        printf '\n--- %s (FAIL — excluded from consolidation) ---\n' "$v"; cat "$run/$v/verdict" 2>/dev/null
+      done <<EOF
+$4
+EOF
+    else
+      printf '\n(synthesizer "%s" unavailable/failed — showing reports directly)\n' "$synth"
+      emit_bodies "$run" "$mode" "$4"
+    fi
+  elif [ "$nrep" -eq 1 ]; then
+    while IFS= read -r v; do [ -n "$v" ] || continue
+      printf '\n--- %s (%s) ---\n' "$v" "$(cat "$run/$v/cls" 2>/dev/null)"; cat "$run/$v/verdict" 2>/dev/null
+    done <<EOF
+$4
+EOF
+  elif [ "$nrep" -ge 2 ]; then
+    emit_bodies "$run" "$mode" "$4"
+  fi
+}
+
+emit_bodies() { # <run> <mode> <runnable_nl>   (review: only non-PASS; else all)
+  local run="$1" mode="$2" v cls
+  while IFS= read -r v; do [ -n "$v" ] || continue
+    cls="$(cat "$run/$v/cls" 2>/dev/null)"
+    [ "$mode" = review ] && [ "$cls" = PASS ] && continue
+    printf '\n--- %s (%s) ---\n' "$v" "$cls"; cat "$run/$v/verdict" 2>/dev/null
+  done <<EOF
+$3
+EOF
+  printf '\n(full verdicts on disk: %s/<verifier>/verdict)\n' "$run"
+}
+
+emit_table() { # <run> <runnable_nl> <skip_nl> <fail_nl>
+  # NOTE: lists arrive via command substitution (trailing newline stripped), so feed them
+  # with `printf '%s\n'` — `printf '%s'` would drop the last line in a `while read` loop.
+  local run="$1" v st
+  printf '\n=== verdicts ===\n'
+  printf '%s\n' "$2" | while IFS= read -r v; do [ -n "$v" ] || continue
+    if [ -f "$run/$v/rc" ]; then st="$(cat "$run/$v/cls" 2>/dev/null)"; [ -n "$st" ] || st=MISSING
+    else st=MISSING; fi
+    printf '%s\t%s\t%s\n' "$v" "$st" "$run/$v/verdict"
+  done
+  printf '%s\n' "$3" | while IFS= read -r v; do [ -n "$v" ] || continue
+    printf '%s\tSKIP\tn/a (%s)\n' "${v%%	*}" "${v#*	}"
+  done
+  printf '%s\n' "$4" | while IFS= read -r v; do [ -n "$v" ] || continue
+    printf '%s\tFAIL\tn/a (%s)\n' "${v%%	*}" "${v#*	}"
+  done
+}
+
+# ---------- subcommands ----------
+cleanup_old() {
+  [ -d "$DATA/handoff" ] || return 0
+  local d
+  while IFS= read -r d; do [ -n "$d" ] || continue
+    if [ -f "$d/complete" ] && [ ! -f "$d/.inflight" ]; then rm -rf "$d"
+    elif ! manifest_valid "$d"; then rm -rf "$d"; fi
+  done < <(find "$DATA/handoff" -maxdepth 2 -name 'run-*' -type d -mtime +1 2>/dev/null)
+}
+
+cmd_prepare() {
+  [ "$#" -ge 3 ] || { echo "usage: verify.sh prepare <mode> <effort> <request-file>" >&2; exit 64; }
+  local mode="$1" effort="$2" req="$3"
+  validate_invocation "$mode" "$req"
+  local repo; repo="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not a git repo" >&2; exit 64; }
+  cleanup_old
+  local reqid key run
+  reqid="$(gen_reqid)"; key="$(repo_key "$repo")"
+  run="$DATA/handoff/$key/run-$reqid"; mkdir -p "$run"
+  : > "$run/.inflight"
+  case "$mode" in review|consult) build_diff "$repo" "$run/diff.patch";; esac
+  build_prompt "$mode" "$req" "$reqid" "$repo" "$run"
+
+  # probe/partition (newline-delimited; entries may carry a TAB+reason)
+  local v ad prc runnable="" skip="" fail=""
+  while IFS= read -r v; do [ -n "$v" ] || continue
     ad="$ROOT/adapters/$v.sh"
-    if [ ! -f "$ad" ]; then faillist+=("$v:no-adapter"); continue; fi
+    if [ ! -f "$ad" ]; then fail="$fail$v	no-adapter
+"; continue; fi
     bash "$ad" probe >/dev/null 2>&1; prc=$?
-    if   [ "$prc" -eq 0 ];  then runlist+=("$v")
-    elif [ "$prc" -eq 64 ]; then skiplist+=("$v")
-    else faillist+=("$v:probe-rc-$prc"); fi
-  done
-fi
+    if   [ "$prc" -eq 0 ];  then runnable="$runnable$v
+"
+    elif [ "$prc" -eq 64 ]; then skip="$skip$v	unavailable
+"
+    else fail="$fail$v	probe-rc-$prc
+"; fi
+  done < <(read_verifiers)
 
-# Run probe-OK verifiers in parallel, each in its own dir with a (portable) timeout.
-if [ "${#runlist[@]}" -gt 0 ]; then
-  for v in "${runlist[@]}"; do
-    vdir="$RUN/$v"; mkdir -p "$vdir"
-    # capture adapter/CLI stderr to a per-verifier log (on disk) so a silent failure
-    # like a rejected CLI flag is diagnosable instead of an empty FAIL.
-    ( _with_timeout "$T" bash "$ROOT/adapters/$v.sh" run "$PROMPT" "$EFFORT" "$vdir/verdict" 2>"$vdir/stderr.log"; echo $? > "$vdir/rc" ) &
-  done
-  wait
-fi
+  local synth=none sconf="$DATA/synthesizer.conf"
+  [ -f "$sconf" ] && synth="$(head -n1 "$sconf" | tr -d '[:space:]')"; [ -n "$synth" ] || synth=none
 
-# Classify each ran verifier (rc!=0/timeout => FAIL, fail-closed); record class to a
-# file; build the COMPACT status lines (one per verifier) that always go to context.
-overall_changes=0; overall_fail=0
-status="$RUN/status.txt"; : > "$status"
-if [ "${#runlist[@]}" -gt 0 ]; then
-  for v in "${runlist[@]}"; do
-    rc="$(cat "$RUN/$v/rc" 2>/dev/null || echo 1)"
-    if [ "$rc" != 0 ]; then cls=FAIL; else cls="$(classify_verdict "$RUN/$v/verdict" "$REQID" "$MODE")"; fi
-    printf '%s' "$cls" > "$RUN/$v/cls"
-    printf '[%s] %s\n' "$v" "$cls" >> "$status"
-    [ "$cls" = CHANGES ] && overall_changes=1
-    [ "$cls" = FAIL ] && overall_fail=1
-  done
-fi
-if [ "${#faillist[@]}" -gt 0 ]; then
-  overall_fail=1
-  for f in "${faillist[@]}"; do printf '[%s] FAIL (%s)\n' "${f%%:*}" "${f#*:}" >> "$status"; done
-fi
-if [ "${#skiplist[@]}" -gt 0 ]; then
-  for s in "${skiplist[@]}"; do printf '[%s] SKIP (unavailable)\n' "$s" >> "$status"; done
-fi
-# "Considered" = anything not skipped (run or failed-probe). Only an all-skipped panel is exit 64.
-considered_count=$(( ${#runlist[@]} + ${#faillist[@]} ))
+  # atomic manifest
+  local m="$run/manifest.tmp"
+  { printf 'mode\t%s\n' "$mode"
+    printf 'effort\t%s\n' "$effort"
+    printf 'reqid\t%s\n' "$reqid"
+    printf 'repo\t%s\n' "$repo"
+    printf 'root\t%s\n' "$ROOT"
+    printf 'prompt\t%s\n' "$run/prompt.txt"
+    [ -f "$run/diff.patch" ] && printf 'diff\t%s\n' "$run/diff.patch"
+    printf 'timeout\t%s\n' "$T"
+    printf 'synthesizer\t%s\n' "$synth"
+    printf '%s' "$runnable" | while IFS= read -r v; do [ -n "$v" ] && printf 'runnable\t%s\n' "$v"; done
+    printf '%s' "$skip"     | while IFS= read -r v; do [ -n "$v" ] && printf 'skip\t%s\n' "$v"; done
+    printf '%s' "$fail"     | while IFS= read -r v; do [ -n "$v" ] && printf 'fail\t%s\n' "$v"; done
+  } > "$m"
+  mv "$m" "$run/manifest"
 
-emit_bodies() { # <only-nonpass:0|1>
-  local v cls only="$1"
-  for v in "${runlist[@]}"; do
-    cls="$(cat "$RUN/$v/cls" 2>/dev/null)"
-    [ "$only" = 1 ] && [ "$cls" = PASS ] && continue
-    printf '\n--- %s (%s) ---\n' "$v" "$cls"; cat "$RUN/$v/verdict" 2>/dev/null
+  # contract stdout (ordered: runnable, skip, fail)
+  printf 'RUN_DIR\t%s\n' "$run"
+  printf '%s' "$runnable" | while IFS= read -r v; do [ -n "$v" ] || continue
+    printf 'RUNNABLE\t%s\n' "$v"
+    printf 'SPAWN\t%s\tbash %s run-one %s %s\n' "$v" "$(sq "$ROOT/verify.sh")" "$(sq "$run")" "$(sq "$v")"
   done
-  printf '\n(full verdicts on disk: %s/<verifier>/verdict)\n' "$RUN"
+  printf '%s' "$skip" | while IFS= read -r v; do [ -n "$v" ] && printf 'SKIP\t%s\n' "$v"; done
+  printf '%s' "$fail" | while IFS= read -r v; do [ -n "$v" ] && printf 'FAIL\t%s\n' "$v"; done
+}
+cmd_run_one() {
+  [ "$#" -ge 2 ] || { echo "usage: verify.sh run-one <run-dir> <verifier>" >&2; exit 64; }
+  local run="$1" v="$2"
+  manifest_valid "$run" || { echo "invalid run-dir/manifest: $run" >&2; exit 64; }
+  manifest_list "$run" runnable | grep -qxF "$v" || { echo "verifier not in runnable: $v" >&2; exit 64; }
+  local effort prompt to
+  effort="$(manifest_get "$run" effort)"
+  prompt="$(manifest_get "$run" prompt)"
+  to="$(manifest_get "$run" timeout)"; [ -n "$to" ] || to="$T"
+  local vdir="$run/$v"; mkdir -p "$vdir"
+  rm -f "$vdir/finished" "$vdir/rc"
+  : > "$vdir/started"
+  # adapter writes its verdict to the FILE; its stdout is silenced (no context leak),
+  # diagnostics go to stderr.log. run-one itself prints nothing to stdout.
+  _with_timeout "$to" bash "$ROOT/adapters/$v.sh" run "$prompt" "$effort" "$vdir/verdict" >/dev/null 2>"$vdir/stderr.log"
+  printf '%s' "$?" > "$vdir/rc.tmp"; mv "$vdir/rc.tmp" "$vdir/rc"
+  : > "$vdir/finished"
+  exit 0
+}
+cmd_collect() {
+  [ "$#" -ge 1 ] || { echo "usage: verify.sh collect <run-dir>" >&2; exit 64; }
+  local run="$1"
+  manifest_valid "$run" || { echo "invalid run-dir/manifest: $run" >&2; exit 64; }
+  local mode reqid synth
+  mode="$(manifest_get "$run" mode)"; reqid="$(manifest_get "$run" reqid)"; synth="$(manifest_get "$run" synthesizer)"
+
+  # rebuild partitions from manifest (newline-delimited; skip/fail carry TAB+reason)
+  local runnable skip fail v
+  runnable="$(manifest_list "$run" runnable)"
+  skip="$(awk -F'\t' '$1=="skip"{print $2"\t"$3}' "$run/manifest")"
+  fail="$(awk -F'\t' '$1=="fail"{print $2"\t"$3}' "$run/manifest")"
+
+  # detect MISSING (runnable without rc) -> incomplete: minimal output, markers untouched.
+  # Lists come from $(...) WITHOUT a trailing newline -> feed with `printf '%s\n'`, else a
+  # `while read` loop drops the last line.
+  local missing=""
+  printf '%s\n' "$runnable" | { while IFS= read -r v; do [ -n "$v" ] || continue
+      [ -f "$run/$v/rc" ] || printf '%s\n' "$v"; done; } > "$run/.missing.tmp"
+  missing="$(cat "$run/.missing.tmp")"; rm -f "$run/.missing.tmp"
+  if [ -n "$missing" ]; then
+    printf '%s\n' "$missing" | while IFS= read -r v; do [ -n "$v" ] && printf 'MISSING\t%s\n' "$v"; done
+    echo "INCOMPLETE" >&2
+    echo "collect: incomplete — verifier(s) without rc" >&2
+    exit 64
+  fi
+
+  # classify runnable (writes <v>/cls). overall_fail ALSO picks up the fail partition.
+  local overall_changes=0 overall_fail=0 rc cls
+  printf '%s\n' "$runnable" | { while IFS= read -r v; do [ -n "$v" ] || continue
+      rc="$(cat "$run/$v/rc" 2>/dev/null || echo 1)"
+      if [ "$rc" != 0 ]; then cls=FAIL; else cls="$(classify_verdict "$run/$v/verdict" "$reqid" "$mode")"; fi
+      printf '%s' "$cls" > "$run/$v/cls"
+    done; }
+  printf '%s\n' "$runnable" | while IFS= read -r v; do [ -n "$v" ] || continue
+    cls="$(cat "$run/$v/cls" 2>/dev/null)"
+    [ "$cls" = CHANGES ] && echo CHANGES; [ "$cls" = FAIL ] && echo FAIL
+  done > "$run/.flags.tmp"
+  grep -q CHANGES "$run/.flags.tmp" && overall_changes=1
+  grep -q FAIL    "$run/.flags.tmp" && overall_fail=1
+  rm -f "$run/.flags.tmp"
+  printf '%s' "$fail" | grep -q . && overall_fail=1   # probe-fail/no-adapter block (monolith parity)
+
+  # legacy status lines ALWAYS emit first (incl. the all-skip case, for parity).
+  emit_status_lines "$run" "$runnable" "$skip" "$fail"
+
+  # considered_count == 0 (everything skipped) -> terminal NO_VERIFIER. Status already shown.
+  local nrun nfail
+  nrun="$(printf '%s\n' "$runnable" | grep -c .)"; nfail="$(printf '%s\n' "$fail" | grep -c .)"
+  if [ $(( nrun + nfail )) -eq 0 ]; then
+    echo "no verifier available — review skipped" >&2
+    echo "NO_VERIFIER" >&2
+    : > "$run/complete"; rm -f "$run/.inflight"
+    exit 64
+  fi
+
+  # bodies/synthesis + verdict table
+  emit_detail "$run" "$mode" "$synth" "$runnable"
+  emit_table "$run" "$runnable" "$skip" "$fail"
+
+  # finalize markers (terminal result) and gate
+  : > "$run/complete"; rm -f "$run/.inflight"
+  case "$mode" in
+    review) { [ "$overall_fail" = 1 ] || [ "$overall_changes" = 1 ]; } && exit 10; exit 0;;
+    *) exit 0;;
+  esac
 }
 
-# Compact status always first.
-cat "$status"
+cmd_run() {
+  [ "$#" -ge 3 ] || { echo "usage: verify.sh run <mode> <effort> <request-file>" >&2; exit 64; }
+  warn_no_timeout
+  # prepare with contract stdout suppressed (we spawn run-one ourselves; no need to parse)
+  local out prc
+  out="$(cmd_prepare "$@")"; prc=$?
+  [ "$prc" -eq 0 ] || exit "$prc"
+  local run; run="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+  # spawn run-one for each RUNNABLE synchronously, in parallel
+  local v
+  while IFS= read -r v; do [ -n "$v" ] || continue
+    ( cmd_run_one "$run" "$v" ) >/dev/null 2>&1 &
+  done < <(printf '%s\n' "$out" | awk -F'\t' '$1=="RUNNABLE"{print $2}')
+  wait
+  cmd_collect "$run"   # prints legacy superset + table, returns 0/10/64, finalizes markers
+}
 
-# Detail / synthesis. Synthesizer only kicks in with >=2 reports (1 is already "consolidated").
-SYNTH=""; SCONF="$DATA/synthesizer.conf"; [ -f "$SCONF" ] && SYNTH="$(head -n1 "$SCONF" | tr -d '[:space:]')"
-nreports=${#runlist[@]}
-
-# Only valid (non-FAIL) verdicts are eligible for consolidation. A FAIL verdict
-# (rc!=0, empty, or wrong format) carries no trustworthy findings and must not
-# pollute the synthesized report; it is surfaced separately below.
-synthlist=()
-for v in "${runlist[@]}"; do
-  [ "$(cat "$RUN/$v/cls" 2>/dev/null)" = FAIL ] || synthlist+=("$v")
-done
-nsynth=${#synthlist[@]}
-
-if [ "$nsynth" -ge 2 ] && [ -n "$SYNTH" ] && [ "$SYNTH" != none ] && synth_available "$SYNTH"; then
-  sp="$RUN/synth-prompt.txt"
-  { printf 'You are consolidating independent %s reports from several agents into ONE report.\n' "$MODE"
-    # %s\n form, NOT a bare format string: several rule lines begin with "-", which
-    # printf would otherwise parse as an option flag.
-    printf '%s\n' \
-      'Rules:' \
-      '- Keep EVERY distinct finding. Merge only TRUE duplicates; never drop a unique issue.' \
-      '- Tag each finding with its source agent(s) and a locator (file:line, or a short quote/id)' \
-      '  so a reader can find it in the raw report without re-reading everything.' \
-      '- Group by file/severity; note where agents agree vs disagree; end with one overall takeaway.' \
-      '- Do not invent anything beyond the reports.' \
-      ''
-    for v in "${synthlist[@]}"; do
-      printf -- '--- %s (%s) ---\n' "$v" "$(cat "$RUN/$v/cls" 2>/dev/null)"
-      cat "$RUN/$v/verdict" 2>/dev/null; printf '\n'
-    done
-  } > "$sp"
-  if run_synth "$SYNTH" "$sp" "$RUN/consolidated.txt" && [ -s "$RUN/consolidated.txt" ]; then
-    printf '\n=== consolidated report (by %s · %s agents) ===\n' "$SYNTH" "$nsynth"
-    cat "$RUN/consolidated.txt"
-    printf '\n(raw per-verifier verdicts for drill-down: %s/<verifier>/verdict)\n' "$RUN"
-    # FAIL verdicts were excluded from the consolidation; surface them directly so a
-    # review block (or a misbehaving adapter) isn't hidden behind the summary.
-    for v in "${runlist[@]}"; do
-      [ "$(cat "$RUN/$v/cls" 2>/dev/null)" = FAIL ] || continue
-      printf '\n--- %s (FAIL — excluded from consolidation) ---\n' "$v"; cat "$RUN/$v/verdict" 2>/dev/null
-    done
-  else
-    printf '\n(synthesizer "%s" unavailable/failed — showing reports directly)\n' "$SYNTH"
-    case "$MODE" in review) emit_bodies 1 ;; *) emit_bodies 0 ;; esac
-  fi
-elif [ "$nreports" -eq 1 ]; then
-  v="${runlist[0]}"; printf '\n--- %s (%s) ---\n' "$v" "$(cat "$RUN/$v/cls" 2>/dev/null)"; cat "$RUN/$v/verdict" 2>/dev/null
-elif [ "$nreports" -ge 2 ]; then
-  # No synthesizer: review needs only the actionable (non-PASS); consult/audit/diagnose
-  # need every report (the advice/findings/diagnosis ARE the deliverable).
-  case "$MODE" in review) emit_bodies 1 ;; *) emit_bodies 0 ;; esac
-fi
-
-# Exit code stays deterministic from raw classifications (NOT the synthesizer text).
-if [ "$considered_count" -eq 0 ]; then
-  echo "no verifier available — review skipped" >&2; exit 64
-fi
-case "$MODE" in
-  review)
-    if [ "$overall_fail" = 1 ] || [ "$overall_changes" = 1 ]; then exit 10; fi
-    exit 0;;
-  *) # consult/audit/diagnose are non-gating; an agent FAIL is reported, not fatal
-    exit 0;;
+# ---------- dispatch ----------
+CMD="${1:-}"
+case "$CMD" in
+  prepare) shift; cmd_prepare "$@";;
+  run-one) shift; cmd_run_one "$@";;
+  collect) shift; cmd_collect "$@";;
+  run)     shift; cmd_run "$@";;
+  review|consult|audit|diagnose) cmd_run "$@";;   # legacy 3-arg form
+  '') echo "usage: verify.sh <prepare|run-one|collect|run> ... | <mode> <effort> <request-file>" >&2; exit 64;;
+  *) echo "unknown subcommand/mode: $CMD" >&2; exit 64;;
 esac

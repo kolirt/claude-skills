@@ -169,4 +169,92 @@ printf 'mpass\n' > "$DATA/verifiers.conf"
 ) || exit 1
 echo "OK classify-matrix"
 
+# ---- prepare: contract + manifest + markers ----
+printf 'mpass\nmgone\n' > "$DATA/verifiers.conf"
+out="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"; rc=$?
+RUNP="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+[ "$rc" = 0 ] \
+  && printf '%s\n' "$out" | grep -q "^RUNNABLE	mpass$" \
+  && printf '%s\n' "$out" | grep -q "^SPAWN	mpass	bash " \
+  && printf '%s\n' "$out" | grep -q "^SKIP	mgone	unavailable$" \
+  && [ -f "$RUNP/manifest" ] && [ -f "$RUNP/.inflight" ] && [ -f "$RUNP/prompt.txt" ] \
+  && grep -q "^mode	review$" "$RUNP/manifest" \
+  && grep -q "^runnable	mpass$" "$RUNP/manifest" \
+  && grep -q "^skip	mgone	unavailable$" "$RUNP/manifest" \
+  && echo "OK prepare-contract" || { echo "FAIL prepare-contract rc=$rc"; echo "$out"; exit 1; }
+
+# prepare for audit must NOT produce a diff key (scope-centric)
+out="$( cd "$TMP" && run prepare audit high "$TMP/req.md" 2>/dev/null )"
+RUNA="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+! grep -q "^diff	" "$RUNA/manifest" && [ ! -f "$RUNA/diff.patch" ] \
+  && echo "OK prepare-audit-no-diff" || { echo "FAIL prepare-audit-no-diff"; exit 1; }
+
+# safe cleanup: only (complete && !inflight) OR (invalid manifest), and only when old (-mtime +1).
+# An old in-flight run WITH a valid manifest must survive.
+H="$DATA/handoff/fakekey"; mkdir -p "$H/run-old-complete" "$H/run-old-orphan" "$H/run-old-inflight"
+: > "$H/run-old-complete/complete"
+: > "$H/run-old-inflight/.inflight"
+printf 'mode\treview\neffort\thigh\nreqid\tX\nrepo\t/r\nroot\t/p\n' > "$H/run-old-inflight/manifest"
+touch -t 200001010000 "$H"/run-old-* 2>/dev/null     # force "old" (> 1 day)
+printf 'mpass\n' > "$DATA/verifiers.conf"
+( cd "$TMP" && run prepare review high "$TMP/req.md" ) >/dev/null 2>&1   # prepare runs cleanup_old
+[ ! -d "$H/run-old-complete" ] && [ ! -d "$H/run-old-orphan" ] && [ -d "$H/run-old-inflight" ] \
+  && echo "OK prepare-cleanup" || { echo "FAIL prepare-cleanup (complete=$([ -d "$H/run-old-complete" ]&&echo y) orphan=$([ -d "$H/run-old-orphan" ]&&echo y) inflight=$([ -d "$H/run-old-inflight" ]&&echo y))"; exit 1; }
+
+# ---- run-one: writes rc+verdict on a prepared dir ----
+printf 'mpass\n' > "$DATA/verifiers.conf"
+out="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"
+RUNO="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+( cd "$TMP" && run run-one "$RUNO" mpass ); rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RUNO/mpass/rc")" = 0 ] \
+  && [ -f "$RUNO/mpass/verdict" ] && [ -f "$RUNO/mpass/finished" ] \
+  && echo "OK run-one-writes" || { echo "FAIL run-one-writes rc=$rc"; exit 1; }
+
+# adapter failure (rc!=0) is recorded in rc, run-one itself still exits 0
+printf 'mfail\n' > "$DATA/verifiers.conf"
+out="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"
+RUNF="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+( cd "$TMP" && run run-one "$RUNF" mfail ); rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RUNF/mfail/rc")" = 3 ] \
+  && echo "OK run-one-records-rc" || { echo "FAIL run-one-records-rc rc=$rc"; exit 1; }
+
+# verifier not in runnable -> exit 64
+( cd "$TMP" && run run-one "$RUNF" nope ) 2>/dev/null; rc=$?
+[ "$rc" = 64 ] && echo "OK run-one-bad-verifier" || { echo "FAIL run-one-bad-verifier rc=$rc"; exit 1; }
+
+# ---- collect: happy path (status + table + exit) ----
+printf 'mpass\nmchg\n' > "$DATA/verifiers.conf"
+O="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"
+RUNC="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+printf '%s\n' "$O" | awk -F'\t' '$1=="RUNNABLE"{print $2}' | while IFS= read -r vv; do ( cd "$TMP" && run run-one "$RUNC" "$vv" ) >/dev/null 2>&1; done
+out="$( cd "$TMP" && run collect "$RUNC" 2>/dev/null )"; rc=$?
+[ "$rc" = 10 ] \
+  && echo "$out" | grep -q '\[mpass\] PASS' \
+  && echo "$out" | grep -q '\[mchg\] CHANGES' \
+  && echo "$out" | grep -q '=== verdicts ===' \
+  && echo "$out" | grep -q "mpass	PASS	$RUNC/mpass/verdict" \
+  && [ -f "$RUNC/complete" ] && [ ! -f "$RUNC/.inflight" ] \
+  && echo "OK collect-happy" || { echo "FAIL collect-happy rc=$rc"; echo "$out"; exit 1; }
+
+# ---- collect: incomplete (runnable without rc) -> 64, MISSING, markers untouched ----
+printf 'mpass\n' > "$DATA/verifiers.conf"
+O="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"
+RUNI="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+# deliberately do NOT run run-one
+out="$( cd "$TMP" && run collect "$RUNI" 2>/dev/null )"; rc=$?
+err="$( cd "$TMP" && run collect "$RUNI" 2>&1 >/dev/null )"
+[ "$rc" = 64 ] && echo "$out" | grep -q "^MISSING	mpass$" \
+  && echo "$err" | grep -q 'INCOMPLETE' \
+  && [ -f "$RUNI/.inflight" ] && [ ! -f "$RUNI/complete" ] \
+  && echo "OK collect-incomplete" || { echo "FAIL collect-incomplete rc=$rc"; echo "$out"; exit 1; }
+
+# ---- collect: terminal NO_VERIFIER (all skip) -> 64, markers finalized ----
+printf 'mgone\n' > "$DATA/verifiers.conf"
+O="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"
+RUNN="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+err="$( cd "$TMP" && run collect "$RUNN" 2>&1 >/dev/null )"; rc=$?
+[ "$rc" = 64 ] && echo "$err" | grep -q 'NO_VERIFIER' \
+  && [ -f "$RUNN/complete" ] && [ ! -f "$RUNN/.inflight" ] \
+  && echo "OK collect-no-verifier" || { echo "FAIL collect-no-verifier rc=$rc"; echo "$err"; exit 1; }
+
 echo "ALL SMOKE OK"

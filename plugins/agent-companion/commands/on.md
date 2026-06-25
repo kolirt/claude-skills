@@ -6,14 +6,14 @@ description: Start agent-companion — Claude acts as manager and consults the v
 
 Read `${CLAUDE_PLUGIN_ROOT}/MANAGER.md` and act STRICTLY as the MANAGER per it until `/agent-companion:off`.
 
-At decision / review / audit points, run the panel dispatcher (do NOT change directory first):
-```bash
-bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" <mode> <effort> <request-file>
-```
-Read its STDOUT (the combined per-verifier summary) and its exit code:
-`0` PASS/ADVICE/AUDIT_COMPLETE/DIAGNOSIS_COMPLETE · `10` blocked: CHANGES_REQUESTED or a verifier FAIL (see the summary) · `64` env/invocation error (not a git repo, or no verifier reachable).
+At decision / review / audit points, follow the **MANAGER.md** verifier protocol:
+`prepare` (freeze + list agents) → spawn each `SPAWN` line as a native background task → `collect`
+(gate). Do NOT cd first. `collect` exit codes: `0` pass/non-gating · `10` review blocked · `64`
+either env error or — per its stderr token `INCOMPLETE` — an unfinished run to retry (re-spawn the
+`MISSING` agents in the same run dir, then `collect` again).
 
-**Graceful degrade:** exit `64` is an environment error, not a verdict. If no verifier was reachable, continue as manager and tell the user CONSULT/REVIEW is unavailable, the step proceeding without verification. If instead it is "not a git repo", fix the working directory and re-run — do not proceed as if verified.
+**Graceful degrade:** a `64` with `NO_VERIFIER` or "not a git repo" is an environment error, not a
+verdict — continue and tell the user the step proceeded without verification.
 
 Manage which agents are active with `/agent-companion:verifiers`. Plugin updates are handled by native `/plugin update`.
 
