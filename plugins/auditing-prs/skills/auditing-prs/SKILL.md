@@ -257,15 +257,53 @@ section below) and consolidate both before adding (real) or refuting (not real).
 NEVER publish to GitHub without showing the draft and getting explicit approval.
 The user reviews tone, length, and content before each batch.
 
-The draft has **two parts**, in this order:
+The draft has **three parts**, in this order:
 
 1. **Tracker context block** (from Step 0.5) — show how you understood the task
    before reading the diff. Helps catch misalignment early. Skip if Step 0.5 was
    skipped.
-2. **Audit findings** — drafts of inline comments + summary review per Step 4.
+2. **Review-state digest** — a concise, complete picture of where the PR stands,
+   so the user can grasp everything at a glance before reading the full comment
+   drafts. Lead with it. Every item traces to an `Issue N` and is judged against
+   the code at HEAD (when the companion ran, this is its consolidated per-ask
+   result). Use these buckets:
+   ```
+   ## Review state @ HEAD <sha>
+   ✅ Closing — verified done:   Issue 5 (<commit>), Issue 7 (<commit>)
+   🆕 New this review:            Issue 8 — <one line>,  Issue 9 — <one line>
+   ⏳ Not fixed / partial / open: Issue 8 — partial: <one line>
+   🎯 Asks (<ticket>):           <ask> ✅ · <ask> ✅ · <ask> ❌
+   ```
+   Omit a bucket only if it is genuinely empty. Nothing the audit touched may be
+   silently absent — if you are closing it, it is in ✅; if it is new, 🆕; if it
+   still fails, ⏳.
+3. **Audit findings** — the publish-ready drafts of inline comments + summary
+   review per Step 4.
 
 Show drafts as fenced markdown so the user sees exactly what will appear on
-GitHub. The tracker context block is **chat-only**; it is not published.
+GitHub. The tracker context block and the review-state digest are **chat-only**;
+they are not published.
+
+### Present the draft, then WAIT — do not force a decision
+
+After showing the draft, **stop and hand control back to the user with an open
+prompt** — something like "review the draft above; tell me what to change, or say
+publish when it's good." Then wait for their free-form reply.
+
+Do NOT, in the same turn as the draft, pop a multiple-choice "Publish? (1) yes
+(2) request-changes …" decision menu. That pressures a yes/no before the user has
+read the issues and blocks them from doing anything else. The draft step is an
+**open, iterative checkpoint**, not a one-shot choice:
+
+- The user may need several turns to read and react — let them.
+- They may want to reword an issue, drop one, change scope, or **raise a brand-new
+  issue** (Step 2.5) before anything is published — treat that as the normal loop,
+  revise the draft, and show it again.
+- Only after the user **explicitly** approves do you move to Step 5 (publish).
+  Approval is theirs to give in their own words; do not pre-empt it with a forced
+  gate. A structured choice is fine only once the user has signalled they are
+  ready to publish and the only open question is *how* (e.g. `--comment` vs
+  `--request-changes`).
 
 ## Step 4 — Comment format
 
@@ -575,6 +613,8 @@ worktree: it uses the GitHub head SHA via the `contents` API.
 
 - ❌ Calling `gh` without authentication against the right host/account.
 - ❌ Publishing comments without showing drafts in chat first.
+- ❌ Forcing a "Publish? yes/no" decision menu in the same turn as the draft —
+  present it, then wait; let the user read, revise, or add issues first.
 - ❌ Writing `Issue #1` instead of `Issue 1` — `#` auto-links to other PRs.
 - ❌ Including the final fixed code in a comment.
 - ❌ Recipe-style "Where to dig" — exact names, "use X instead of Y", named
