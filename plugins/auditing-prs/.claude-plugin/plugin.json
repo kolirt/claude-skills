@@ -1,6 +1,6 @@
 {
   "name": "auditing-prs",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Audit GitHub Pull Requests end-to-end via gh \u2014 fetch, draft, publish review comments with consistent conventions, and resolve issues when fixes land; optional agent-companion verifier panel for independent task-completion checks.",
   "author": {
     "name": "kolirt"

@@ -314,15 +314,26 @@ conventions below.
 > language of the PR description and existing threads. The examples below are in
 > English; adapt to the project.
 
-### 4.1 — Disclosure prefix
+### 4.1 — Body skeleton (disclosure + Issue heading)
 
-Every body starts with this line, followed by a blank line:
+Every inline comment body has the same fixed opening — **both lines, in this
+order, every time**:
 ```
 > _[Claude review] — automated audit published via Claude Code from account @<gh-username>_
+
+### Issue N
 ```
-Substitute the active `gh` login (Step 0). Because the token belongs to a
-human/bot, GitHub shows them as the author — the prefix makes the AI origin
-clear. (The prefix wording may be adapted, but the AI origin must stay explicit.)
+…then a blank line, then the §4.2 scaffold. Two non-negotiable parts:
+
+- **Disclosure prefix** (first line). Substitute the active `gh` login (Step 0).
+  The token belongs to a human/bot, so GitHub shows them as author — the prefix
+  keeps the AI origin explicit. (Wording may be adapted; the AI origin may not be
+  dropped.)
+- **`### Issue N` heading** (right after the prefix). MANDATORY on every inline
+  comment, and on every issue block inside the summary review. Numbering rules are
+  §4.5. A body with the disclosure prefix but no `Issue N` heading is malformed —
+  composing the scaffold without first writing the heading is the easy mistake;
+  write the heading first. Step 5 will not post a body that lacks it.
 
 ### 4.2 — Educational tone, expressed minimally
 
@@ -422,6 +433,12 @@ The summary body always ends with the checklist (even for a single issue):
 One sentence per line, action only — not a re-description of the problem.
 
 ## Step 5 — Publish
+
+**Pre-publish guard (do this first).** For every body you are about to POST or
+PATCH, confirm it carries both its disclosure prefix AND its `### Issue N` heading
+(§4.1). This is the single most common slip — bodies composed straight from the
+scaffold lose the number. Do not post any body that fails the check; add the
+heading first.
 
 Order of operations:
 
@@ -616,6 +633,9 @@ worktree: it uses the GitHub head SHA via the `contents` API.
 - ❌ Forcing a "Publish? yes/no" decision menu in the same turn as the draft —
   present it, then wait; let the user read, revise, or add issues first.
 - ❌ Writing `Issue #1` instead of `Issue 1` — `#` auto-links to other PRs.
+- ❌ Posting a comment body with the disclosure prefix but no `### Issue N`
+  heading — composing the scaffold without writing the heading first is the easy
+  miss; the pre-publish guard (Step 5) must catch it.
 - ❌ Including the final fixed code in a comment.
 - ❌ Recipe-style "Where to dig" — exact names, "use X instead of Y", named
   refactor steps. Direction only.
@@ -645,7 +665,9 @@ worktree: it uses the GitHub head SHA via the `contents` API.
 - [ ] Project conventions opened for changed paths.
 - [ ] **(if companion)** worktree at head SHA; panel run; gate handled; worktree
       cleaned up.
-- [ ] Draft shown in chat; user approved.
+- [ ] Draft shown in chat (review-state digest first); user approved.
+- [ ] Pre-publish guard: every body has its disclosure prefix AND `### Issue N`
+      heading (§4.1).
 - [ ] Inline comments posted; `id` + `html_url` recorded.
 - [ ] Summary posted (`--request-changes` if blockers).
 - [ ] Final state verified.
