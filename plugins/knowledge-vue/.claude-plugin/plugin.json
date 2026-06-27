@@ -1,6 +1,6 @@
 {
   "name": "knowledge-vue",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "The developer's Vue conventions as intent-triggered skills: an umbrella plus pattern skills (modals, forms, reka-ui wrappers, plugin registration, page middlewares, product card) over shared Vue core rules (shared-wrapper discipline, dual-mode placement). Depends on the knowledge base plugin for the capture mechanism.",
   "author": {
     "name": "kolirt"
