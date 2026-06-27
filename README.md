@@ -42,7 +42,7 @@ Native Claude Code plugin marketplace.
 - [`plugins/agent-companion/`](plugins/agent-companion) — verifier-panel manager plugin
   ([`verify.sh`](plugins/agent-companion/verify.sh) dispatcher · [`MANAGER.md`](plugins/agent-companion/MANAGER.md) · [`adapters/`](plugins/agent-companion/adapters) · [`commands/`](plugins/agent-companion/commands))
 - [`plugins/auditing-prs/`](plugins/auditing-prs) — GitHub PR review plugin
-  ([`skills/auditing-prs/`](plugins/auditing-prs/skills/auditing-prs))
+  ([`skills/audit-pr/`](plugins/auditing-prs/skills/audit-pr) · [`skills/prepush-audit/`](plugins/auditing-prs/skills/prepush-audit) · shared [`core/`](plugins/auditing-prs/core))
 - [`skills/creating-plugins/`](skills/creating-plugins) — skill for scaffolding and validating new plugins
 - [`site/`](site) — Vite + Vue web catalog, data-driven from `marketplace.json`
 - [`build-site.sh`](build-site.sh) — generates `site/public/data.json` from the manifests (version-validated; the generated file is gitignored)

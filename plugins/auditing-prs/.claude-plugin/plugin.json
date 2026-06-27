@@ -1,7 +1,7 @@
 {
   "name": "auditing-prs",
-  "version": "0.1.4",
-  "description": "Audit GitHub Pull Requests end-to-end via gh \u2014 fetch, draft, publish review comments with consistent conventions, and resolve issues when fixes land; optional agent-companion verifier panel for independent task-completion checks.",
+  "version": "0.2.0",
+  "description": "Audit GitHub PRs from one shared detection core: audit-pr fetches, drafts, and publishes review comments with consistent conventions and resolves issues when fixes land; prepush-audit is a read-only, chat-only self-check an executor runs before pushing to surface the same findings first. Optional agent-companion verifier panel for independent task-completion checks.",
   "author": {
     "name": "kolirt"
   }

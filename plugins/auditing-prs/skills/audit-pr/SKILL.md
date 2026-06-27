@@ -1,13 +1,23 @@
 ---
-name: auditing-prs
+name: audit-pr
 description: Use when the user asks to audit, review, or comment on a GitHub Pull Request — by PR number, URL, branch, or "current PR". Covers the full flow: fetch via gh (plus optional issue-tracker context), draft in chat, publish with consistent comment conventions, and resolve issues when fixes land. Works on any repository and any GitHub host.
 ---
 
-# Auditing PRs
+# Audit PR (publish adapter)
 
 End-to-end workflow for reviewing GitHub Pull Requests and publishing comments
 via `gh`. Covers fetching, drafting, formatting conventions, publishing, and
 resolution when fixes are pushed.
+
+## Detection engine
+
+Read `../../core/detection-core.md` first — it defines the sources, HEAD/snapshot
+discipline, convention discovery, focus lenses, the per-ask acceptance verdict,
+reconciliation states, the verifier-panel protocol, and the neutral finding model.
+This skill is the **publish adapter**: it binds those to a GitHub PR via `gh` (the
+snapshot is the PR head SHA) and adds the comment-format, draft, publish, and
+resolution machinery below. Where a step below names a detection rule, the core is
+the authority; the commands here are the binding.
 
 ## Step 0 — Prerequisites: gh authentication
 
@@ -128,17 +138,11 @@ Skip the question if the focus is already named.
 
 ## Step 2 — Fetch the PR
 
-The audit input is the **union of three sources**, fetched up-front:
-
-1. **Tracker issue** — original ask + comments (Step 0.5, if available).
-2. **PR metadata + diff** — what the code now does.
-3. **Existing PR conversation** — prior review comments, prior summary reviews,
-   in-thread replies from the author ("fixed", "won't fix", …), and the
-   resolution state of each thread.
-
-Skipping (3) is a hard bug: a "fresh" audit will re-flag issues that were already
-raised and addressed, or contradict guidance the user gave in an earlier
-revision. Always pull existing conversation **before** drafting.
+The audit input is the union of sources defined in core §1 (tracker ticket + PR
+metadata/diff + existing PR conversation). The commands below are this adapter's
+binding for those sources; the "what and why" of gathering them — including the
+all-comments/full-pagination rule and "skipping the existing conversation is a hard
+bug" — lives in core §1. Always pull existing conversation **before** drafting.
 
 ```bash
 # Metadata + diff + head SHA
@@ -177,64 +181,46 @@ gh api graphql --paginate -f query='
   --jq '.data.repository.pullRequest.reviewThreads.nodes[] | {comment_id: .comments.nodes[0].databaseId, isResolved}'
 ```
 
-Record the **head SHA** — required for inline comments. Identify changed files
-and open the project's conventions/contribution docs relevant to those paths
-(e.g. `CONTRIBUTING.md`, `CONVENTIONS.md`, `CLAUDE.md`, directory READMEs).
-Specialized guides add rules on top of ancestors; read both.
+Record the **head SHA** — this is the snapshot under review (required for inline
+comments). Identify changed files and open the conventions for those paths per core
+§3 (convention discovery).
 
-### Analysing the existing conversation
+### Reconciling prior issues
 
-For every prior `Issue N` found in the comments, build a small table before
-drafting:
+For every prior `Issue N` found in the comments, build a small reconciliation table
+before drafting, mapping each to the core's canonical states (core §6):
 
-| Issue | What was asked | Latest state in code | Action |
+| Issue | What was asked | Latest state @ HEAD | Action |
 |-------|----------------|----------------------|--------|
 | 1     | …              | matches / partial / ignored | resolve / follow-up / re-flag |
 
-- **matches** → this audit closes the issue (Step 6); do NOT draft a new finding
-  on the same topic.
-- **partial** → follow-up on the SAME thread (continue the conversation, don't
-  open a parallel one) with the next `Issue N+1` number if it is a genuinely new
-  sub-problem.
-- **ignored** → re-flag in the new review, but reference the prior comment ("see
-  Issue 1 from rev 1") — never restart numbering.
+- **matches** → this audit closes the issue (Step 6); do NOT draft a new finding on
+  the same topic.
+- **partial** → follow-up on the SAME thread (don't open a parallel one) with the
+  next `Issue N+1` number if it is a genuinely new sub-problem.
+- **ignored** → re-flag in the new review, referencing the prior comment ("see Issue
+  1 from rev 1") — never restart numbering.
 
-**The code at HEAD is the only authority on the "Latest state" column.** Do NOT
-decide `matches / partial / ignored` based on:
-
-- a `[x]` checkbox in a prior summary checklist (only says "marked resolved at
-  the time");
-- a strikethrough row or "✅ fixed in commit …" marker (same — a claim, not
-  proof);
-- an author "fixed" reply on the thread (a claim, not proof);
-- the absence of a re-flag in a later review (the prior reviewer may have missed
-  it);
-- **`gh pr diff` output** — it shows the base→HEAD delta, not the current shape
-  of the file. A line can look right in the diff and still be wrong in context.
-  Reading the diff is NOT verification.
-
-For every still-open prior `Issue N`, fetch the relevant file at `headRefOid` and
-read the original issue description against the current code yourself:
+Decide that state by reading the file at the head SHA per core §2 (HEAD discipline) —
+which also lists what does NOT count as verification. Binding: fetch the file at the
+head SHA and read the original issue against it yourself:
 ```bash
 gh api repos/{owner}/{repo}/contents/{path}?ref={head-sha} -q .content | base64 -d
 ```
 
-**BLOCKING — verification before drafting.** When the user asks for an audit,
-self-verification is part of the audit, not an optional follow-up. You MUST fetch
-and read the file at HEAD for every still-open prior issue **before** presenting
-the reconciliation table or the draft. The user should never have to ask "did you
-check?". Closed issues (all three Step 6 mechanisms already applied) may be
-trusted without re-fetching.
+**BLOCKING — verification before drafting.** Fetch and read the file at HEAD for
+every still-open prior issue **before** presenting the reconciliation table or the
+draft. Closed issues (all three Step 6 mechanisms already applied) may be trusted
+without re-fetching.
 
-Rules that fall out of this:
+Publish-adapter rules on top of the core:
 
-- **Numbering is continuous across revisions.** If rev 1 had Issue 1–3, rev 2's
-  first new finding is Issue 4. Never reset to 1.
-- **A prior summary review constrains new findings.** If an earlier review
-  specified the expected shape, the tracker ticket alone is NOT the source of
-  truth — the PR-level decision overrides. Read both before drafting.
-- **Author in-thread replies matter.** A "fixed" / "won't fix" / "deferred"
-  reply changes what counts as open. Acknowledge such replies in the draft.
+- **Numbering is continuous across revisions.** If rev 1 had Issue 1–3, rev 2's first
+  new finding is Issue 4. Never reset to 1.
+- **A prior summary review constrains new findings** (core §1) — acknowledge the
+  PR-level decision, not just the ticket.
+- **Author in-thread replies matter.** A "fixed" / "won't fix" / "deferred" reply
+  changes what counts as open. Acknowledge such replies in the draft.
 
 ## Step 2.5 — User-proposed issues
 
@@ -337,9 +323,12 @@ order, every time**:
 
 ### 4.2 — Educational tone, expressed minimally
 
-Each issue uses the same three-section scaffold. The scaffold IS the educational
-part — it forces the reader to encounter the problem, its mechanism, and a
-direction. Inside each section, write as little as possible to land the point.
+Each issue uses the same three-section scaffold — this adapter's rendering of the
+core neutral finding model (core §8): `problem` → 🚫 Problem, `mechanism` → 💡 Why it
+matters, `remediation` → 🔍 Where to dig. The scaffold IS the educational part — it
+forces the reader to encounter the problem, its mechanism, and a direction. Inside
+each section, write as little as possible to land the point. This adapter renders
+`remediation` as a **non-recipe direction** — never the final fix.
 
 - 🚫 **Problem** — one sentence, what's wrong.
 - 💡 **Why it matters** — root cause / mechanism. 1–3 sentences; one short
@@ -543,75 +532,39 @@ apply the three mechanisms only to closed issues; leave open ones untouched.
 
 ## Verification via agent-companion (when enabled)
 
-When agent-companion mode is active, run the audit past its verifier panel for an
-independent check: does the PR deliver the task, is every prior Issue closed, does
-it introduce new problems? When the companion is off, skip this section — the
-skill runs solo as described above.
+When agent-companion mode is active, run the audit past its verifier panel before
+drafting (it slots **between Step 2 and Step 3**). The panel protocol — what raw
+context to hand it, that it runs a per-ask acceptance review AND flags new problems,
+and how to treat the verdicts critically — is **core §7**. When the companion is off,
+skip this section; the skill runs solo as described above.
 
-It slots in **between Step 2 (your own reconciliation done) and Step 3 (the
-draft)**.
-
-This skill has two jobs here: **adapt the PR to how the companion works** (gather
-the inputs and put the PR code where the panel can read it), and define **what
-kind of check** the panel runs — an acceptance **review** of the PR against the
-asks, where each verifier independently judges every ask, NOT an open-ended
-discovery audit. Even when the user says "audit the PR", the panel step here is
-this acceptance review (the asks are the acceptance criteria). Picking the kind of
-check is this skill's side of the contract; everything else is the companion's:
-**defer to the agent-companion manager protocol** for how the panel is dispatched
-(its command, request format, and verdict/exit transport) and follow it for that.
-
-### What this skill must provide (its side of the contract)
-
-1. **The PR code on disk.** The panel verifies code in the local repository, so
-   materialize the PR as a detached worktree at the exact head SHA and point the
-   verification at it as its scope:
-   ```bash
-   HEAD_SHA=$(gh pr view {N} --repo {owner}/{repo} --json headRefOid -q .headRefOid)
-   # Fetch via an EXISTING local remote so its configured auth/protocol is reused
-   # (the clone may be SSH, a host alias, gh's https helper, …). Pick the remote
-   # whose URL contains {owner}/{repo}; fall back to origin. Do NOT build an https
-   # URL from `gh repo view --json url` — git can't auth a bare https URL on an
-   # SSH clone ("could not read Username for https://…").
-   REMOTE=$(git remote -v | awk -v r="{owner}/{repo}" 'index($2,r){print $1; exit}')
-   REMOTE=${REMOTE:-origin}
-   git fetch "$REMOTE" "pull/{N}/head"              # PR head ref (works for forks)
-   # Confirm the exact PR head is now present (a fork PR may need its own remote).
-   git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null \
-     || { echo "PR head $HEAD_SHA not fetched from $REMOTE — resolve the remote first"; }
-   WT="$(mktemp -d)/pr-{N}"
-   git worktree add --detach "$WT" "$HEAD_SHA"
-   trap 'git worktree remove --force "$WT" 2>/dev/null' EXIT   # clean up always
-   ```
-   `--detach` at the exact head SHA means a head that moves mid-audit can't change
-   what was verified. Reuse this `HEAD_SHA` for your own `contents`-API reads so
-   you and the panel judge one snapshot.
-
-2. **Raw context, never your conclusions** (the independence invariant). Provide
-   the full tracker ticket (summary + description + all comments) and the full PR
-   conversation (every Issue with its original wording, author replies, the diff)
-   verbatim, plus the list of asks. Do NOT provide your own verdicts ("confirm
-   Issue 2 is fixed in file X") — give the task and the code and let each verifier
-   reach its own conclusion against the code at HEAD.
-
-3. **What you want judged — per ask, independently.** This is an acceptance
-   review, not defect discovery. The asks (every tracker requirement + every
-   prior Issue, in their original wording) are the acceptance criteria. Each
-   verifier returns, for **every** ask, one of `done | partial | not_done |
-   cannot-verify-offline` with `file:line` evidence at HEAD — and additionally
-   flags any new problems the PR introduces. Do not collapse this into a generic
-   "find bugs" pass; the per-ask completion verdict is the point.
-
-### How to treat the result
-
-- **Strict acceptance:** the audit is not "done" if any ask is partial or not
-  done, or the PR introduces a new blocker.
-- Fold the panel's findings into your reconciliation and the Step 3 draft — as
-  findings, not ready-to-publish comments; if it surfaces an issue you'd marked
-  closed, revisit that row before drafting.
-- Scrutinize the verdicts — don't accept them blindly; on reasoned disagreement,
-  escalate to the user.
-- If the panel can't run at all, say so and continue with the solo audit.
+This adapter's only job is the **PR binding**: put the PR code on disk at the exact
+head SHA so the panel can read it. Materialize the PR as a detached worktree:
+```bash
+HEAD_SHA=$(gh pr view {N} --repo {owner}/{repo} --json headRefOid -q .headRefOid)
+# Fetch via an EXISTING local remote so its configured auth/protocol is reused
+# (the clone may be SSH, a host alias, gh's https helper, …). Pick the remote
+# whose URL contains {owner}/{repo}; fall back to origin. Do NOT build an https
+# URL from `gh repo view --json url` — git can't auth a bare https URL on an
+# SSH clone ("could not read Username for https://…").
+REMOTE=$(git remote -v | awk -v r="{owner}/{repo}" 'index($2,r){print $1; exit}')
+REMOTE=${REMOTE:-origin}
+git fetch "$REMOTE" "pull/{N}/head"              # PR head ref (works for forks)
+# Confirm the exact PR head is now present (a fork PR may need its own remote).
+git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null \
+  || { echo "PR head $HEAD_SHA not fetched from $REMOTE — resolve the remote first"; }
+WT="$(mktemp -d)/pr-{N}"
+git worktree add --detach "$WT" "$HEAD_SHA"
+trap 'git worktree remove --force "$WT" 2>/dev/null' EXIT   # clean up always
+```
+`--detach` at the exact head SHA means a head that moves mid-audit can't change what
+was verified. Reuse this `HEAD_SHA` for your own `contents`-API reads so you and the
+panel judge one snapshot. Hand the panel **raw context, never your conclusions** (core
+§7), and treat the result with **strict acceptance**: the audit is not "done" if any
+ask is partial/not_done or the PR introduces a new blocker. Fold the panel's findings
+into your reconciliation and the Step 3 draft (as findings, not ready-to-publish
+comments); if it surfaces an issue you'd marked closed, revisit that row. If the panel
+can't run at all, say so and continue solo.
 
 ### User-proposed issues
 
