@@ -40,6 +40,11 @@ Do not restate those skills' steps here.
   - ❌ don't: `<ModalRoot><ModalContent>…</ModalContent></ModalRoot>` inside a concrete modal
   - why: the wrapper is the single place that knows Root/Content/styling; modals stay
     thin and consistent, and a styling change happens in one place.
+- [invariant · desired] Keep **group infrastructure** (a group's `*ModalWrapper.vue` +
+  `*ModalTarget.vue`) in a location **separate from concrete modals**: group infra goes
+  in a `groups/<group>/` folder, each concrete modal in its own `<name>-modal/` folder.
+  See `placement.md` for the exact paths (FSD vs non-FSD). Never put a concrete modal in
+  the group-infrastructure folder.
 - On first setup, scaffold wrappers for `default` and `confirm`, plus a default
   **`ConfirmModal`** (group `confirm`) and its `useConfirmModal` composable (§3) —
   confirmation dialogs are needed in every project. `ConfirmModal` takes the message

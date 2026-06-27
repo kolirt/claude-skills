@@ -26,7 +26,7 @@
       "name": "knowledge-vue",
       "source": "./plugins/knowledge-vue",
       "description": "The developer's Vue conventions as intent-triggered skills over shared Vue core rules. Depends on the knowledge base plugin.",
-      "version": "0.1.2"
+      "version": "0.1.3"
     }
   ]
 }

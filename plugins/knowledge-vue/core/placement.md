@@ -20,8 +20,12 @@ Layers use **numbered prefixes**, in dependency order:
 
 - [invariant · desired] Plugin **registration files** (the `plugin-registration`
   factories) live in the app-init plugins layer: `01-app/plugins/<name>.ts`.
-- [invariant · desired] **Shared** modal building blocks — group wrappers, group
-  targets, and shared modals — live under `07-shared/ui/modals/<group>-modals/`.
+- [invariant · desired] **Group infrastructure** (a group's `*ModalWrapper.vue` +
+  `*ModalTarget.vue`) lives under `07-shared/ui/modals/groups/<group>/` — set up once
+  per group and kept **separate from concrete modals**.
+- [invariant · desired] A **shared/global concrete modal** (e.g. `ConfirmModal`) and
+  its open-composable live in their **own folder** `07-shared/ui/modals/<name>-modal/` —
+  never mixed into the group-infrastructure folder.
 - [invariant · desired] A modal that belongs to a **feature** lives in that feature
   slice: the component in `04-features/<feature>/ui/`, its open-composable in
   `04-features/<feature>/model/`.
@@ -36,8 +40,12 @@ Layers use **numbered prefixes**, in dependency order:
 
 - [invariant · desired] Plugin **registration files** live in `src/plugins/<name>.ts`
   (still a factory file, never inline in `main.ts` — see `plugin-registration`).
-- [invariant · desired] Modals and their open-composables live together under
-  `src/components/modals/` (the `use*Modal` composable beside its modal component).
+- [invariant · desired] **Group infrastructure** (`*ModalWrapper.vue` +
+  `*ModalTarget.vue`) lives under `src/components/modals/groups/<group>/` — one folder
+  per group, **separate from concrete modals**.
+- [invariant · desired] Each **concrete modal** and its open-composable live in their
+  **own folder** `src/components/modals/<name>-modal/` (the `use*Modal` beside its
+  component) — never inside the group-infrastructure folder.
 
 > The matrix grows as more artifact types are captured; the entries above are the
 > ones captured so far.
