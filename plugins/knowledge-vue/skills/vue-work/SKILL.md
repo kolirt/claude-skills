@@ -21,7 +21,6 @@ Pick the skill that matches the intent; it carries the specifics.
 | form elements | a new input/control | `../form-elements/SKILL.md` |
 | plugin registration | wiring a Vue plugin | `../plugin-registration/SKILL.md` |
 | page middlewares | route guards/middleware | `../page-middlewares/SKILL.md` |
-| product card / slots | a card via universal wrapper + slots | `../product-card/SKILL.md` |
 
 > The index is maintained by the capture/codification action: when a new Vue pattern
 > skill is added, its row is appended here.
