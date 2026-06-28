@@ -10,7 +10,8 @@ How to declare routes and pages. This skill assumes the router is already set up
 and attach it through `meta.middleware`.
 
 Read `../../core/disciplines/routing-discipline.md` first (route-by-name + `fallbackRoute`).
-Read `../../core/placement.md` first (resolve `{routes}` / `{route-config}` / `{pages-ui}`).
+Read `../../core/placement.md` first (resolve `{routes}` / `{pages-utils}` / `{pages-types}` /
+`{pages-config}` / `{shared-config}` / `{pages-ui}`).
 
 ## Rules
 
@@ -21,10 +22,10 @@ Read `../../core/placement.md` first (resolve `{routes}` / `{route-config}` / `{
   `<Name>Page.vue` (PascalCase + the `Page` suffix — e.g. `HomePage.vue`,
   `ProductsPage.vue`), placed in `{pages-ui}`. The route's lazy `component` imports it.
 - [invariant · desired] Route names come from the **`RouteNames` enum** in
-  `{route-config}`, never inline strings (enforced by the builder types).
+  `{shared-config}`, never inline strings (enforced by the builder types).
 - [invariant · desired] `meta` is **always fully shaped** (`layout`, `middleware`,
   `ssr?`); the builders guarantee it — never a route with a missing `meta`.
-- [invariant · desired] Layout is an **enum value** (`Layouts.X` in `{route-config}`),
+- [invariant · desired] Layout is an **enum value** (`Layouts.X` in `{pages-config}`),
   not a component reference; the layout component is resolved by the global layout
   middleware (see `vue-router`).
 - [invariant · desired] Routes are **split by domain**: one `{routes}/<domain>.ts` per
@@ -42,7 +43,12 @@ Read `../../core/placement.md` first (resolve `{routes}` / `{route-config}` / `{
   - ❌ DON'T ship a public page without baseline SEO — a page shipped without it is a
     defect a human SEO specialist would otherwise have to flag.
 
-## Builders (live in `{route-config}`)
+## Builders (live in `{pages-utils}`)
+
+One builder per file (`page.ts`, `group.ts`, `redirect.ts`, plus `getDefaultMeta` in
+`meta.ts`); `{pages-utils}/index.ts` is a barrel that re-exports each by name. The `Route`
+and `Middleware` types they reference come from `{pages-types}` (`02-pages/types.ts`) — never
+from any `config/`.
 
 ```ts
 // page(): name is RouteNames-constrained; meta is fully reset (no leftover error fields);
@@ -118,5 +124,9 @@ export const fallbackRoute = { name: RouteNames.Home }
 
 ## Placement (tokens — resolve via `placement.md`)
 - [invariant · desired] Route files → `{routes}/<domain>.ts` + `{routes}/index.ts`.
-- [invariant · desired] `RouteNames` / `Layouts` enums + the route builders → `{route-config}`.
+- [invariant · desired] `RouteNames` enum (cross-layer) → `{shared-config}`.
+- [invariant · desired] `Layouts` enum (page-layer) → `{pages-config}`.
+- [invariant · desired] Route builders (`page`/`group`/`redirect`/`getDefaultMeta`) →
+  `{pages-utils}`, one per file + a barrel `index.ts`.
+- [invariant · desired] `Route` / `Middleware` types → `{pages-types}` (`02-pages/types.ts`).
 - [invariant · desired] Page components → `{pages-ui}` (e.g. `<domain>/<Name>Page.vue`).

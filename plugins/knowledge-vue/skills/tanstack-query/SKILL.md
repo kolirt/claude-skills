@@ -60,6 +60,17 @@ Read `../../core/placement.md` first (resolve `{entity}` / `{shared-lib}`).
 - [invariant · desired] **Create this wrapper module** at `{shared-lib}/query`: export
   `useQuery` / `useInfiniteQuery` wrapped in a `withSsrBlock(...)` HOF, and re-export the
   raw `useSsrQuery` / `useSsrInfiniteQuery`. It is a small hand-written module, not a package.
+- [invariant · desired] Follow the `{shared-lib}` barrel discipline — **one unit per file**,
+  `index.ts` re-exports only:
+  ```
+  {shared-lib}/query/
+    withSsrBlock.ts          # the HOF
+    useQuery.ts              # export const useQuery = withSsrBlock(useQueryMaster)
+    useInfiniteQuery.ts
+    useSsrQuery.ts           # raw server-running variant
+    useSsrInfiniteQuery.ts
+    index.ts                 # export { useQuery } from './useQuery'  (named re-exports only)
+  ```
 - [preference · desired] (SSR projects) Hydrate the cache: server `dehydrate(queryClient)`
   → `window.__INITIAL_STATE__`; client `hydrate(queryClient, __INITIAL_STATE__)` before mount.
 

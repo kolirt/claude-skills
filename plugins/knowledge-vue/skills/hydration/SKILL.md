@@ -50,8 +50,16 @@ centralises all restores into a single, ordered, synchronous pass.
 
 ## Implementation
 
+The module follows the `{shared-lib}` barrel discipline: `index.ts` re-exports only; the
+registry lives in a sibling `registry.ts`.
+
 ```ts
-// {shared-lib}/hydration/index.ts
+// {shared-lib}/hydration/index.ts — pure barrel
+export { registerHydration, runHydrations } from './registry'
+```
+
+```ts
+// {shared-lib}/hydration/registry.ts
 type HydrationFn = () => void
 
 const registry = new Map<string, HydrationFn>()

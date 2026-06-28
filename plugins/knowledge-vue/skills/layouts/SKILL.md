@@ -9,14 +9,15 @@ How page layouts are created, registered, and resolved. Defer to `page-middlewar
 (by name) for the middleware contract and to `vue-router` (by name) for registering
 the resolver in `GlobalMiddlewares`.
 
-Read `../../core/placement.md` first (resolve `{layouts}` / `{route-config}`).
+Read `../../core/placement.md` first (resolve `{layouts}` / `{pages-config}` /
+`{global-middlewares}` / `{pages-types}`).
 
 ## Create a layout
 - [invariant · desired] A layout is a component **`<Name>Layout.vue`** in `{layouts}`.
   It renders the page through a default **`<slot/>`** (NOT a `<RouterView>` inside the
   layout). Header / footer / chrome live in the layout.
-- [invariant · desired] **Register** every layout in the `Layouts` enum (routing
-  config, `{route-config}`), where the enum value EQUALS the file stem — the resolver
+- [invariant · desired] **Register** every layout in the `Layouts` enum (page-layer
+  config, `{pages-config}`), where the enum value EQUALS the file stem — the resolver
   globs by it. Creating a layout = create `<Name>Layout.vue` **and** add its `Layouts`
   entry.
   ```ts
@@ -41,12 +42,20 @@ Read `../../core/placement.md` first (resolve `{layouts}` / `{route-config}`).
   `vue-router`); author it per the `page-middlewares` contract. The glob path is
   **relative to the middleware file**, so it depends on where the middleware and
   `{layouts}` sit (FSD `02-pages/global-middlewares` → `../layouts`; adjust the relative
-  path for non-FSD layouts):
+  path for non-FSD layouts). Author it per the `page-middlewares` contract — own file
+  `{global-middlewares}/layout.middleware.ts`, `Middleware` type from `{pages-types}`, named
+  `export { middleware }`, re-exported from the barrel as `layoutMiddleware`:
   ```ts
+  // {global-middlewares}/layout.middleware.ts
+  import type { Middleware } from '{pages-types}'
+
   const imports = import.meta.glob('../layouts/*.vue', { import: 'default' })
-  export const layoutMiddleware: Middleware = async (to) => {
+
+  const middleware: Middleware = async (to) => {
     to.meta.layout.component = (await imports[`../layouts/${to.meta.layout.type}.vue`]()) as Component
   }
+
+  export { middleware }
   ```
 - [invariant · desired] The app shell renders the resolved layout dynamically around
   `<RouterView>`:

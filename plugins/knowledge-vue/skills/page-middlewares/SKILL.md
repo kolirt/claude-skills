@@ -11,12 +11,16 @@ it by name; do not restate it here.
 
 Read `../../core/disciplines/routing-discipline.md` first (route-by-name + the shared
 `fallbackRoute`).
-Read `../../core/placement.md` first (resolve `{middlewares}` / `{global-middlewares}`).
+Read `../../core/placement.md` first (resolve `{middlewares}` / `{global-middlewares}` /
+`{pages-config}` / `{pages-types}`).
 
 ## Middleware contract
 
-- [invariant · desired] A middleware is a function `(to, from) => false | void | object`:
+- [invariant · desired] A middleware is a function `(to, from) => false | void | object`.
+  The `Middleware` **type** lives in `{pages-types}` (`02-pages/types.ts`, alongside `Route`)
+  — never in any `config/`:
   ```ts
+  // {pages-types}
   type Middleware = (
     to: RouteLocationNormalized,
     from: RouteLocationNormalized
@@ -30,27 +34,37 @@ Read `../../core/placement.md` first (resolve `{middlewares}` / `{global-middlew
 
 ## Two tiers
 
-- [invariant · desired] **Global middlewares** run on every navigation — a static,
-  ordered array (e.g. `GlobalMiddlewares`) declared in `{global-middlewares}` and
-  consumed by the router (see `vue-router`).
+- [invariant · desired] **Global middlewares** run on every navigation. Each
+  implementation is its own file in `{global-middlewares}`; the static, ordered
+  `GlobalMiddlewares` array that lists them lives in `{pages-config}` (e.g.
+  `{pages-config}/globalMiddlewares.ts`) and is consumed by the router (see `vue-router`).
 - [invariant · desired] **Per-route middlewares** attach to specific routes via
   `meta.middleware: Middleware[]` (set through the `page()` / `group()` helpers — see
   the `pages` skill). They run after the global ones.
 
 ## Example — close modals on navigation
 
-The route-cleanup the `modals` skill defers here. A global middleware:
+The route-cleanup the `modals` skill defers here. A global middleware — one file named
+`<name>.middleware.ts`, with a local `middleware` const and a **named** `export { middleware }`:
 ```ts
-// {global-middlewares}/closeModals.ts
+// {global-middlewares}/closeModals.middleware.ts
 import { closeAllModals, isOpened } from '@kolirt/vue-modal'
 
-export const closeModalsMiddleware: Middleware = async () => {
+import type { Middleware } from '{pages-types}'
+
+const middleware: Middleware = async () => {
   if (isOpened.value) await closeAllModals({ ignoreGuard: true, instantExit: true })
 }
+
+export { middleware }
 ```
-Register it in the `GlobalMiddlewares` array (see `vue-router`).
+The `{global-middlewares}/index.ts` barrel re-exports it under a descriptive alias
+(`export { middleware as closeModalsMiddleware } from './closeModals.middleware'`); register
+that alias in the `GlobalMiddlewares` array (see `vue-router`).
 
 ## Placement (tokens — resolve via `placement.md`)
 
-- [invariant · desired] Per-route middlewares → `{middlewares}/`.
-- [invariant · desired] Global middlewares → `{global-middlewares}/`.
+- [invariant · desired] Per-route middleware impl → `{middlewares}/<name>.middleware.ts`.
+- [invariant · desired] Global middleware impl → `{global-middlewares}/<name>.middleware.ts`.
+- [invariant · desired] The `GlobalMiddlewares` array → `{pages-config}`.
+- [invariant · desired] The `Middleware` type → `{pages-types}` (`02-pages/types.ts`).

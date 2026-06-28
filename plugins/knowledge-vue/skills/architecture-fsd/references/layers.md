@@ -16,9 +16,12 @@ Import direction: imports from any layer; imported by none.
 - `routes/<domain>.ts` — route records for one domain; composed in `routes/index.ts`.
 - `ui/<Domain>/<Name>Page.vue` — thin frame component; delegates to lower layers.
 - `layouts/` — layout components resolved by the global layout middleware.
-- `middlewares/` — per-route middleware functions.
-- `config/` — `RouteNames` and `Layouts` enums, route builders.
-- `utils/` — page-layer-local helpers.
+- `middlewares/` — per-route middleware impl files (`<name>.middleware.ts`).
+- `global-middlewares/` — global middleware impl files (`<name>.middleware.ts`).
+- `config/` — the `Layouts` enum and the `GlobalMiddlewares` array (NOT route builders, NOT
+  the `RouteNames` enum — that is cross-layer and lives in `07-shared/config`).
+- `utils/` — route builder functions (`page()`, `group()`, `redirect()`) + page-layer helpers.
+- `types.ts` — routing types (`Route`, `Middleware`).
 
 A page is approximately one slice. A page component **does not pull entity data directly into its body** — the only exception is a middleware reading an entity store for auth/guard decisions.
 

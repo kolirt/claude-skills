@@ -12,7 +12,8 @@ the `pages` skill.
 
 Read `../../core/disciplines/routing-discipline.md` first (route-by-name + the shared
 `fallbackRoute`).
-Read `../../core/placement.md` first (resolve `{plugins}` / `{global-middlewares}`).
+Read `../../core/placement.md` first (resolve `{plugins}` / `{pages-config}` /
+`{global-middlewares}`).
 
 ## 1. Install + register
 - `yarn add vue-router`.
@@ -29,7 +30,7 @@ Read `../../core/placement.md` first (resolve `{plugins}` / `{global-middlewares
 // {plugins}/router.ts
 import { createRouter as createRouterMaster, createMemoryHistory, createWebHistory } from 'vue-router'
 import { routes, fallbackRoute } from '{routes}'        // fallbackRoute: routing-discipline
-import { GlobalMiddlewares } from '{global-middlewares}'
+import { GlobalMiddlewares } from '{pages-config}'      // array; impls live in {global-middlewares}
 
 export function createRouter(options: { ssr?: boolean }) {
   const router = createRouterMaster({
@@ -58,7 +59,8 @@ function wireMiddlewares(router: Router) {
 }
 ```
 - [invariant · desired] **Global middlewares** are a static, ordered array
-  (`GlobalMiddlewares`) in `{global-middlewares}`, seeded here with the layout middleware
+  (`GlobalMiddlewares`) in `{pages-config}` (impl files in `{global-middlewares}`), seeded
+  here with the layout middleware
   (§3) and always-on guards (e.g. the modal-close middleware). The global-vs-per-route
   middleware tiers themselves are described in `page-middlewares`.
 - [preference · desired] (SSR) call `createRouter({ ssr: true })` **per request** — never
@@ -80,5 +82,6 @@ function wireMiddlewares(router: Router) {
 
 ## Placement (tokens — resolve via `placement.md`)
 - [invariant · desired] Router factory → `{plugins}/router.ts`.
-- [invariant · desired] `GlobalMiddlewares` array + the layout middleware →
-  `{global-middlewares}/`.
+- [invariant · desired] `GlobalMiddlewares` array → `{pages-config}`.
+- [invariant · desired] Global middleware impl files (incl. the layout middleware) →
+  `{global-middlewares}/<name>.middleware.ts`.
