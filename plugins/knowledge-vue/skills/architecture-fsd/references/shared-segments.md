@@ -4,12 +4,20 @@
 
 | Segment | Contents |
 |---|---|
-| `assets/` | Static files (images, fonts, SVGs). |
+| `assets/` | Global stylesheets and static files; organised as `styles/`, `images/`, `fonts/`. The app entry imports global CSS from `{assets}/styles/...`. No CSS or assets in `{app}`. |
 | `config/` | Pure identifiers and enums — only when used by 2+ layers, zero behaviour, and no single upper-layer owner. |
 | `lib/` | Mini-libraries with a clear boundary wrapping an external system, OR an app-wide UI-state singleton. Each sub-library lives in its own subfolder whose `index.ts` is a pure barrel; the public surface (a `use<Name>` composable, free functions, or a small set of wrappers) lives in sibling files. |
 | `types/` | Type aliases and interfaces reused across 2+ layers. |
 | `ui/` | Stateless, domain-neutral primitive components (buttons, inputs, typography). |
 | `utils/` | Pure helper functions with broad reuse across 2+ layers. |
+
+---
+
+## Barrel and import rules
+
+[invariant · desired] Each `07-shared/` segment that exposes consumable items (`ui/`, `lib/`) has a barrel `index.ts`; external callers import from the segment barrel only — never deep-import an internal file (`@/07-shared/ui` not `@/07-shared/ui/SomeComp.vue`). Non-FSD: same for `src/components` / `src/lib`.
+
+[invariant · desired] Global stylesheets and all static assets (images, fonts, SVGs) live in `{assets}` (`07-shared/assets` FSD; `src/assets` non-FSD), organised as `styles/`, `images/`, `fonts/`. The app entry imports global CSS from `{assets}/styles/...`. No CSS or assets in `{app}`.
 
 ---
 

@@ -29,8 +29,8 @@ Read `../../core/placement.md` first (resolve `{plugins}` / `{pages-config}` /
 ```ts
 // {plugins}/router.ts
 import { createRouter as createRouterMaster, createMemoryHistory, createWebHistory } from 'vue-router'
-import { routes, fallbackRoute } from '{routes}'        // fallbackRoute: routing-discipline
-import { GlobalMiddlewares } from '{pages-config}'      // array; impls live in {global-middlewares}
+import { routes } from '{routes}'
+import { GlobalMiddlewares, fallbackRoute } from '{pages-config}'  // array + fallbackRoute (routing-discipline); middleware impls live in {global-middlewares}
 
 export function createRouter(options: { ssr?: boolean }) {
   const router = createRouterMaster({
@@ -59,9 +59,11 @@ function wireMiddlewares(router: Router) {
 }
 ```
 - [invariant · desired] **Global middlewares** are a static, ordered array
-  (`GlobalMiddlewares`) in `{pages-config}` (impl files in `{global-middlewares}`), seeded
-  here with the layout middleware
-  (§3) and always-on guards (e.g. the modal-close middleware). The global-vs-per-route
+  (`GlobalMiddlewares`) in `{pages-config}` (impl files in `{global-middlewares}`). **Order
+  matters**: `handle404` runs **first** (it fills empty meta for unmatched URLs — see the
+  implicit-404 mechanism in `layouts`), THEN the layout-resolver middleware (§3), then
+  always-on guards (e.g. the modal-close middleware) — e.g.
+  `[handle404Middleware, layoutMiddleware, closeModalsMiddleware]`. The global-vs-per-route
   middleware tiers themselves are described in `page-middlewares`.
 - [preference · desired] (SSR) call `createRouter({ ssr: true })` **per request** — never
   share one router instance across requests, or state leaks between users.

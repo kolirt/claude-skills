@@ -159,16 +159,19 @@ useJsonLd(computed(() => productSchema({
 
 ## titleTemplate (once, in {app})
 
-```ts
-// {app}/plugins/head.ts
-import { createHead } from '@unhead/vue'
+The head **instance** is created by the `createHead({ ssr })` plugin factory in
+`{plugins}/head.ts` (server/client unhead chosen at runtime) and registered via `app.use(head)`
+in the app factory — see the `plugin-registration` and `ssr` skills. Do NOT create an ad-hoc
+`createHead({...})` here. The site-name `titleTemplate` is configured **once** at the app root:
 
-export const head = createHead({
+```ts
+// {app} root component setup — applied once, isomorphic
+import { useHead } from '@unhead/vue'
+
+useHead({
   titleTemplate: (title) => (title ? `${title} — My Shop` : 'My Shop'),
 })
 ```
-
-Register `head` as a Vue plugin in `{app}` alongside other plugin registrations (see `plugin-registration`).
 
 ## Placement (tokens — resolve via `../../core/placement.md`)
 

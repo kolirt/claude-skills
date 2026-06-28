@@ -36,8 +36,10 @@ Read `../../core/placement.md` first (resolve `{shared-lib}`).
   const { request, get, post, put, patch, delete: del, head, options } = useHttpRequest()
   // get<T>(url, data?, options?) → Promise<T>, etc.; `request` is the raw escape hatch
   ```
-- [invariant · desired] Built on native `fetch`: base URL from an env var, always
-  `Accept: application/json` and `credentials: 'include'`.
+- [invariant · desired] Built on native `fetch`: base URL from `import.meta.env.VITE_API_URL`
+  (e.g. `const BASE_URL = import.meta.env.VITE_API_URL ?? ''`) — **never** a hardcoded
+  constant in `{shared-config}`. Always `Accept: application/json` and
+  `credentials: 'include'`.
 - [preference · desired] Body defaults to `FormData`; `options.asJson` switches to
   JSON. `put`/`patch`/`delete` are tunneled via a `_method` field over `POST` (server
   method-override convention). *(Backend-coupled: tuned to a Laravel-style API.)*

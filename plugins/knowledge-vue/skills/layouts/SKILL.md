@@ -68,5 +68,27 @@ Read `../../core/placement.md` first (resolve `{layouts}` / `{pages-config}` /
 ## Default scaffold (triggered by router setup)
 - [invariant · desired] On router/layout setup, scaffold **`DefaultLayout`** and
   **`ErrorLayout`**, the `Layouts` enum, and the layout resolver middleware (registered
-  in `GlobalMiddlewares`). The catch-all / 404 route uses `ErrorLayout`
-  (`isError404: true`).
+  in `GlobalMiddlewares`).
+
+## 404 handling — implicit mechanism (no catch-all route)
+
+- [invariant · desired] Do **NOT** declare a catch-all `*` / `:pathMatch(.*)*` route
+  and do **NOT** create a `NotFoundPage` route. 404 is handled implicitly:
+  1. `getDefaultMeta()` (in `{pages-utils}`) defaults `layout` to `Layouts.Error`
+     with `isError404: true`.
+  2. A **global `handle404` middleware** (`{global-middlewares}/handle404.middleware.ts`)
+     assigns the default meta when a route has empty meta (unmatched URL). Register it
+     **first** in the `GlobalMiddlewares` array:
+     ```ts
+     // {global-middlewares}/handle404.middleware.ts
+     import type { Middleware } from '{pages-types}'
+     import { getDefaultMeta } from '{pages-utils}'
+
+     const middleware: Middleware = (to) => {
+       if (!Object.keys(to.meta).length) to.meta = getDefaultMeta()
+     }
+
+     export { middleware }
+     ```
+  3. The layout middleware resolves the component → `ErrorLayout`, which **self-renders**
+     the 404 content. No page component is needed for 404.

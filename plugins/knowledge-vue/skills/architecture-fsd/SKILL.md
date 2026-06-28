@@ -35,7 +35,9 @@ See `references/layers.md` for per-layer anatomy.
 - [invariant · desired] Import **DOWN only**: a layer may only import from layers with a **higher** number (lower layers = more context; higher numbers = more generic). Example: `04-features` may import `06-entities` and `07-shared`, never `03-widgets` or `02-pages`.
 - [invariant · desired] **Same-layer slices do not import each other.** Lift shared code down (to a lower layer) or up (to a higher layer) instead.
 - [invariant · desired] **Exception — entities↔entities type-only**: cross-entity type references use `@x` notation (`06-entities/<A>/@x/<B>.ts`, `import type` only). No runtime cross-entity imports.
-- [invariant · desired] Each slice exposes a **barrel `index.ts`** as its public API. Consumers import from the barrel only. `export *` is forbidden; export each name explicitly.
+- [invariant · desired] Each slice exposes a **barrel `index.ts`** as its public API. Consumers import from the barrel only.
+- [invariant · desired] Every segment inside a slice (`api/`, `model/`, `ui/`, and nested sub-segments such as `model/query`, `model/action`, `model/store`, `ui/<component>`) also has its own `index.ts` barrel; the slice barrel composes these segment barrels (e.g. `export * from './model'`), not deep file paths. (FSD; non-FSD: same barrel rule applies to each `src/lib/<name>` / `src/composables/<name>` module.)
+- [invariant · desired] Slice and segment barrels MAY use `export *` to aggregate their sub-barrels; leaf modules (`lib/<name>`, single-purpose files) re-export explicit names. The barrel is the public API either way.
 - [invariant · desired] **`app` and `shared` are layer+segment** (no slice level): code inside them may import each other freely within the same layer.
 
 ## Segments (inside a slice)
@@ -43,12 +45,15 @@ See `references/layers.md` for per-layer anatomy.
 | Segment | Purpose |
 |---|---|
 | `ui/` | Display components |
-| `api/` | Backend calls + response types |
+| `api/` | Backend calls. Each file declares its own `Payload`/`Response` types inline; types shared across 2+ api files in the same slice go in `api/types.ts`. Transport DTO types (request payloads, response shapes) live here, NOT in `model/`. |
 | `model/` | Data, state, logic (in entities: split into `store/`, `action/`, `query/`, `realtime/`) |
 | `lib/` | Slice-local utilities (not exported) |
 | `config/` | Slice-local constants / enums |
 
 Name segments by **purpose**, not by essence. `hooks/`, `types/`, `components/` are bad segment names.
+
+- [invariant · desired] Each `api/` file declares its own `Payload`/`Response` types inside the file. Types shared across 2+ api files in the slice go in `api/types.ts`.
+- [invariant · desired] Transport DTO types (request payloads, response shapes) live in `api/`, NOT in `model/`. `model/` holds domain/store types only.
 
 ## Placement
 

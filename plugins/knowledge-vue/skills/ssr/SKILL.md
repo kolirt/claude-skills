@@ -19,7 +19,15 @@ in the factory's import graph cause cross-request state leaks under concurrent l
 
 ## Placement
 
-`{app}` — `entry-server.ts` and `entry-client.ts` live alongside the main `entry.ts`.
+`{app}` — exactly **two** entry files: `entryClient.ts` and `entryServer.ts` (camelCase). Both
+import `createApp` (and any imperative initialisers) from `{initial-plugins}`. The app factory
+itself lives in `{initial-plugins}/createApp.ts` — **not** inside either entry file. There is
+no third shared `entry.ts` for the factory.
+
+`{initial-plugins}/` holds the `createApp` factory, imperative bootstrap initialisers that are
+NOT `app.use` plugins and depend on runtime objects (e.g. `initHttpRequest(queryClient)` wiring
+notification/unauthorized handlers), and a barrel `{initial-plugins}/index.ts`. This is distinct
+from `{plugins}/` (the Vue `app.use` plugin factories like `createRouter` / `createHead`).
 
 ## Rules
 
@@ -30,14 +38,14 @@ in the factory's import graph cause cross-request state leaks under concurrent l
   each other's state.
 
   ```ts
-  // ✅ fresh instances on every request
+  // ✅ {initial-plugins}/createApp.ts — fresh instances on every request
   export async function createApp({ ssr }: { ssr: boolean }) {
     const app = ssr ? createSSRApp(Root) : _createApp(Root)
-    const router = createRouter()
-    const queryClient = new QueryClient()
-    const head = createHead()
-    app.use(router).use(VueQueryPlugin, { queryClient }).use(head)
-    return { app, router, queryClient, head }
+    const router = createRouter({ ssr })
+    const vueQuery = createVueQuery({ ssr })          // plugin factory from {plugins}/vueQuery.ts
+    const head = await createHead({ ssr })            // plugin factory from {plugins}/head.ts
+    app.use(router).use(vueQuery).use(head)           // register via the plugin factories — no inline new QueryClient()
+    return { app, router, queryClient: vueQuery.queryClient, head }
   }
 
   // ❌ module-level singleton — leaks across parallel requests
@@ -46,8 +54,9 @@ in the factory's import graph cause cross-request state leaks under concurrent l
   ```
 
 - [invariant · desired] **Client-only wiring runs only in the client entry.**
-  - `BroadcastChannel` setup lives under `if (!ssr)` or entirely in `entry-client.ts`.
-  - Unauthorized/notification event handlers are registered only in `entry-client.ts`.
+  - `BroadcastChannel` setup lives under `if (!ssr)` or entirely in `entryClient.ts`.
+  - Unauthorized/notification event handlers are registered only in `entryClient.ts`
+    (e.g. via an `initHttpRequest(queryClient)` initialiser imported from `{initial-plugins}`).
   - DOM-portal targets (modal mount point, toast mount point) use `<ClientOnly>` in the
     root component.
   - `<ClientOnly>` is for DOM-portals specifically — it is **not** a general SSR escape
@@ -65,18 +74,26 @@ in the factory's import graph cause cross-request state leaks under concurrent l
 
 - [invariant · desired] **Selective SSR via `meta.ssr`**: each route declares whether it
   is server-rendered through a `meta.ssr` flag, typically set by a
-  `group({ ssr: true }, [...])` helper. The server entry inspects this after routing
-  completes.
+  `group({ ssr: true }, [...])` helper. The server entry **must** read this flag after
+  routing completes: when `to.meta.ssr !== true`, return a CSR shell (empty HTML,
+  `ssr: false`) so the client renders it as a SPA; only call `renderToString(app)` when
+  `to.meta.ssr === true`. A declared `meta.ssr` that is never read is a defect.
+
+- [invariant · desired] **Server status code**: derive the HTTP status from the resolved
+  route's 404 flag — `to.meta.layout?.isError404 === true` → respond with **404**;
+  otherwise **200**. Returning 200 for an unmatched URL (soft-404) is a defect.
 
 ## `entryServer` — ordered sequence
 
-1. `createApp({ ssr: true })` — per-request factory; no module-level singletons.
+1. Import `createApp` (and initialisers) from `{initial-plugins}`, call
+   `createApp({ ssr: true })` — per-request factory; no module-level singletons.
 2. Register a top-level `app.config.errorHandler` that catches `abort(statusCode)` signals
    thrown during route guards or prefetch (e.g. `abort(404)`).
 3. `await router.push(url)` → `await router.isReady()`.
-4. **No route matched** → return a 404 response (real HTTP status, not a soft-404).
-5. **Matched route has no `meta.ssr`** → return a **shell** response (empty HTML document;
-   the browser completes the render as CSR).
+4. **Check `to.meta.layout?.isError404`** — if `true`, return a real **404** response
+   (not a soft-404 with a 200 status).
+5. **`to.meta.ssr !== true`** → return a **shell** response (empty HTML document,
+   `ssr: false`); the browser completes the render as CSR.
 6. `await renderToString(app)`.
 7. `dehydrate(queryClient)` → serialize as `window.__INITIAL_STATE__`.
 8. `head.render()` → head tags string.
@@ -84,7 +101,8 @@ in the factory's import graph cause cross-request state leaks under concurrent l
 
 ## `entryClient` — ordered sequence
 
-1. `createApp({ ssr: false })`.
+1. Import `createApp` (and initialisers) from `{initial-plugins}`, call
+   `createApp({ ssr: false })`.
 2. Init client-only handlers: auth/notification listeners, `BroadcastChannel`.
 3. `hydrate(queryClient, window.__INITIAL_STATE__)` — **before** `app.mount()`.
 4. `await router.isReady()`.
@@ -93,10 +111,12 @@ in the factory's import graph cause cross-request state leaks under concurrent l
 
 ## Head management
 
-Use the **async server / client flavour** of `unhead` via `createHead()`. Instantiate
-once per request inside the factory, attach to the `app`, and call `head.render()` in
-`entryServer` after `renderToString` completes. The server-side `createHead` and the
-client-side one are separate named imports from their respective `unhead` entry points.
+The head integration is a **plugin factory** in `{plugins}/head.ts` — `createHead({ ssr })`
+dynamically imports the server or client `unhead` build and returns the instance. The app
+factory (`{initial-plugins}/createApp.ts`) calls `await createHead({ ssr })` and registers
+the result via `app.use(head)` like any other plugin. Call `head.render()` in `entryServer`
+after `renderToString` completes. See the `plugin-registration` skill for the canonical
+factory pattern.
 
 ## HTTP semantics — cross-links to knowledge-seo
 

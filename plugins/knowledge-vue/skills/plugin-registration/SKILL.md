@@ -39,3 +39,19 @@ project's architecture).
     `app.use(...)` calls.
 - [preference · desired] When several plugins exist, re-export each factory from a
   `{plugins}/index.ts` barrel, and have the app factory call them in order.
+
+- [invariant · desired] The **head/unhead** integration is a plugin factory
+  `createHead({ ssr })` in `{plugins}/head.ts` that dynamically imports the server or
+  client `unhead` build and returns the instance. The app factory registers it via
+  `app.use(head)` — exactly like other `create*` plugins. Do NOT export a bare config
+  blob and create the instance ad-hoc inside the entry files.
+  ```ts
+  // {plugins}/head.ts
+  import type { VueHeadClient } from '@unhead/vue'
+  export async function createHead(options: { ssr?: boolean }): Promise<VueHeadClient> {
+    const { createHead: createUnhead } = options.ssr
+      ? await import('@unhead/vue/server')
+      : await import('@unhead/vue/client')
+    return createUnhead() as VueHeadClient
+  }
+  ```

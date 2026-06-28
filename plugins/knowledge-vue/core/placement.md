@@ -16,6 +16,7 @@ a concrete path for the **current project's architecture**.
 |---|---|---|
 | `{app}` | `01-app` | `src/app` |
 | `{plugins}` | `01-app/plugins` | `src/plugins` |
+| `{initial-plugins}` | `01-app/initial-plugins` | `src/initial-plugins` |
 | `{routes}` | `02-pages/routes` | `src/router/routes` |
 | `{pages-utils}` | `02-pages/utils` | `src/router/utils` |
 | `{pages-types}` | `02-pages/types.ts` | `src/router/types.ts` |
@@ -31,18 +32,21 @@ a concrete path for the **current project's architecture**.
 | `{feature}` | `04-features/<name>` | `src/components/<name>` |
 | `{widget}` | `03-widgets/<name>` | `src/components/<name>` |
 | `{entity}` | `06-entities/<name>` | `src/composables/<name>` |
+| `{assets}` | `07-shared/assets` | `src/assets` |
 
 Tokens with no native non-FSD layer (`{feature}`, `{widget}`, `{composition}`)
 collapse to the flat components location.
 
-`{app}` holds the app entry point (`createApp` / per-request factory), plugin registration
-(`plugins/`), and async pre-mount initialisation (`initial-plugins/`).
+`{app}` holds the two entry files (`entryClient.ts`, `entryServer.ts`) and the root component.
+The per-request `createApp` factory and imperative bootstrap initialisers live in
+`{initial-plugins}` (`01-app/initial-plugins`), and the Vue `app.use` plugin factories in
+`{plugins}` (`01-app/plugins`) — not directly in `{app}`.
 
 **Routing buckets are NOT interchangeable** — do not collapse them into one `config/`:
 - `{shared-config}` (`07-shared/config`) — **value constants only**, used by 2+ layers, zero
   behaviour (e.g. the `RouteNames` enum, `LEGAL_LINKS`). Never functions, never types.
-- `{pages-config}` (`02-pages/config`) — page-layer config: the `Layouts` enum and the
-  `GlobalMiddlewares` array.
+- `{pages-config}` (`02-pages/config`) — page-layer config: the `Layouts` enum, the
+  `GlobalMiddlewares` array, and the `fallbackRoute` constant.
 - `{pages-utils}` (`02-pages/utils`) — route **builder functions** (`page()`, `group()`,
   `redirect()`, `getDefaultMeta()`). Functions never go in any `config/`.
 - `{pages-types}` (`02-pages/types.ts`) — routing **types** (`Route`, `Middleware`). Types
@@ -60,13 +64,22 @@ implementation directly in `index.ts` is the anti-pattern.
 > path** a token resolves under the project's `@`/`~` src alias. Non-token placeholders
 > use `<...>` (e.g. `<API_BASE>`, `<your-app-name>`), never `{...}`.
 
-## 3. FSD layer reference
+## 3. Naming conventions
+
+[invariant · desired] Follow these project-wide file and folder naming rules:
+- **Folders → kebab-case** (`http-request`, `global-middlewares`, `add-comment`).
+- **TS/JS files → camelCase** (`globalMiddlewares.ts`, `closeModals.middleware.ts`, `routeNames.ts`, `useHttpRequest.ts`, `entryClient.ts`).
+- **Vue SFC components → PascalCase** (`DefaultLayout.vue`, `PostCard.vue`).
+
+## 4. FSD layer reference
 Numbered layers, dependency direction downward (`01-app` → … → `07-shared`):
-- `01-app` — bootstrap: app entry, plugin registration (`plugins/`), root setup.
+- `01-app` — bootstrap: the two entry files (`entryClient.ts`/`entryServer.ts`), the
+  per-request `createApp` factory + imperative initialisers (`initial-plugins/`), Vue
+  `app.use` plugin factories (`plugins/`), and the root component.
 - `02-pages` — routing: route definitions (`routes/`), page components (`ui/`),
-  route builders (`utils/`), routing types (`types.ts`), per-route middlewares
-  (`middlewares/`), global middlewares (`global-middlewares/`), page-layer config
-  (`config/`: `Layouts` enum + `GlobalMiddlewares` array).
+  route builders (`utils/`, incl. `getDefaultMeta`), routing types (`types.ts`), per-route
+  middlewares (`middlewares/`), global middlewares (`global-middlewares/`), page-layer config
+  (`config/`: `Layouts` enum + `GlobalMiddlewares` array + `fallbackRoute`).
 - `03-widgets` — composite UI blocks (domain-grouped).
 - `04-features` — user-facing flows (domain-grouped).
 - `05-composition` — stateless UI composites (no state, no fetching) — custom layer.

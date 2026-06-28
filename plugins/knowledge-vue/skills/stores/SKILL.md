@@ -34,8 +34,8 @@ One module = one singleton instance per app boot.
 | Feature state | `{feature}/model/` | no | per-mount (fresh on each `setup` call) |
 
 - **Entity store** — holds business state that survives navigation and may be persisted.
-  Storage keys live in a sibling `keys.ts` (`STORAGE_KEYS`); storage access uses the
-  `persistence` skill (by name).
+  Storage keys are declared as local string constants at the call site; storage access uses
+  the `persistence` skill (by name).
 - **Widget view-state** — UI-only state (open/closed, selected tab) shared across the
   widget's components. Module-reactive, no persistence.
 - **Feature state** — declared inside the composable body, not at module level. A fresh
@@ -46,16 +46,20 @@ One module = one singleton instance per app boot.
 
 - **Without SSR** — read the stored value directly at module-level declaration time.
   ```ts
-  const state = reactive({ authenticated: get(STORAGE_KEYS.session.authenticated, false) })
+  const SESSION_AUTHENTICATED_KEY = 'session.authenticated'
+  const { get } = useLocalPersistence()
+  const state = reactive({ authenticated: get(SESSION_AUTHENTICATED_KEY, false) })
   ```
 - **With SSR** — do NOT read storage at declaration time (the server has no `localStorage`).
   Register a hydration callback with `registerHydration` (from the `hydration` skill by name)
   at module level. The callback runs once on the client after the root `<Suspense>` resolves.
   ```ts
   // With SSR: initial value stays at the default; storage is read after mount.
+  const SESSION_AUTHENTICATED_KEY = 'session.authenticated'
+  const { get } = useLocalPersistence()
   const state = reactive({ authenticated: false })
   registerHydration('session', () => {
-    state.authenticated = get(STORAGE_KEYS.session.authenticated, false)
+    state.authenticated = get(SESSION_AUTHENTICATED_KEY, false)
   })
   ```
 
@@ -64,9 +68,14 @@ One module = one singleton instance per app boot.
 ```ts
 // {entity}/model/store/index.ts
 import { computed, reactive } from 'vue'
-import { get, set, remove } from '{shared-lib}/local-persistence'
-import { STORAGE_KEYS } from './keys'
+import { useLocalPersistence } from '{shared-lib}/local-persistence'
 // import { registerHydration } from '{shared-lib}/hydration'  // ← uncomment for SSR projects
+
+// ── storage keys declared at the call site ────────────────────────────────────
+const SESSION_AUTHENTICATED_KEY = 'session.authenticated'
+const SESSION_TOKEN_KEY = 'session.token'
+
+const { get, set, remove } = useLocalPersistence()
 
 // ── module-level state (one instance per app) ────────────────────────────────
 const state = reactive({
@@ -76,26 +85,26 @@ const state = reactive({
 
 // SSR projects only — defer storage read to the client hydration moment:
 // registerHydration('session', () => {
-//   state.authenticated = get(STORAGE_KEYS.session.authenticated, false)
-//   state.token         = get(STORAGE_KEYS.session.token)
+//   state.authenticated = get(SESSION_AUTHENTICATED_KEY, false)
+//   state.token         = get(SESSION_TOKEN_KEY)
 // })
 
 // ── setters (exported directly, NOT via useSessionStore) ─────────────────────
 export function setAuthenticated(value: boolean): void {
   state.authenticated = value
-  set(STORAGE_KEYS.session.authenticated, value)
+  set(SESSION_AUTHENTICATED_KEY, value)
 }
 
 export function setToken(token: string): void {
   state.token = token
-  set(STORAGE_KEYS.session.token, token)
+  set(SESSION_TOKEN_KEY, token)
 }
 
 export function clearSession(): void {
   state.authenticated = false
   state.token = null
-  remove(STORAGE_KEYS.session.authenticated)
-  remove(STORAGE_KEYS.session.token)
+  remove(SESSION_AUTHENTICATED_KEY)
+  remove(SESSION_TOKEN_KEY)
 }
 
 // ── getter composable (computed / readonly projections only) ──────────────────
@@ -107,21 +116,11 @@ export function useSessionStore() {
 }
 ```
 
-```ts
-// {entity}/model/store/keys.ts
-export const STORAGE_KEYS = {
-  session: {
-    authenticated: 'session.authenticated',
-    token: 'session.token',
-  },
-} as const
-```
-
 ✅ do:
 - Declare `state` once at module level with `reactive()` or `ref()`.
 - Export setters as plain named functions at the module top level.
 - Return only `computed` refs from `useXStore()`.
-- Keep storage keys in a sibling `keys.ts` using flat dot-namespaced strings.
+- Declare storage keys as local string constants at the call site (flat dot-namespace).
 - For SSR projects, use `registerHydration` (the `hydration` skill) instead of reading
   storage at declaration time.
 

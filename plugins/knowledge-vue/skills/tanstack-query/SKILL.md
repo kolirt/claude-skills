@@ -58,17 +58,40 @@ Read `../../core/placement.md` first (resolve `{entity}` / `{shared-lib}`).
   `useSsrQuery` / `useSsrInfiniteQuery` are the **opt-in** server-running variants (pair
   with `await query.suspense()` + `<Suspense>`).
 - [invariant · desired] **Create this wrapper module** at `{shared-lib}/query`: export
-  `useQuery` / `useInfiniteQuery` wrapped in a `withSsrBlock(...)` HOF, and re-export the
-  raw `useSsrQuery` / `useSsrInfiniteQuery`. It is a small hand-written module, not a package.
+  `useQuery` / `useInfiniteQuery` wrapped in a `withSsrBlock(...)` HOF, and export
+  `useSsrQuery` / `useSsrInfiniteQuery` as **owned typed const bindings** (not bare
+  re-exports from the package). It is a small hand-written module, not a package.
+- [invariant · desired] `withSsrBlock` must guard reactive options with an `isRef` check
+  and pass through extra arguments:
+  ```ts
+  // {shared-lib}/query/withSsrBlock.ts
+  import { isRef } from 'vue'
+  export function withSsrBlock<T extends (...args: any[]) => any>(master: T): T {
+    return ((options: any, ...rest: any[]) => {
+      if (import.meta.env.SSR && options && typeof options === 'object' && !isRef(options)) {
+        return master({ ...options, enabled: false }, ...rest)
+      }
+      return master(options, ...rest)
+    }) as T
+  }
+  ```
+- [invariant · desired] SSR-enabled variants are **owned typed const bindings**, not bare
+  re-exports from the package:
+  ```ts
+  // {shared-lib}/query/useSsrQuery.ts
+  import { useQuery as useQueryMaster } from '@tanstack/vue-query'
+  export const useSsrQuery: typeof useQueryMaster = useQueryMaster
+  ```
+  (NOT `export { useQuery as useSsrQuery } from '@tanstack/vue-query'`.)
 - [invariant · desired] Follow the `{shared-lib}` barrel discipline — **one unit per file**,
   `index.ts` re-exports only:
   ```
   {shared-lib}/query/
-    withSsrBlock.ts          # the HOF
+    withSsrBlock.ts          # the HOF (isRef-guarded, passes ...rest)
     useQuery.ts              # export const useQuery = withSsrBlock(useQueryMaster)
     useInfiniteQuery.ts
-    useSsrQuery.ts           # raw server-running variant
-    useSsrInfiniteQuery.ts
+    useSsrQuery.ts           # owned typed const binding (typeof useQueryMaster)
+    useSsrInfiniteQuery.ts   # owned typed const binding (typeof useInfiniteQueryMaster)
     index.ts                 # export { useQuery } from './useQuery'  (named re-exports only)
   ```
 - [preference · desired] (SSR projects) Hydrate the cache: server `dehydrate(queryClient)`

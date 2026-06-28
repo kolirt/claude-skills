@@ -2,10 +2,12 @@
 
 ## 01-app — composition root
 
-- `entryClient.ts` / `entryServer.ts` — environment entry points.
-- Per-request `createApp()` factory (SSR-safe; no module-level state).
-- `plugins/` — one file per plugin; each file registers exactly one plugin.
-- `initial-plugins/` — async initialisers that must complete before `app.mount()`.
+- `entryClient.ts` / `entryServer.ts` — the only two environment entry points.
+- `initial-plugins/` — the per-request `createApp()` factory (`createApp.ts`, SSR-safe; no
+  module-level state), imperative bootstrap initialisers that must run before `app.mount()`
+  (e.g. `initHttpRequest`), and a barrel `index.ts`. The factory does NOT live at the layer root
+  or in an entry file.
+- `plugins/` — one file per Vue `app.use` plugin factory (`createRouter`, `createHead`, …).
 
 Import direction: imports from any layer; imported by none.
 
@@ -18,8 +20,9 @@ Import direction: imports from any layer; imported by none.
 - `layouts/` — layout components resolved by the global layout middleware.
 - `middlewares/` — per-route middleware impl files (`<name>.middleware.ts`).
 - `global-middlewares/` — global middleware impl files (`<name>.middleware.ts`).
-- `config/` — the `Layouts` enum and the `GlobalMiddlewares` array (NOT route builders, NOT
-  the `RouteNames` enum — that is cross-layer and lives in `07-shared/config`).
+- `config/` — the `Layouts` enum, the `GlobalMiddlewares` array, and the `fallbackRoute`
+  constant (NOT route builders, NOT the `RouteNames` enum — that is cross-layer and lives in
+  `07-shared/config`).
 - `utils/` — route builder functions (`page()`, `group()`, `redirect()`) + page-layer helpers.
 - `types.ts` — routing types (`Route`, `Middleware`).
 
@@ -65,13 +68,16 @@ The slice **is** the component folder: `<Name>.vue` + `interface.ts` (CVA varian
 
 Full slice anatomy, declared all at once:
 
-- `api/` — HTTP calls and response types.
-- `model/store/` — Pinia store.
+- `api/` — HTTP call functions; each file declares its own `Payload`/`Response` types inline,
+  with types shared across api files in `api/types.ts`. Transport DTOs live here, never in `model/`.
+- `model/store/` — store module.
 - `model/action/` — mutation composables.
 - `model/query/` — read/fetch composables.
 - `model/realtime/` — WebSocket / SSE listeners.
 - `ui/` — entity display components.
 - `config/` — entity-local constants / enums.
+
+[invariant · desired] Each sub-segment directory (`api/`, `model/`, `ui/`, `model/store/`, `model/action/`, `model/query/`, `model/realtime/`) has its own `index.ts` barrel. The slice barrel (`index.ts`) composes the segment barrels, not deep file paths.
 
 [preference · desired] Entity-first: each entity is declared as a full slice immediately. Avoid thin entities that hold only types or only a store.
 

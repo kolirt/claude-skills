@@ -76,7 +76,9 @@ export function registerHydration(name: string, fn: HydrationFn): void {
 
 export function runHydrations(): void {
   if (import.meta.env.SSR) return
-  registry.forEach((fn) => fn())
+  registry.forEach((fn, name) => {
+    try { fn() } catch (err) { console.error(`[hydration] ${name}`, err) }
+  })
   registry.clear()
   ran = true
 }
@@ -106,14 +108,15 @@ function onReady() {
 ```ts
 // {entity}/model/store/index.ts  (SSR project)
 import { reactive } from 'vue'
-import { get } from '{shared-lib}/local-persistence'
+import { useLocalPersistence } from '{shared-lib}/local-persistence'
 import { registerHydration } from '{shared-lib}/hydration'
-import { STORAGE_KEYS } from './keys'
 
+const { get } = useLocalPersistence()
+const AUTHENTICATED_KEY = 'session.authenticated'   // key declared at the call site (persistence skill)
 const state = reactive({ authenticated: false })
 
 registerHydration('session', () => {
-  state.authenticated = get(STORAGE_KEYS.session.authenticated, false)
+  state.authenticated = get(AUTHENTICATED_KEY, false)
 })
 ```
 

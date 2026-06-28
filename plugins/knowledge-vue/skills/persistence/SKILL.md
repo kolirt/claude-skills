@@ -27,10 +27,16 @@ No other file in the project imports `localStorage` or `sessionStorage` directly
   A parse error on `get` returns the fallback (or `null`) and does not throw.
 - [invariant · desired] `get<T>(key, fallback: T): T` — always returns `T`.
   `get<T>(key): T | null` — returns `null` when the key is absent or unreadable.
-- [invariant · desired] **Storage keys live in a sibling `keys.ts`** as a typed `STORAGE_KEYS`
-  `as const` object. Keys use a **flat dot-namespace** (`'session.authenticated'`,
-  `'ui.sidebar.collapsed'`). They are NOT query-key-factory keys (those are hierarchical
-  cache keys; storage keys are flat strings).
+- [invariant · desired] The persistence lib is **key-agnostic**: `useLocalPersistence()`
+  exposes `get/set/remove(key: string, ...)` and owns no keys registry.
+- [invariant · desired] **Storage keys are declared at the CALL SITE** — as local string
+  constants in the store or feature that persists. There is **no central `keys.ts`** and
+  no `STORAGE_KEYS` object in `{shared-lib}/local-persistence`. Keys use a flat
+  dot-namespace (e.g. `'session.authenticated'`, `'ui.sidebar.collapsed'`); they are NOT
+  query-key-factory keys (those are hierarchical cache keys; storage keys are flat strings).
+- [invariant · desired] `{shared-lib}/local-persistence/index.ts` is a **pure barrel**:
+  `export { useLocalPersistence } from './useLocalPersistence'`. The implementation lives
+  in the sibling `useLocalPersistence.ts`. No implementation code in `index.ts`.
 - [anti-pattern · desired] **Do NOT replace with VueUse `useLocalStorage`.** Its reactive ref
   reads storage outside the controlled hydration moment and creates a second source of truth
   that diverges from the store. Use the imperative wrapper + the `stores` / `hydration` skills
@@ -39,61 +45,65 @@ No other file in the project imports `localStorage` or `sessionStorage` directly
 ## Wrapper shape
 
 ```ts
-// {shared-lib}/local-persistence/index.ts
-import { STORAGE_KEYS } from './keys'
-
+// {shared-lib}/local-persistence/useLocalPersistence.ts
 function isServer() { return import.meta.env.SSR }
 
-export function get<T>(key: string, fallback: T): T
-export function get<T>(key: string): T | null
-export function get<T>(key: string, fallback?: T): T | null {
-  if (isServer()) return fallback ?? null
-  try {
-    const raw = localStorage.getItem(key)
-    if (raw === null) return fallback ?? null
-    return JSON.parse(raw) as T
-  } catch {
-    return fallback ?? null
+export function useLocalPersistence() {
+  function get<T>(key: string, fallback: T): T
+  function get<T>(key: string): T | null
+  function get<T>(key: string, fallback?: T): T | null {
+    if (isServer()) return fallback ?? null
+    try {
+      const raw = localStorage.getItem(key)
+      if (raw === null) return fallback ?? null
+      return JSON.parse(raw) as T
+    } catch {
+      return fallback ?? null
+    }
   }
-}
 
-export function set<T>(key: string, value: T): void {
-  if (isServer()) return
-  try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* quota / private mode */ }
-}
+  function set<T>(key: string, value: T): void {
+    if (isServer()) return
+    try { localStorage.setItem(key, JSON.stringify(value)) } catch { /* quota / private mode */ }
+  }
 
-export function remove(key: string): void {
-  if (isServer()) return
-  localStorage.removeItem(key)
-}
+  function remove(key: string): void {
+    if (isServer()) return
+    localStorage.removeItem(key)
+  }
 
-export { STORAGE_KEYS }
+  return { get, set, remove }
+}
 ```
 
-## Storage keys
+```ts
+// {shared-lib}/local-persistence/index.ts  (pure barrel — no implementation here)
+export { useLocalPersistence } from './useLocalPersistence'
+```
+
+## Key declaration (at the call site)
+
+Storage keys are owned by the module that uses them. Declare them as local string constants
+next to the store or feature that reads/writes them:
 
 ```ts
-// {shared-lib}/local-persistence/keys.ts
-export const STORAGE_KEYS = {
-  session: {
-    authenticated: 'session.authenticated',
-    token: 'session.token',
-  },
-  ui: {
-    sidebarCollapsed: 'ui.sidebar.collapsed',
-  },
-} as const
+// {entity}/model/store/index.ts — keys declared at the call site
+const SESSION_AUTHENTICATED_KEY = 'session.authenticated'
+const SESSION_TOKEN_KEY = 'session.token'
+
+const { get, set, remove } = useLocalPersistence()
 ```
 
 ✅ do:
-- Import `get` / `set` / `remove` + `STORAGE_KEYS` from `{shared-lib}/local-persistence`.
-- Add new keys to `STORAGE_KEYS` as flat dot-namespaced strings.
+- Import `useLocalPersistence` from `{shared-lib}/local-persistence`; destructure `get` / `set` / `remove`.
+- Declare storage keys as local string constants at the call site (flat dot-namespace).
 - Let the store (not the wrapper) hold reactive state; the wrapper is called during
   hydration or on user action, not observed with a watch.
 
 ❌ don't:
 - Call `localStorage.setItem(...)` / `sessionStorage.getItem(...)` anywhere outside the wrapper.
 - Create a reactive ref in the wrapper (`ref(localStorage.getItem(...))`).
+- Create a central `keys.ts` or `STORAGE_KEYS` registry in the persistence lib.
 - Reuse query-key-factory keys as storage keys.
 - Import `useLocalStorage` from VueUse.
 

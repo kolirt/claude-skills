@@ -30,8 +30,10 @@ Read `../../core/placement.md` first (resolve `{routes}` / `{pages-utils}` / `{p
   middleware (see `vue-router`).
 - [invariant · desired] Routes are **split by domain**: one `{routes}/<domain>.ts` per
   domain, composed in `{routes}/index.ts` with spread:
-  `export const routes = [...defaultRoutes, ...blogRoutes]`. The shared `fallbackRoute`
-  (routing-discipline) is declared here too.
+  `export const routes = [...defaultRoutes, ...blogRoutes]`.
+- [invariant · desired] Do **NOT** declare a catch-all `*` / `:pathMatch(.*)*` route
+  and do **NOT** create a `NotFoundPage` — 404 is handled implicitly by the `handle404`
+  global middleware and `ErrorLayout` (see the `layouts` skill).
 - [invariant · desired] A public page is NOT "done" until its baseline SEO is closed:
   title, description, canonical, OG, `twitter:card`, viewport, `meta.ssr`, and a
   `BreadcrumbList` (emitted via `useJsonLd`; the type is owned by the `structured-data`
@@ -102,6 +104,17 @@ export function redirect(
     redirect: forwardParams ? (routeTo) => ({ name: to, params: routeTo.params }) : { name: to },
   }
 }
+
+// getDefaultMeta(): the meta the `handle404` middleware assigns to an UNMATCHED route.
+//   It defaults to the ERROR layout + isError404:true so an unknown URL self-renders
+//   ErrorLayout (see the implicit-404 mechanism in the `layouts` skill). This is distinct
+//   from page()'s meta, which defaults to Layouts.Default for real declared pages.
+export function getDefaultMeta(): RouteMeta {
+  return {
+    layout: { type: Layouts.Error, component: null, isError404: true },
+    middleware: [],
+  }
+}
 ```
 
 ## Usage
@@ -115,17 +128,16 @@ export default [
   redirect('old-blog/:slug', RouteNames.BlogArticle, true), // forward :slug
 ]
 
-// {routes}/index.ts — compose domains + declare the shared fallback (routing-discipline)
+// {routes}/index.ts — compose domains
 import blogRoutes from './blog'
 import defaultRoutes from './default'
 export const routes = [...defaultRoutes, ...blogRoutes]
-export const fallbackRoute = { name: RouteNames.Home }
 ```
 
 ## Placement (tokens — resolve via `placement.md`)
 - [invariant · desired] Route files → `{routes}/<domain>.ts` + `{routes}/index.ts`.
 - [invariant · desired] `RouteNames` enum (cross-layer) → `{shared-config}`.
-- [invariant · desired] `Layouts` enum (page-layer) → `{pages-config}`.
+- [invariant · desired] `Layouts` enum and `fallbackRoute` constant (page-layer) → `{pages-config}`.
 - [invariant · desired] Route builders (`page`/`group`/`redirect`/`getDefaultMeta`) →
   `{pages-utils}`, one per file + a barrel `index.ts`.
 - [invariant · desired] `Route` / `Middleware` types → `{pages-types}` (`02-pages/types.ts`).

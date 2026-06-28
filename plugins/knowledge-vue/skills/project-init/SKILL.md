@@ -20,7 +20,7 @@ project.
   there a server entry / a `--ssr` build script?).
   - ✅ do: "Should this be SSR or a CSR/SPA? SSR adds a server bundle + hydration; CSR is the
     simpler default."
-  - ❌ don't: silently scaffold SSR (server bundle, entry-server) for a plain `yarn create vite`
+  - ❌ don't: silently scaffold SSR (server bundle, entryServer) for a plain `yarn create vite`
     request — why: SSR is a deliberate choice that adds a Node server and build complexity.
 
 ## Mode-aware build scripts
@@ -49,16 +49,21 @@ needs the split.
     "build:prod": "run-s build:prod:client build:prod:server build:prod:bootstrap",
 
     "build:dev:client":     "vite build --ssrManifest --mode development",
-    "build:dev:server":     "vite build --ssr src/entry-server.ts --mode development",
+    "build:dev:server":     "vite build --ssr {app}/entryServer.ts --mode development",
     "build:dev:bootstrap":  "tsc -p tsconfig.server.json",
 
     "build:prod:client":    "vite build --ssrManifest --mode production",
-    "build:prod:server":    "vite build --ssr src/entry-server.ts --mode production",
+    "build:prod:server":    "vite build --ssr {app}/entryServer.ts --mode production",
     "build:prod:bootstrap": "tsc -p tsconfig.server.json"
   }
   ```
   The SSR build runs three steps: client bundle (`--ssrManifest`), server bundle
   (`--ssr <entryServer>`), and a `tsc` server bootstrap.
+- [invariant · desired] (SSR) scaffold the `{initial-plugins}/` layer — the per-request
+  `createApp` factory (`{initial-plugins}/createApp.ts`), any imperative initialisers
+  (e.g. `initHttpRequest`), and a barrel `{initial-plugins}/index.ts` — plus **exactly two**
+  entry files `{app}/entryClient.ts` and `{app}/entryServer.ts` that import from it. There is
+  no third shared `entry.ts`. Details: the `ssr` skill.
 
 ## Robots baseline (installed by default)
 
@@ -111,6 +116,22 @@ scaffolded on init so that development and staging builds are never inadvertentl
   ✅ Prod build → explicit allow policy with Sitemap line.
   ❌ A single unconditional `robots.txt` with no mode distinction — staging leaks to
   indexers if ever deployed to a public URL.
+
+## Environment configuration
+
+- [invariant · desired] At scaffold time, create `.env.development` and `.env.production`
+  holding **environment-varying** values as `VITE_*` variables:
+  ```
+  # .env.development / .env.production
+  VITE_API_URL=https://api.example.com
+  VITE_APP_ORIGIN=https://example.com
+  ```
+  Add `.env*.local` to `.gitignore` so local overrides are never committed.
+
+- [invariant · desired] **Environment-varying values** (API base URL, site origin, OAuth
+  keys) belong in `.env.*` as `VITE_*` and are read via `import.meta.env` at runtime.
+  **Never hardcode them** in `{shared-config}` or any other source file. STATIC values
+  (site display name, tagline) may live in `{shared-config}`.
 
 ## Deferred detail
 

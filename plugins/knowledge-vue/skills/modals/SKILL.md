@@ -11,6 +11,18 @@ Defer to the `plugin-registration` skill (by name) for registering the package, 
 to the `page-middlewares` skill (by name) for the route-change cleanup middleware.
 Do not restate those skills' steps here.
 
+> **[invariant · desired] Read the package's own AI guide BEFORE writing any modal
+> code.** `@kolirt/vue-modal` ships an agent-facing reference at
+> `node_modules/@kolirt/vue-modal/AGENTS.md` — it is the authoritative source for the
+> headless primitives, the `ModalRoot`/`ModalContent` contract, animation via
+> `data-state`, and the **z-index / stacking rules** (which element owns the
+> z-index, and how groups layer). Open and follow it; do NOT reconstruct modal
+> positioning/stacking from memory or from this skill. If `AGENTS.md` is absent (older
+> package version), read `node_modules/@kolirt/vue-modal/README.md` and follow its
+> "🤖 For AI agents" section. This skill governs only *where files live and the
+> project's wrapper/composable conventions* — the package guide governs *how the
+> primitives are used and styled*.
+
 ## 1. Bootstrap — detect → install → register
 
 - Detect: is `@kolirt/vue-modal` already installed? If yes, skip install.
@@ -45,18 +57,23 @@ Do not restate those skills' steps here.
   **`ConfirmModal`** (group `confirm`) and its `useConfirmModal` composable (§3) —
   confirmation dialogs are needed in every project. `ConfirmModal` takes the message
   and button labels as props, with sensible defaults:
+  ```ts
+  // interface.ts (confirm-modal folder) — props/types live here, not inline in the .vue
+  export interface ConfirmModalProps {
+    title?: string
+    message: string
+    confirmText?: string
+    cancelText?: string
+  }
+  ```
   ```vue
   <!-- ConfirmModal.vue (group: confirm) -->
   <script lang="ts" setup>
   import { useModalContext } from '@kolirt/vue-modal'
   import ConfirmModalWrapper from '../groups/confirm/ConfirmModalWrapper.vue'
+  import type { ConfirmModalProps } from './interface'
 
-  withDefaults(defineProps<{
-    title?: string
-    message: string
-    confirmText?: string
-    cancelText?: string
-  }>(), { confirmText: 'Confirm', cancelText: 'Cancel' })
+  withDefaults(defineProps<ConfirmModalProps>(), { confirmText: 'Confirm', cancelText: 'Cancel' })
 
   defineOptions({ modalGroup: 'confirm' })
   const { confirm, close } = useModalContext<boolean>()
@@ -110,9 +127,21 @@ Do not restate those skills' steps here.
 
 - [invariant · desired] **Group infrastructure** (`*ModalWrapper.vue` +
   `*ModalTarget.vue`) → `{shared-ui}/modals/groups/<group>/` — one folder per group.
+  Each group folder has a barrel `index.ts` re-exporting the wrapper and target.
 - [invariant · desired] A **generic/shared concrete modal** (e.g. `ConfirmModal`) and
   its composable → `{shared-ui}/modals/<name>-modal/` — its own folder, never inside
   the group-infrastructure folder.
+  Each concrete-modal folder has a barrel `index.ts`.
+- [invariant · desired] A concrete modal folder contains: the `.vue` component, an
+  **`interface.ts`** declaring its props/types (`<Name>Props`, request/variant types),
+  its `use*Modal.ts` composable, and an `index.ts` barrel re-exporting all three.
+  Component props/types belong in `interface.ts`, not inline-only in the `.vue`.
+  ```ts
+  // <name>-modal/index.ts
+  export { default as <Name>Modal } from './<Name>Modal.vue'
+  export type { <Name>ModalProps } from './interface'
+  export { use<Name>Modal } from './use<Name>Modal'
+  ```
 - [invariant · desired] A **domain modal** lives in its owning slice with its
   composable co-located: feature → `{feature}` (`ui/` + `model/`); widget → `{widget}`
   (`ui/` + `model/`). The `use*Modal` always lives in the same slice as its modal.
