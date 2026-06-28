@@ -1,6 +1,6 @@
 {
   "name": "knowledge-vue",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "The developer's Vue conventions as intent-triggered skills (architecture-fsd, modals, vue-router, pages, layouts, page-middlewares, stores, persistence, hydration, ssr, http-request, tanstack-query, auth, forms, form-elements, plugin-registration, project-init, plus seo and robots delivery) placed via location tokens. Depends on the knowledge base plugin (capture) and knowledge-seo (SEO principles, delivered into Vue without being asked).",
   "author": {
     "name": "kolirt"

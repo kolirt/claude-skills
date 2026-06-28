@@ -5,8 +5,13 @@ description: Use when fixing browser-only state (localStorage-backed, navigator.
 
 # hydration (Vue) — fix browser-only state after mount (SSR projects only)
 
-**If the project has no SSR, this skill is not needed.** Read browser values directly at
-module-level initialisation time (see the `stores` skill for the no-SSR branch).
+**Hydration is a sub-concern of SSR, not a standalone mechanism** — `runHydrations()` is wired
+into the SSR client entry (see the `ssr` skill). It exists only because the server rendered a
+fallback that the client must reconcile.
+
+**If the project has no SSR, this skill is not needed at all.** With CSR/SPA there is no server
+render to reconcile — read browser values directly at module-level initialisation time (see the
+`stores` skill's no-SSR branch). Whether a project is SSR or CSR is decided at `project-init`.
 
 Read `../../core/placement.md` first (resolve `{shared-lib}`, `{app}`).
 
