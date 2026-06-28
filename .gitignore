@@ -1,12 +1,1 @@
-.DS_Store
-*.bak.*
-
-# subagent-driven-development scratch (ledger, briefs, diffs, reports)
-.superpowers/
-
-# site build tooling (also covered by site/.gitignore)
-site/node_modules/
-site/dist/
-site/.yarn/
-site/public/data.json
-*.tsbuildinfo
+.idea/
