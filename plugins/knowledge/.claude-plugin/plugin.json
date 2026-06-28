@@ -1,7 +1,7 @@
 {
   "name": "knowledge",
-  "version": "0.1.0",
-  "description": "Stack-independent base for the developer's coding-knowledge plugins: an intent-triggered capture loop + human-gated codification + a notify-only pattern observer. Domain plugins (knowledge-vue, knowledge-laravel) depend on this and reuse its capture skill.",
+  "version": "0.1.1",
+  "description": "Stack-independent base for the developer's coding-knowledge plugins: an intent-triggered capture loop + human-gated codification. Domain plugins (knowledge-vue, knowledge-laravel) depend on this and reuse its capture skill.",
   "author": {
     "name": "kolirt"
   }

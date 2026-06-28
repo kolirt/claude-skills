@@ -6,8 +6,7 @@ description: Use when the developer wants to teach, capture, document, or update
 # Capture (stack-independent)
 
 Turn the developer's tacit/contextual conventions into tagged rules and skills.
-Stack-neutral; the examples below are Vue (increment-1) illustrations only — the
-mechanism is identical for any stack and any domain plugin.
+Stack-neutral — the mechanism is identical for any stack and any domain plugin.
 
 Read `../../core/tag-schema.md` first (rule format).
 Read `../../core/codification.md` first (the only write path; owner-invoked, in the plugin repo).
@@ -27,7 +26,6 @@ Read `../../core/codification.md` first (the only write path; owner-invoked, in 
    the right domain plugin and updates that plugin's umbrella index).
 
 ## What this skill must not do
-- Never write plugin content without the owner's explicit accept (codification gate).
 - Never capture a `legacy` habit as an `invariant`.
 - Never inline a core rule's content into a skill — reference the core module.
-- Never write outside the plugin repo the owner is in.
+- (The write-gate rules — explicit owner accept, owner's repo only — live in `codification.md`.)

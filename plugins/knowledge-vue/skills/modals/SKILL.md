@@ -5,9 +5,8 @@ description: Use when the developer asks to add a modal/dialog in a Vue project.
 
 # Modals (Vue) — capability skill (`@kolirt/vue-modal`)
 
-Read `../../core/shared-wrapper-discipline.md` first (modals introduce UI that must
-live behind a shared wrapper, never inlined at the call site).
-Read `../../core/placement.md` first (where modal files go — FSD vs non-FSD).
+Read `../../core/placement.md` first (resolve the `{...}` location tokens used below
+for the current project's architecture).
 Defer to the `plugin-registration` skill (by name) for registering the package, and
 to the `page-middlewares` skill (by name) for the route-change cleanup middleware.
 Do not restate those skills' steps here.
@@ -17,12 +16,12 @@ Do not restate those skills' steps here.
 - Detect: is `@kolirt/vue-modal` already installed? If yes, skip install.
 - Install: `yarn add @kolirt/vue-modal reka-ui`.
 - [invariant · desired] Register the package **through the `plugin-registration`
-  skill** (a factory file, not inline). The modal group config lives inside that
-  factory.
+  skill** (a factory file, not inline). The modal group config lives inside that factory.
 - [preference · desired] Default groups are **`default`** and **`confirm`**; the
   project adds more groups as it needs them.
 - [invariant · desired] Make group names type-safe via module augmentation:
   ```ts
+  import type { DefineGroups } from '@kolirt/vue-modal'
   declare module '@kolirt/vue-modal' {
     interface ModalGroupRegistry extends DefineGroups<['default', 'confirm']> {}
   }
@@ -40,11 +39,8 @@ Do not restate those skills' steps here.
   - ❌ don't: `<ModalRoot><ModalContent>…</ModalContent></ModalRoot>` inside a concrete modal
   - why: the wrapper is the single place that knows Root/Content/styling; modals stay
     thin and consistent, and a styling change happens in one place.
-- [invariant · desired] Keep **group infrastructure** (a group's `*ModalWrapper.vue` +
-  `*ModalTarget.vue`) in a location **separate from concrete modals**: group infra goes
-  in a `groups/<group>/` folder, each concrete modal in its own `<name>-modal/` folder.
-  See `placement.md` for the exact paths (FSD vs non-FSD). Never put a concrete modal in
-  the group-infrastructure folder.
+- [invariant · desired] **Group infrastructure** (a group's `*ModalWrapper.vue` +
+  `*ModalTarget.vue`) is kept **separate from concrete modals** — see Placement below.
 - On first setup, scaffold wrappers for `default` and `confirm`, plus a default
   **`ConfirmModal`** (group `confirm`) and its `useConfirmModal` composable (§3) —
   confirmation dialogs are needed in every project. `ConfirmModal` takes the message
@@ -53,7 +49,7 @@ Do not restate those skills' steps here.
   <!-- ConfirmModal.vue (group: confirm) -->
   <script lang="ts" setup>
   import { useModalContext } from '@kolirt/vue-modal'
-  import ConfirmModalWrapper from './ConfirmModalWrapper.vue'
+  import ConfirmModalWrapper from '../groups/confirm/ConfirmModalWrapper.vue'
 
   withDefaults(defineProps<{
     title?: string
@@ -82,13 +78,10 @@ Do not restate those skills' steps here.
   renders through its group wrapper, and uses `useModalContext<T>()` for `close` /
   `confirm`.
 - [invariant · desired] Opening a modal goes through a **dedicated `use*Modal`
-  composable, co-located in the SAME slice as the modal** (a widget modal's composable
-  lives in the widget, a feature modal's in the feature, a shared modal's in shared).
-  The call site **never** calls `openModal()` directly — it must not know the open
-  details, it just opens.
+  composable, co-located in the SAME slice as the modal**. The call site **never**
+  calls `openModal()` directly — it must not know the open details, it just opens.
   - ✅ do:
     ```ts
-    // useConfirmModal.ts (next to ConfirmModal.vue)
     import { ModalClosedError, openModal } from '@kolirt/vue-modal'
     import ConfirmModal from './ConfirmModal.vue'
 
@@ -103,19 +96,23 @@ Do not restate those skills' steps here.
       }
       return { confirm }
     }
-
-    // call site — knows nothing about openModal:
-    const { confirm } = useConfirmModal()
-    if (await confirm({ message: 'Delete this item?' })) { /* ... */ }
     ```
   - ❌ don't: `openModal(ConfirmModal, { props })` at the call site.
 - [preference · desired] Value-returning modals resolve a `Promise<T>` and catch
   `ModalClosedError` (dismiss → a sensible default); fire-and-forget modals swallow
   with `.catch(() => {})`.
 - [invariant · desired] On route change, all open modals are closed via a **page
-  middleware** — create it through the `page-middlewares` skill and register it
-  globally; do not restate middleware mechanics here. The close call is:
-  ```ts
-  import { closeAllModals, isOpened } from '@kolirt/vue-modal'
-  if (isOpened.value) await closeAllModals({ ignoreGuard: true, instantExit: true })
-  ```
+  middleware** (`closeAllModals` from `@kolirt/vue-modal`). Create the middleware through
+  the `page-middlewares` skill (it carries the `closeModalsMiddleware` example) and
+  register it globally — do not restate the middleware or its snippet here.
+
+## 4. Placement (tokens — resolve via `placement.md`)
+
+- [invariant · desired] **Group infrastructure** (`*ModalWrapper.vue` +
+  `*ModalTarget.vue`) → `{shared-ui}/modals/groups/<group>/` — one folder per group.
+- [invariant · desired] A **generic/shared concrete modal** (e.g. `ConfirmModal`) and
+  its composable → `{shared-ui}/modals/<name>-modal/` — its own folder, never inside
+  the group-infrastructure folder.
+- [invariant · desired] A **domain modal** lives in its owning slice with its
+  composable co-located: feature → `{feature}` (`ui/` + `model/`); widget → `{widget}`
+  (`ui/` + `model/`). The `use*Modal` always lives in the same slice as its modal.

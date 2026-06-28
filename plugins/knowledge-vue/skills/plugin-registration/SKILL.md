@@ -1,27 +1,26 @@
 ---
 name: plugin-registration
-description: Use when wiring a Vue plugin into the app (installing + registering a package the developer's way). Owns the developer's plugin-registration discipline; capability skills (e.g. modals) defer to it by name instead of restating it.
+description: Use when wiring a Vue plugin into the app (installing + registering a package the developer's way). Owns the developer's plugin-registration discipline; capability skills (e.g. modals, vue-router) defer to it by name instead of restating it.
 ---
 
 # plugin-registration (Vue)
 
-The developer's discipline for registering ANY Vue plugin (modal, toast, i18n, …).
-Capability skills that install a package defer to THIS skill for registration —
-they never restate these steps.
+The developer's discipline for registering ANY Vue plugin (modal, router, toast, …).
+Capability skills that install a package defer to THIS skill for registration — they
+never restate these steps.
 
-Read `../../core/placement.md` first (where the registration file goes — it differs
-between FSD and non-FSD projects).
+Read `../../core/placement.md` first (resolve the `{plugins}` token for the current
+project's architecture).
 
 ## Rules
 
 - [invariant · desired] Every Vue plugin is registered through a **factory function
-  in a dedicated file**, which `main.ts` calls via `app.use(<factory>())`. The plugin
-  is **never** configured inline in `main.ts`. This holds in **both FSD and non-FSD**
-  projects — only the file's location differs (see `placement.md`: FSD → the app-init
-  plugins layer; non-FSD → `src/plugins/`).
+  in a dedicated file** under `{plugins}/<name>.ts`, which the app entry/factory calls
+  via `app.use(<factory>())`. The plugin is **never** configured inline in `main.ts`.
+  This holds in both FSD and non-FSD — only the location (`{plugins}`) differs.
   - ✅ do:
     ```ts
-    // plugins/modal.ts
+    // {plugins}/modal.ts
     import { createModal as createModalMaster } from '@kolirt/vue-modal'
     export function createModal() {
       return createModalMaster({ /* package config lives here, not in main.ts */ })
@@ -38,3 +37,5 @@ between FSD and non-FSD projects).
   - why: the factory file keeps each plugin's wiring/config out of `main.ts`, gives
     one place to extend a plugin's setup, and keeps `main.ts` a thin list of
     `app.use(...)` calls.
+- [preference · desired] When several plugins exist, re-export each factory from a
+  `{plugins}/index.ts` barrel, and have the app factory call them in order.

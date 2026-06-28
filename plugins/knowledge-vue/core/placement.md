@@ -1,51 +1,54 @@
 # Placement (Vue) — where files go
 
-The single stable reference for "where does this file belong". **Dual-mode and
-project-aware**: it holds the developer's placement rules for BOTH FSD and non-FSD
-projects, as a matrix of *artifact type* × *architecture*. Placement is **decoupled
-from FSD** — a skill references THIS module, never a hard-coded path.
+The **location vocabulary** for the Vue domain. A skill never hard-codes a path; it
+places its artifacts using the **tokens** below, and this file resolves each token to
+a concrete path for the **current project's architecture**.
 
-## How a skill uses it
-1. Determine the current project's architecture: the project declares it (a marker
-   or convention), else detect the FSD layout. If it cannot be determined, ASK the
-   developer.
-2. Look up the artifact type in the branch for that architecture and place the file
-   there.
+## 1. Detect the architecture
+- **FSD** — the source root has numbered layer directories (`01-app`, `02-pages`, …,
+  `07-shared`).
+- **non-FSD** — a flat `src/` (e.g. `src/components`, `src/pages`).
+- If it cannot be determined, **ask the developer**.
 
-## FSD branch
+## 2. Location tokens → concrete paths
 
-Layers use **numbered prefixes**, in dependency order:
-`01-app` → `02-pages` → `03-widgets` → `04-features` → `05-composition` →
-`06-entities` → `07-shared`.
+| token | FSD | non-FSD |
+|---|---|---|
+| `{app}` | `01-app` | `src/app` |
+| `{plugins}` | `01-app/plugins` | `src/plugins` |
+| `{routes}` | `02-pages/routes` | `src/router/routes` |
+| `{route-config}` | `07-shared/config` | `src/router` |
+| `{middlewares}` | `02-pages/middlewares` | `src/router/middlewares` |
+| `{global-middlewares}` | `02-pages/config` | `src/router/middlewares/global` |
+| `{pages-ui}` | `02-pages/ui/<domain>` | `src/pages/<domain>` |
+| `{layouts}` | `02-pages/layouts` | `src/layouts` |
+| `{shared-ui}` | `07-shared/ui` | `src/components` |
+| `{shared-lib}` | `07-shared/lib` | `src/lib` |
+| `{composition}` | `05-composition` | `src/components` |
+| `{feature}` | `04-features/<name>` | `src/components/<name>` |
+| `{widget}` | `03-widgets/<name>` | `src/components/<name>` |
+| `{entity}` | `06-entities/<name>` | `src/composables/<name>` |
 
-- [invariant · desired] Plugin **registration files** (the `plugin-registration`
-  factories) live in the app-init plugins layer: `01-app/plugins/<name>.ts`.
-- [invariant · desired] **Group infrastructure** (a group's `*ModalWrapper.vue` +
-  `*ModalTarget.vue`) lives under `07-shared/ui/modals/groups/<group>/` — set up once
-  per group and kept **separate from concrete modals**.
-- [invariant · desired] A **shared/global concrete modal** (e.g. `ConfirmModal`) and
-  its open-composable live in their **own folder** `07-shared/ui/modals/<name>-modal/` —
-  never mixed into the group-infrastructure folder.
-- [invariant · desired] A modal that belongs to a **feature** lives in that feature
-  slice: the component in `04-features/<feature>/ui/`, its open-composable in
-  `04-features/<feature>/model/`.
-- [invariant · desired] A modal that belongs to a **widget** lives in that widget
-  slice: the component in `03-widgets/<widget>/ui/`, its open-composable in
-  `03-widgets/<widget>/model/`.
-- [invariant · desired] An open-composable (`use*Modal`) **always lives in the same
-  slice as its modal** — never hoisted to a different layer. (So a widget modal DOES
-  have a composable; it just lives in the widget, not in features.)
+Tokens with no native non-FSD layer (`{feature}`, `{widget}`, `{composition}`)
+collapse to the flat components location.
 
-## Non-FSD branch
+`{app}` holds the app entry point (`createApp` / per-request factory), plugin registration
+(`plugins/`), and async pre-mount initialisation (`initial-plugins/`).
 
-- [invariant · desired] Plugin **registration files** live in `src/plugins/<name>.ts`
-  (still a factory file, never inline in `main.ts` — see `plugin-registration`).
-- [invariant · desired] **Group infrastructure** (`*ModalWrapper.vue` +
-  `*ModalTarget.vue`) lives under `src/components/modals/groups/<group>/` — one folder
-  per group, **separate from concrete modals**.
-- [invariant · desired] Each **concrete modal** and its open-composable live in their
-  **own folder** `src/components/modals/<name>-modal/` (the `use*Modal` beside its
-  component) — never inside the group-infrastructure folder.
+> Notation: `{token}` is a placement token — resolve it via this table; in an **import
+> path** a token resolves under the project's `@`/`~` src alias. Non-token placeholders
+> use `<...>` (e.g. `<API_BASE>`, `<your-app-name>`), never `{...}`.
 
-> The matrix grows as more artifact types are captured; the entries above are the
-> ones captured so far.
+## 3. FSD layer reference
+Numbered layers, dependency direction downward (`01-app` → … → `07-shared`):
+- `01-app` — bootstrap: app entry, plugin registration (`plugins/`), root setup.
+- `02-pages` — routing: route definitions (`routes/`), page components (`ui/`),
+  route middlewares (`middlewares/`), routing config (`config/`).
+- `03-widgets` — composite UI blocks (domain-grouped).
+- `04-features` — user-facing flows (domain-grouped).
+- `05-composition` — stateless UI composites (no state, no fetching) — custom layer.
+- `06-entities` — business entities (`api/` + `model/` + `ui/`).
+- `07-shared` — shared `lib/` `ui/` `config/` `types/`, no domain knowledge.
+
+Slice shape inside a domain folder: `api/` + `model/` + `ui/` + a barrel `index.ts`.
+A skill that needs a layer not in the token table refers to it by its name here.

@@ -24,7 +24,7 @@ Native Claude Code plugin marketplace.
   - `grok-composer` — Grok CLI · **Composer 2.5 Fast** model (Cursor); same Grok CLI/subscription
 
   Add a new agent by dropping an adapter in `plugins/agent-companion/adapters/`
-  and listing it. See `skills/creating-plugins`.
+  and listing it. See `.claude/skills/creating-plugins`.
 
   When 2+ verifiers run, a **synthesizer** can consolidate their reports into one
   (so the session isn't flooded): `/agent-companion:synthesizer set <claude|adapter|none>`.
@@ -43,14 +43,14 @@ Native Claude Code plugin marketplace.
   ([`verify.sh`](plugins/agent-companion/verify.sh) dispatcher · [`MANAGER.md`](plugins/agent-companion/MANAGER.md) · [`adapters/`](plugins/agent-companion/adapters) · [`commands/`](plugins/agent-companion/commands))
 - [`plugins/auditing-prs/`](plugins/auditing-prs) — GitHub PR review plugin
   ([`skills/audit-pr/`](plugins/auditing-prs/skills/audit-pr) · [`skills/prepush-audit/`](plugins/auditing-prs/skills/prepush-audit) · shared [`core/`](plugins/auditing-prs/core))
-- [`skills/creating-plugins/`](skills/creating-plugins) — skill for scaffolding and validating new plugins
+- [`.claude/skills/`](.claude/skills) — repo-local maintainer skills (auto-discovered in this repo): [`creating-plugins/`](.claude/skills/creating-plugins) (scaffold/validate new plugins) · [`authoring-knowledge-skills/`](.claude/skills/authoring-knowledge-skills) (checklist for knowledge-* skills)
 - [`site/`](site) — Vite + Vue web catalog, data-driven from `marketplace.json`
 - [`build-site.sh`](build-site.sh) — generates `site/public/data.json` from the manifests (version-validated; the generated file is gitignored)
 
 ## Develop
 
 Create new plugins with the `creating-plugins` skill
-(`skills/creating-plugins/scripts/new-plugin.sh`, `validate.sh`).
+(`.claude/skills/creating-plugins/scripts/new-plugin.sh`, `validate.sh`).
 
 ### Web catalog (`site/`)
 

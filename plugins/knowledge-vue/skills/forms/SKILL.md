@@ -10,8 +10,6 @@ description: Use when building or editing a Vue form. Captures the developer's f
 > invoked, MUST ask the developer for the convention rather than guessing. To
 > capture, invoke the `capture` skill by name (provided by the `knowledge` base plugin).
 
-Read `../../core/shared-wrapper-discipline.md` first (applies to any UI primitive this pattern introduces).
-
 ## Intent
 Every form uses the developer's single validation mechanism: each field wrapped by the project's ValidationField wrapper; each form wrapped by the project's wrapper over ValidationForm.
 
