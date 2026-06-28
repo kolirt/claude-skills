@@ -1,0 +1,1 @@
+{"root":["./src/data.ts","./src/main.ts","./src/router.ts","./src/types.ts","./src/app.vue","./src/components/agentpanel.vue","./src/components/commandline.vue","./src/components/plugincard.vue","./src/views/homeview.vue","./src/views/skillview.vue","./env.d.ts"],"errors":true,"version":"5.7.3"}

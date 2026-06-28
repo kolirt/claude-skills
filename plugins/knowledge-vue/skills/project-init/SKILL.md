@@ -1,23 +1,49 @@
 ---
 name: project-init
-description: Use when scaffolding a new Vue SSR project or auditing an existing one — baseline dependencies, mode-aware build scripts for both SSR bundles, and robots.txt baseline wired by default via vite-plugin-robots.
+description: Use when scaffolding a new Vue project (SPA or SSR) or auditing one — baseline dependencies, mode-aware build scripts, and robots.txt baseline wired by default via vite-plugin-robots. SSR is an optional layer, not assumed.
 ---
 
 # project-init (Vue) — scaffold conventions
 
-Applied without being asked when bootstrapping a Vue SSR project. Covers two permanent
-baseline concerns: **mode-aware build scripts** and **robots.txt by default**.
+Applied without being asked when bootstrapping a Vue project. Covers two permanent baseline
+concerns: **mode-aware build scripts** and **robots.txt by default**. Both apply to ANY Vue
+project.
+
+> **SSR is OPTIONAL — the default is a SPA.** SSR is an additional layer added only when the
+> project actually needs server-side rendering (see the `ssr` skill). Every other convention
+> (FSD layers, stores without Pinia, http-request, TanStack Query, modals, …) works exactly
+> the same with or without SSR. Do not assume a project is SSR.
+
+- [invariant · desired] At scaffold time, **ask the developer: SSR or CSR (SPA)?** — never
+  assume. The answer decides whether the SSR add-on applies (server bundle, entry split, and
+  the `ssr` / `hydration` skills). For an EXISTING project, detect it instead of asking (is
+  there a server entry / a `--ssr` build script?).
+  - ✅ do: "Should this be SSR or a CSR/SPA? SSR adds a server bundle + hydration; CSR is the
+    simpler default."
+  - ❌ don't: silently scaffold SSR (server bundle, entry-server) for a plain `yarn create vite`
+    request — why: SSR is a deliberate choice that adds a Node server and build complexity.
 
 ## Mode-aware build scripts
 
-Every SSR project exposes named, mode-explicit build scripts in `package.json`. A plain
-`build` command without a `--mode` flag is ambiguous for automated pipelines and robots.
+Expose named, mode-explicit build scripts in `package.json`. A plain `build` without a
+`--mode` flag is ambiguous for robots (which `.robots.[mode].txt` to copy) — so even a SPA
+needs the split.
 
-- [invariant · desired] Provide `build:dev` and `build:prod`; never rely on a bare `build`
-  as the canonical SSR build target.
+- [invariant · desired] Provide `build:dev` and `build:prod` that pass an explicit `--mode`;
+  never rely on a bare `build`.
 
+  **SPA (default):**
   ```jsonc
   // package.json
+  "scripts": {
+    "build:dev":  "vite build --mode development",
+    "build:prod": "vite build --mode production"
+  }
+  ```
+
+- [preference · desired] **SSR (optional add-on)** — ONLY when the project does server-side
+  rendering. Adds a server bundle + a Node bootstrap on top of the client build:
+  ```jsonc
   "scripts": {
     "build:dev":  "run-s build:dev:client  build:dev:server  build:dev:bootstrap",
     "build:prod": "run-s build:prod:client build:prod:server build:prod:bootstrap",
@@ -31,12 +57,8 @@ Every SSR project exposes named, mode-explicit build scripts in `package.json`. 
     "build:prod:bootstrap": "tsc -p tsconfig.server.json"
   }
   ```
-
-  Each named build runs three steps in sequence:
-  1. **Client bundle** — `vite build --ssrManifest --mode <mode>` (generates the asset
-     manifest consumed by the server renderer).
-  2. **Server bundle** — `vite build --ssr <entryServer> --mode <mode>`.
-  3. **Server bootstrap** — `tsc` compiles the Node server entry point.
+  The SSR build runs three steps: client bundle (`--ssrManifest`), server bundle
+  (`--ssr <entryServer>`), and a `tsc` server bootstrap.
 
 ## Robots baseline (installed by default)
 

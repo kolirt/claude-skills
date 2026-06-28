@@ -5,6 +5,12 @@ description: Use when setting up or debugging Vue SSR delivery — per-request c
 
 # ssr (Vue) — SSR delivery
 
+> **SSR is OPTIONAL.** Use this skill ONLY when the project actually needs server-side
+> rendering (e.g. SEO / first-paint for content pages). A CSR/SPA needs none of this — every
+> other convention (FSD, stores, http-request, TanStack, modals) works without it; see the
+> no-SSR branches in `stores` and `hydration`. Whether a project is SSR or CSR is decided at
+> `project-init` (which asks the developer).
+
 Read `../../core/placement.md` first (resolve `{app}`).
 
 Vue SSR requires a **per-request app factory**: every incoming request gets a fresh,

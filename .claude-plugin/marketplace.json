@@ -26,7 +26,7 @@
       "name": "knowledge-vue",
       "source": "./plugins/knowledge-vue",
       "description": "The developer's Vue conventions as intent-triggered skills over shared Vue core rules, with SEO auto-application (baseline SEO by default). Depends on the knowledge base and knowledge-seo plugins.",
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     {
       "name": "knowledge-seo",
