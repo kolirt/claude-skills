@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# SessionStart hook for knowledge-vue. Runs on every session start (Claude Code lifecycle),
+# but injects only a SHORT, CONDITIONAL reminder — it does NOT dump the whole vue-work skill.
+# The model loads the full skill on demand (via the Skill tool) ONLY when the work is Vue.
+set -euo pipefail
+
+python3 - <<'PY'
+import json
+
+reminder = (
+    "<EXTREMELY_IMPORTANT>\n"
+    "This environment ships the **knowledge-vue** conventions (FSD layers, stores without "
+    "Pinia, an http-request wrapper, TanStack Query, @kolirt/vue-modal modals, optional SSR).\n\n"
+    "IF this session involves ANY Vue work — creating or editing a Vue component, page, route, "
+    "store, form, modal, or anything user-visible in a Vue app — you MUST invoke the `vue-work` "
+    "skill FIRST (via the Skill tool) to pick the right convention skill, EVEN IF another skill "
+    "(e.g. ui-ux-pro-max) was invoked first. Do not hand-roll conventions these skills define.\n\n"
+    "IF this session is not Vue work, ignore this entirely.\n"
+    "</EXTREMELY_IMPORTANT>"
+)
+
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": reminder,
+    }
+}))
+PY

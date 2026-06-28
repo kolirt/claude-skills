@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# SessionStart hook for knowledge-seo. Runs on every session start, but injects only a SHORT,
+# CONDITIONAL reminder. The relevant SEO skill is loaded on demand (via the Skill tool) ONLY
+# when the session actually touches user-visible web content. Stack-independent wording.
+set -euo pipefail
+
+python3 - <<'PY'
+import json
+
+reminder = (
+    "<EXTREMELY_IMPORTANT>\n"
+    "This environment ships the **knowledge-seo** conventions: baseline SEO is closed BY "
+    "DEFAULT during normal development (not an audit product — no crawling/scoring/monitoring).\n\n"
+    "IF this session adds or changes user-visible web content — a page, a list, an article, an "
+    "FAQ, contacts, a product, reviews, an event, video, etc. — you MUST close the matching SEO "
+    "baseline yourself (don't skip it): title/description/canonical via `meta-tags`; the right "
+    "structured-data type via the content->schema map in `structured-data`; social previews via "
+    "`social-preview`; robots/sitemaps/redirects/Core-Web-Vitals/media/hreflang/IndexNow via the "
+    "skill of the same name. Invoke the relevant knowledge-seo skill via the Skill tool. For an "
+    "on-demand project-wide baseline check, use `seo-audit`. Never touch the dynamic/competitive "
+    "layer (keywords, competitors, content strategy) — that is the human specialist's job.\n\n"
+    "IF this session does not touch web content, ignore this entirely.\n"
+    "</EXTREMELY_IMPORTANT>"
+)
+
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": reminder,
+    }
+}))
+PY
