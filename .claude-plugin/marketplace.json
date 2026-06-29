@@ -1,0 +1,38 @@
+{
+  "name": "claude-skills",
+  "owner": {
+    "name": "kolirt"
+  },
+  "plugins": [
+    {
+      "name": "agent-companion",
+      "source": "./plugins/agent-companion",
+      "description": "Claude runs as manager and consults several independent verifier agents in parallel — each returns its own verdict.",
+      "version": "0.1.9"
+    },
+    {
+      "name": "auditing-prs",
+      "source": "./plugins/auditing-prs",
+      "description": "Audit GitHub PRs from one shared detection core: audit-pr fetches, drafts, and publishes review comments with consistent conventions and resolves issues when fixes land; prepush-audit is a read-only, chat-only self-check an executor runs before pushing to surface the same findings first. Optional agent-companion verifier panel for independent task-completion checks.",
+      "version": "0.2.0"
+    },
+    {
+      "name": "knowledge",
+      "source": "./plugins/knowledge",
+      "description": "Stack-independent base for the developer's coding-knowledge plugins: capture loop + human-gated codification + notify-only pattern observer.",
+      "version": "0.1.1"
+    },
+    {
+      "name": "knowledge-vue",
+      "source": "./plugins/knowledge-vue",
+      "description": "The developer's Vue conventions as intent-triggered skills over shared Vue core rules, with SEO auto-application (baseline SEO by default). Depends on the knowledge base and knowledge-seo plugins.",
+      "version": "0.2.6"
+    },
+    {
+      "name": "knowledge-seo",
+      "source": "./plugins/knowledge-seo",
+      "description": "Stack-independent SEO conventions (meta, structured data, robots, sitemaps, social previews, Core Web Vitals, IndexNow, audit) for baseline-by-default SEO.",
+      "version": "0.1.1"
+    }
+  ]
+}
