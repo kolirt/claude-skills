@@ -9,6 +9,12 @@ The entry point for Vue work — it points to the specific pattern skill for the
 at hand. Each pattern skill carries its own rules and (via `placement.md`) its own
 file placement.
 
+- [invariant · desired] The folder **architecture is a per-project choice — FSD (numbered
+  layers) OR a plain flat `src/`** — never assumed. `placement.md` resolves every placement
+  token for whichever is in use, and all pattern skills apply to both. On a greenfield project,
+  confirm the choice via `project-init` (it asks); do not default to FSD or rebuild a plain
+  structure into FSD unasked.
+
 ## Always-on SEO rule
 
 - [invariant · desired] Before finishing ANY change that adds visible content, classify
@@ -36,7 +42,7 @@ Pick the skill that matches the intent; it carries the specifics.
 | forms | building a form | `../forms/SKILL.md` |
 | form elements | a new input/control (reka-ui) | `../form-elements/SKILL.md` |
 | architecture-fsd | FSD folder structure / domain slices | `../architecture-fsd/SKILL.md` |
-| stores | Pinia store setup / state management | `../stores/SKILL.md` |
+| stores | module-reactive store setup / state management (no Pinia) | `../stores/SKILL.md` |
 | persistence | persisting state (localStorage / cookies) | `../persistence/SKILL.md` |
 | hydration | SSR hydration, mismatch fixes | `../hydration/SKILL.md` |
 | ssr | server-side rendering setup | `../ssr/SKILL.md` |

@@ -11,8 +11,14 @@ project.
 
 > **SSR is OPTIONAL — the default is a SPA.** SSR is an additional layer added only when the
 > project actually needs server-side rendering (see the `ssr` skill). Every other convention
-> (FSD layers, stores without Pinia, http-request, TanStack Query, modals, …) works exactly
-> the same with or without SSR. Do not assume a project is SSR.
+> (stores without Pinia, http-request, TanStack Query, modals, …) works exactly the same with
+> or without SSR. Do not assume a project is SSR.
+
+> **Architecture (FSD vs non-FSD) is the developer's CHOICE — do NOT silently assume FSD.**
+> Every convention skill works with both: FSD (numbered layers `01-app`…`07-shared`) and
+> non-FSD (a flat `src/`). `placement.md` resolves each placement token for whichever
+> architecture is in use. For a GREENFIELD project, ASK; for an EXISTING one, detect (numbered
+> layer dirs → FSD, else non-FSD).
 
 - [invariant · desired] At scaffold time, **ask the developer: SSR or CSR (SPA)?** — never
   assume. The answer decides whether the SSR add-on applies (server bundle, entry split, and
@@ -22,6 +28,24 @@ project.
     simpler default."
   - ❌ don't: silently scaffold SSR (server bundle, entryServer) for a plain `yarn create vite`
     request — why: SSR is a deliberate choice that adds a Node server and build complexity.
+
+- [invariant · desired] At scaffold time, **ask the developer: FSD or plain (non-FSD) structure?**
+  — never silently default to FSD. The answer decides the folder layout (numbered `01-app`…
+  `07-shared` vs a flat `src/`); all convention skills apply either way via `placement.md`. For
+  an EXISTING project, detect instead of asking (numbered layer dirs → FSD, else non-FSD).
+  - ✅ do: "Should this use FSD (numbered layers) or a plain flat `src/` structure?"
+  - ❌ don't: assume FSD because the conventions mention it, or rebuild a plain structure into
+    numbered FSD without being asked — why: architecture is the developer's call, not a default.
+
+## Scaffold cleanup
+
+- [invariant · desired] After `yarn create vite`, **remove the default scaffold cruft** before
+  building: the `src/assets/<logo>.svg` (e.g. `vite.svg`) and `public/vite.svg` placeholders,
+  the `HelloWorld.vue` / boilerplate `App.vue`, and the default `src/style.css`. A leftover
+  `vite.svg` or stray root `style.css` is a defect.
+- [invariant · desired] The real global stylesheet lives in `{assets}/styles/` (e.g.
+  `{assets}/styles/main.css`), imported by the app entry — **not** at the `src/` root. Keep the
+  generated `src/vite-env.d.ts` (Vite ambient types); in FSD it may move to `{app}/types/env.d.ts`.
 
 ## Mode-aware build scripts
 
