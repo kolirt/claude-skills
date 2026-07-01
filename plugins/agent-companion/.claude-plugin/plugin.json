@@ -1,6 +1,6 @@
 {
   "name": "agent-companion",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Claude runs as manager and consults several independent verifier agents in parallel \u2014 each returns its own verdict.",
   "author": {
     "name": "kolirt"

@@ -18,8 +18,15 @@ case "$cmd" in
     : "${effort:=}"
     model="$(resolve_model grok-composer)"
     [ -n "$model" ] || exit 64
+    # --output-format json: `plain` silently emits nothing on large/complex prompts
+    # (grok exits rc=0 but writes 0 bytes -> empty verdict -> false FAIL). json reliably
+    # carries the final answer in .text. Extract it; keep grok's stderr flowing to the
+    # caller (the dispatcher logs it for diagnosis). Exit code = grok's, not the parser's.
     grok --prompt-file "$prompt" -m "$model" \
-      --sandbox read-only --no-auto-update --output-format plain > "$out"
-    exit $?;;
+      --sandbox read-only --no-auto-update --output-format json \
+      | { command -v jq >/dev/null 2>&1 \
+            && jq -r '.text // empty' \
+            || python3 -c 'import sys,json; print(json.load(sys.stdin).get("text",""))'; } > "$out"
+    exit "${PIPESTATUS[0]}";;
   *) echo "usage: grok-composer.sh probe|run" >&2; exit 64;;
 esac
