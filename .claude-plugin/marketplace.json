@@ -7,7 +7,7 @@
     {
       "name": "agent-companion",
       "source": "./plugins/agent-companion",
-      "description": "Claude runs as manager and consults several independent verifier agents in parallel — each returns its own verdict.",
+      "description": "Claude runs as manager and consults several independent verifier agents in parallel \u2014 each returns its own verdict.",
       "version": "0.1.10"
     },
     {
@@ -33,6 +33,12 @@
       "source": "./plugins/knowledge-seo",
       "description": "Stack-independent SEO conventions (meta, structured data, robots, sitemaps, social previews, Core Web Vitals, IndexNow, audit) for baseline-by-default SEO.",
       "version": "0.1.1"
+    },
+    {
+      "name": "planning",
+      "source": "./plugins/planning",
+      "description": "Plan-then-build workflow: brainstorm a task into a self-contained plan, then implement that plan in a fresh session. Container for planning/workflow skills.",
+      "version": "0.1.0"
     }
   ]
 }
