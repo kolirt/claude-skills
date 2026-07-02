@@ -12,7 +12,7 @@ Interview the user until shared understanding, then present one short plan direc
 1. Never explore the codebase yourself — delegate ALL code reading to a Sonnet subagent and have it return a short summary of findings, not raw file contents.
 2. If a question can be answered by exploring the codebase, explore (via that subagent) instead of asking.
 3. Walk down the design tree, resolving decisions in dependency order.
-4. Ask one question at a time with the AskUserQuestion tool. For every question, offer your recommended answer first with a one-line reason.
+4. Ask exactly ONE question per AskUserQuestion call — the `questions` array must contain a single item. NEVER batch several questions into one call even though the tool allows up to 4: every answer reshapes the design tree, and the next question must be able to react to the previous answer. For every question, offer your recommended answer first with a one-line reason.
 5. Be relentless about vagueness: if an answer is fuzzy or leaves the decision ambiguous, do NOT move on — press on the same node with follow-up questions until the decision is concrete and unambiguous. Exception: stop pressing once the remaining uncertainty no longer changes the plan.
 6. Stop when no unresolved decision would change the plan. If the task is already fully specified, skip the interview and go straight to the plan.
 

@@ -1,6 +1,6 @@
 {
   "name": "planning",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Plan-then-build workflow: brainstorm a task into a self-contained plan, then implement that plan in a fresh session. Container for planning/workflow skills.",
   "author": {
     "name": "kolirt"
