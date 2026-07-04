@@ -38,7 +38,7 @@
       "name": "planning",
       "source": "./plugins/planning",
       "description": "Plan-then-build workflow: brainstorm a task into a self-contained plan, then implement that plan in a fresh session. Container for planning/workflow skills.",
-      "version": "0.1.1"
+      "version": "0.1.7"
     }
   ]
 }
