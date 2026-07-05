@@ -270,6 +270,47 @@ Show drafts as fenced markdown so the user sees exactly what will appear on
 GitHub. The tracker context block and the review-state digest are **chat-only**;
 they are not published.
 
+### Optional — review the draft in Plannotator (if installed)
+
+If the **Plannotator** annotator is available, offer it as the review surface for
+the draft: the user annotates specific lines in a browser UI instead of replying
+in chat. It is a drop-in for the "present, then WAIT" checkpoint below — the
+iterative-loop rules there still govern; Plannotator only changes *how* the user
+reacts, never *whether* they must explicitly approve before Step 5.
+
+1. **Detect.** Non-fatal probe — if it fails, skip this subsection silently and
+   use the plain chat checkpoint:
+   ```bash
+   command -v plannotator
+   ```
+
+2. **Render the draft to a file.** Write all three parts (tracker context,
+   review-state digest, audit findings) as one markdown file in a temp location —
+   e.g. `"$(mktemp -d)/pr-{N}-audit.md"`. This is the same content you would show
+   in chat; the tracker block and digest stay **chat-only** in the sense that they
+   are never published to GitHub, but they belong in the annotated file because
+   they help the user review.
+
+3. **Open the annotator** (this is what `plannotator-annotate` runs) and read its
+   result:
+   ```bash
+   plannotator annotate "$FILE"
+   ```
+
+4. **Act on the result** — map it onto the Step 3 loop:
+   - `The user approved.` / `"decision": "approved"` → treat as the explicit
+     approval Step 5 requires. Proceed to publish.
+   - Empty / `"decision": "dismissed"` → the user closed without deciding. Do NOT
+     publish and do NOT force a menu; hand control back with an open prompt, same
+     as the chat checkpoint.
+   - Plaintext feedback / `"decision": "annotated"` with `"feedback"` → revise the
+     draft per the annotations (including a brand-new issue raised there — Step 2.5),
+     then re-render and re-open the annotator. This is the normal revise loop.
+
+Fall back to the chat checkpoint whenever Plannotator is absent, the probe fails,
+or the user prefers chat. Everything else about Step 3 — never publishing without
+approval, the open iterative loop, treating new issues as normal — is unchanged.
+
 ### Present the draft, then WAIT — do not force a decision
 
 After showing the draft, **stop and hand control back to the user with an open
@@ -618,7 +659,8 @@ worktree: it uses the GitHub head SHA via the `contents` API.
 - [ ] Project conventions opened for changed paths.
 - [ ] **(if companion)** worktree at head SHA; panel run; gate handled; worktree
       cleaned up.
-- [ ] Draft shown in chat (review-state digest first); user approved.
+- [ ] Draft presented (review-state digest first) — in chat, or in Plannotator if
+      installed (Step 3); user explicitly approved.
 - [ ] Pre-publish guard: every body has its disclosure prefix AND `### Issue N`
       heading (§4.1).
 - [ ] Inline comments posted; `id` + `html_url` recorded.
