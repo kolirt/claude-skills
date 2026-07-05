@@ -14,7 +14,7 @@
       "name": "auditing-prs",
       "source": "./plugins/auditing-prs",
       "description": "Audit GitHub PRs from one shared detection core: audit-pr fetches, drafts, and publishes review comments with consistent conventions and resolves issues when fixes land; prepush-audit is a read-only, chat-only self-check an executor runs before pushing to surface the same findings first. Optional agent-companion verifier panel for independent task-completion checks.",
-      "version": "0.2.0"
+      "version": "0.3.0"
     },
     {
       "name": "knowledge",
