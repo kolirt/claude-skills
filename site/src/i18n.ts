@@ -62,6 +62,9 @@ const en: Dict = {
   'skill.mode.diagnose.tag': '— root cause',
   'skill.mode.diagnose':
     "Root-cause analysis of a <em class='em'>known</em> symptom or bug — explains <strong>why</strong> it happens (not discovery like audit, not fix-choice like consult).",
+  'skill.mode.research.tag': '— open question',
+  'skill.mode.research':
+    "Independent investigation of an open question — how something works, what the options are, feasibility (may reach beyond code); each agent’s findings are merged (union). Answers <em class='em'>what is true</em>, not <strong>which to pick</strong> like consult.",
   'skill.modesNote':
     'Graceful degrade: an agent that isn’t installed/authenticated is skipped; if none are available, Claude proceeds and tells you the review was skipped.',
   'skill.back': '← all plugins',

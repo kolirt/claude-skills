@@ -69,6 +69,8 @@ const isCompanion = computed(() => props.id === 'agent-companion')
           <dd v-html="t('skill.mode.audit')" />
           <dt><span class="accent">diagnose</span> <span class="dim">{{ t('skill.mode.diagnose.tag') }}</span></dt>
           <dd v-html="t('skill.mode.diagnose')" />
+          <dt><span class="accent">research</span> <span class="dim">{{ t('skill.mode.research.tag') }}</span></dt>
+          <dd v-html="t('skill.mode.research')" />
         </dl>
         <p class="prose dim note">{{ t('skill.modesNote') }}</p>
       </section>

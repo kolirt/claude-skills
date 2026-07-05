@@ -12,6 +12,7 @@ You are the manager. The mode is activated with `/agent-companion:on`; it stays 
 | Need a recommendation/choice between options at a decision fork | `consult` |
 | Need independent discovery of issues over a scope of existing code | `audit` |
 | Need the root cause of a KNOWN symptom/bug in existing code | `diagnose` |
+| Need to investigate an open question / survey how something works / map options (incl. non-code) | `research` |
 | Need to judge a specific artifact (diff/plan/spec/consolidated audit) against acceptance criteria | `review` |
 
 Anti-conflict rules:
@@ -22,6 +23,8 @@ Anti-conflict rules:
 - An `audit` finding usually already locates its cause — do not redundantly re-diagnose it. But `audit` only guarantees discovery, not a mechanism; if an audit-surfaced symptom has a genuinely uncertain root cause, escalating that one symptom to `diagnose` is correct. The symptom's source (user or a prior audit) does not gate the choice.
 - A mixed request ("diagnose X, and find what else is broken") = two invocations: `diagnose` for X plus a separate `audit` for the rest. Do not merge them.
 - Bug-handling order: `diagnose` (when the root cause is uncertain) → `consult` per the existing mandatory-CONSULT triggers → implementation → `review`. `diagnose` precedes `consult`; it does not narrow or replace it.
+- `research` vs `audit`: `audit` hunts defects in existing code; `research` answers an open question / surveys how something works / weighs options or feasibility (may reach beyond code to external sources). Discriminator: is the deliverable a defect list over existing code? Yes → `audit`; no (an answer / survey / options map) → `research`. They share the same panel machinery but differ in the verifier's task and output schema.
+- `research` vs `consult`: `research` gathers and synthesizes facts and may present options neutrally; `consult` commits to ONE recommendation at a decision fork. Research often precedes consult. Discriminator: "what is true / how does X work / what are the options?" → `research`; "which option should I pick?" → `consult`.
 
 ## CONSULT is mandatory (not discretionary)
 Architecture; contracts / public API / data formats; security; migrations; test strategy; large behavior/UX changes; any fork with 2+ real options.
@@ -57,6 +60,15 @@ Diagnosis is "what & why" only: it may state fix-constraints but never chooses t
 
 Run diagnoses at `high` effort.
 
+## RESEARCH (symmetric, two independent passes)
+When the user asks you to research/investigate an open question (how something works, what the options are, feasibility — code or beyond):
+1. **Your own research first.** Investigate the scope yourself and record your findings to a file BEFORE you read the verifier's findings (this preserves independence — no anchoring).
+2. **Verifier's independent research.** Invoke `MODE: research` (see below) with `QUESTION` + `SCOPE` (+ optional `FOCUS`). The verifier sees only those, never your findings. Like `audit`, this is non-gating — it never returns pass/fail (`STATUS: RESEARCH_COMPLETE` only).
+3. **Consolidate.** Merge into one answer: union of real findings, dedup duplicates. For any finding only one side raised, or where the two disagree, verify it yourself and mark it `disputed` with your resolution. Record a "Decision after synthesis" (what you took/rejected/why).
+4. **Final review.** Send the consolidated research through `MODE: review` with `ACCEPTANCE` = research quality: claims are verified and sourced (no fabrication), the question is actually answered, the scope is covered (no obviously-missed angle), and disputed items are resolved soundly. `CHANGES_REQUESTED` → rework the consolidation and re-review (cap ~3 rounds, then escalate).
+
+Run research at `high` effort.
+
 ## Superpowers workflow gates (mandatory)
 Each Superpowers stage produces an artifact that MUST pass through the verifier before you advance to the next stage. The verifier is a second pair of eyes on your own work — not a rubber stamp; synthesize and escalate as usual.
 - **Spec** — after `brainstorming` writes the design/spec doc and before `writing-plans`: REVIEW the spec (`MODE: review`, `CHANGED` = the spec file, `ACCEPTANCE` = the requirements it must capture). Ask: gaps, contradictions, unstated assumptions, mis-scoped requirements.
@@ -65,7 +77,7 @@ Each Superpowers stage produces an artifact that MUST pass through the verifier 
 Gate semantics: do not move to the next stage while the artifact sits at `CHANGES_REQUESTED` — fix and re-REVIEW (cap ~3 rounds, then escalate to the user). Use `high` effort for spec and plan gates and final execution review; `medium` for routine per-task reviews.
 
 ## Verifier panel
-A CONSULT, REVIEW, AUDIT, or DIAGNOSE invocation runs ALL active verifiers in parallel. For REVIEW, the result is **any-blocks** gated: the overall verdict is PASS only if every considered verifier returns PASS; any CHANGES_REQUESTED or FAIL response from any verifier blocks the gate. Verifiers that returned SKIP or FAIL are listed by name in the summary so you can act on them individually.
+A CONSULT, REVIEW, AUDIT, DIAGNOSE, or RESEARCH invocation runs ALL active verifiers in parallel. For REVIEW, the result is **any-blocks** gated: the overall verdict is PASS only if every considered verifier returns PASS; any CHANGES_REQUESTED or FAIL response from any verifier blocks the gate. Verifiers that returned SKIP or FAIL are listed by name in the summary so you can act on them individually.
 
 ## Reading the output (synthesizer + drill-down)
 If a synthesizer is configured, STDOUT is ONE consolidated report (the raw per-verifier verdicts are kept on disk, not dumped into your context) — this is intentional, to save context. The consolidated report tags each finding with its source agent + a locator (file:line / short id), and prints the path to the raw verdicts.
@@ -80,7 +92,7 @@ harness collapses long `collect` stdout, so reproduce the `=== verdicts ===` row
 clickable path) in your own message every time, so the user can open any agent's raw verdict.
 
 ## How to invoke the verifier
-1. Compose the request CONTENT in a temp file (REVIEW/CONSULT/AUDIT/DIAGNOSE fields as before).
+1. Compose the request CONTENT in a temp file (REVIEW/CONSULT/AUDIT/DIAGNOSE/RESEARCH fields as before).
 2. PREPARE — freeze the run and get the agent list (do NOT cd):
    `bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" prepare <mode> <effort> <request-file>`
    Parse stdout TSV: `RUN_DIR\t<path>`, one `RUNNABLE\t<v>` + `SPAWN\t<v>\t<command>` per runnable
@@ -108,7 +120,7 @@ Non-Claude-Code / scripted callers may still use the synchronous form
 live per-agent state.
 
 ## Effort (tiered)
-- `high` — architecture, security, migrations, final pre-merge reviews, any CONSULT with 2+ options.
+- `high` — architecture, security, migrations, final pre-merge reviews, audits, diagnoses, research, any CONSULT with 2+ options.
 - `medium` — routine REVIEW of small changes.
 - NEVER `none`/`low` for anything that gates correctness.
 

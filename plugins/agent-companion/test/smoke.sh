@@ -165,7 +165,8 @@ printf 'mpass\n' > "$DATA/verifiers.conf"
   mk "STATUS: ADVICE";             ok p3 consult  PASS
   mk "STATUS: AUDIT_COMPLETE";     ok p4 audit    PASS
   mk "STATUS: DIAGNOSIS_COMPLETE"; ok p5 diagnose PASS
-  mk "STATUS: PASS";               ok p6 audit    FAIL   # wrong-mode status -> fail-closed
+  mk "STATUS: RESEARCH_COMPLETE";  ok p6 research PASS
+  mk "STATUS: PASS";               ok p7 audit    FAIL   # wrong-mode status -> fail-closed
 ) || exit 1
 echo "OK classify-matrix"
 

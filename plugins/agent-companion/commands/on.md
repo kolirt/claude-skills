@@ -6,7 +6,7 @@ description: Start agent-companion — Claude acts as manager and consults the v
 
 Read `${CLAUDE_PLUGIN_ROOT}/MANAGER.md` and act STRICTLY as the MANAGER per it until `/agent-companion:off`.
 
-At decision / review / audit points, follow the **MANAGER.md** verifier protocol:
+At each verifier-protocol point defined by **MANAGER.md** (consult / review / audit / diagnose / research), follow it:
 `prepare` (freeze + list agents) → spawn each `SPAWN` line as a native background task → `collect`
 (gate). Do NOT cd first. `collect` exit codes: `0` pass/non-gating · `10` review blocked · `64`
 either env error or — per its stderr token `INCOMPLETE` — an unfinished run to retry (re-spawn the

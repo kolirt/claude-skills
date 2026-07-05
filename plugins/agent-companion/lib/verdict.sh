@@ -36,6 +36,7 @@ classify_verdict() {
     consult)  [ "$first" = "STATUS: ADVICE" ]           && echo PASS || echo FAIL;;
     audit)    [ "$first" = "STATUS: AUDIT_COMPLETE" ]   && echo PASS || echo FAIL;;
     diagnose) [ "$first" = "STATUS: DIAGNOSIS_COMPLETE" ] && echo PASS || echo FAIL;;
+    research) [ "$first" = "STATUS: RESEARCH_COMPLETE" ]  && echo PASS || echo FAIL;;
     *) echo FAIL;;   # unknown mode -> fail-closed
   esac
 }

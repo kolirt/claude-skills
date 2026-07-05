@@ -36,8 +36,8 @@ manifest_valid() {
 }
 
 validate_invocation() { # <mode> <request-file>
-  case "$1" in review|consult|audit|diagnose) ;;
-    *) echo "unknown mode: $1 (use review|consult|audit|diagnose)" >&2; exit 64;; esac
+  case "$1" in review|consult|audit|diagnose|research) ;;
+    *) echo "unknown mode: $1 (use review|consult|audit|diagnose|research)" >&2; exit 64;; esac
   [ -f "$2" ] || { echo "request file not found: $2" >&2; exit 64; }
 }
 
@@ -383,7 +383,7 @@ case "$CMD" in
   run-one) shift; cmd_run_one "$@";;
   collect) shift; cmd_collect "$@";;
   run)     shift; cmd_run "$@";;
-  review|consult|audit|diagnose) cmd_run "$@";;   # legacy 3-arg form
+  review|consult|audit|diagnose|research) cmd_run "$@";;   # legacy 3-arg form
   '') echo "usage: verify.sh <prepare|run-one|collect|run> ... | <mode> <effort> <request-file>" >&2; exit 64;;
   *) echo "unknown subcommand/mode: $CMD" >&2; exit 64;;
 esac
