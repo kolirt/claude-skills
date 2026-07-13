@@ -9,7 +9,8 @@
 # resolved from `grok models` (no hardcoded version); that call also doubles as the
 # auth/availability probe — if grok isn't usable it returns nothing → agent SKIPPED.
 set -uo pipefail
-_d="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"; . "$_d/../lib/grok-model.sh"
+_d="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+. "$_d/../lib/grok-model.sh"; . "$_d/../lib/grok-run.sh"
 cmd="${1:-}"; shift || true
 case "$cmd" in
   probe)
@@ -23,15 +24,10 @@ case "$cmd" in
     : "${effort:=}"  # no confirmed CLI flag for the /model effort arg; ignored.
     model="$(resolve_model grok-build)"
     [ -n "$model" ] || exit 64
-    # --output-format json: `plain` silently emits nothing on large/complex prompts
-    # (grok exits rc=0 but writes 0 bytes -> empty verdict -> false FAIL). json reliably
-    # carries the final answer in .text. Extract it; keep grok's stderr flowing to the
-    # caller (the dispatcher logs it for diagnosis). Exit code = grok's, not the parser's.
-    grok --prompt-file "$prompt" -m "$model" \
-      --sandbox read-only --no-auto-update --output-format json \
-      | { command -v jq >/dev/null 2>&1 \
-            && jq -r '.text // empty' \
-            || python3 -c 'import sys,json; print(json.load(sys.stdin).get("text",""))'; } > "$out"
-    exit "${PIPESTATUS[0]}";;
+    # Runs grok, extracts .text, keeps the full JSON, and retries once on a verdict
+    # with no STATUS line (grok aborts its agentic loop non-deterministically —
+    # see lib/grok-run.sh). Exit code = grok's, not the parser's.
+    grok_run "$model" "$prompt" "$out"
+    exit "$?";;
   *) echo "usage: grok.sh probe|run" >&2; exit 64;;
 esac
