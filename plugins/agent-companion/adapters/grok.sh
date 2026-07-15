@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Verifier adapter: grok CLI → "Grok Build" model (xAI's coding model).
+# Verifier adapter: grok CLI → xAI's frontier reasoning model (whatever it is today:
+# grok-build → grok-4 → grok-4.5 …). resolve_frontier picks it by exclusion — the
+# default non-composer model — so an xAI rebrand does NOT silently make this "unavailable".
 # Official xAI Grok CLI (install: curl -fsSL https://x.ai/cli/install.sh | bash);
 # a sibling adapter grok-composer.sh drives the same CLI with the Composer model.
 # headless: `grok -p "<prompt>" -m <model> --sandbox read-only` (single-turn);
@@ -15,14 +17,14 @@ cmd="${1:-}"; shift || true
 case "$cmd" in
   probe)
     command -v grok >/dev/null 2>&1 || exit 64
-    # `grok models` (inside resolve_model) succeeds only if grok is installed AND
+    # `grok models` (inside resolve_frontier) succeeds only if grok is installed AND
     # authenticated by ANY method → empty result means skip (graceful), not fail.
-    [ -n "$(resolve_model grok-build)" ] || exit 64
+    [ -n "$(resolve_frontier)" ] || exit 64
     exit 0;;
   run)
     prompt="${1:?}"; effort="${2:-}"; out="${3:?}"
     : "${effort:=}"  # no confirmed CLI flag for the /model effort arg; ignored.
-    model="$(resolve_model grok-build)"
+    model="$(resolve_frontier)"
     [ -n "$model" ] || exit 64
     # Runs grok, extracts .text, keeps the full JSON, and retries once on a verdict
     # with no STATUS line (grok aborts its agentic loop non-deterministically —
