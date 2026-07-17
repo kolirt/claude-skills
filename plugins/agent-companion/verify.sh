@@ -6,7 +6,28 @@ SELF="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 ROOT="${CLAUDE_PLUGIN_ROOT:-$SELF}"
 DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
 . "$ROOT/lib/verdict.sh"
+. "$ROOT/lib/spec.sh"
 T="${AGENT_COMPANION_TIMEOUT:-180}"
+
+# run_adapter <timeout> <adapter-sh> <prompt> <effort> <out> <model> <stderr-log>
+# Invoke an adapter's `run`, passing the model as a 4th arg ONLY when non-empty (a bare
+# spec keeps the exact 3-arg call contract). stdout silenced; diagnostics to the stderr log.
+run_adapter() {
+  local to="$1" sh="$2" p="$3" e="$4" o="$5" m="$6" errlog="$7"
+  if [ -n "$m" ]; then
+    _with_timeout "$to" bash "$sh" run "$p" "$e" "$o" "$m" >/dev/null 2>"$errlog"
+  else
+    _with_timeout "$to" bash "$sh" run "$p" "$e" "$o" >/dev/null 2>"$errlog"
+  fi
+}
+
+# probe_adapter <adapter-sh> <model>  -> adapter's probe rc.
+# Symmetric with run_adapter: pass the model ONLY when non-empty, so a bare entry keeps the
+# original zero-arg `probe` contract (a strict custom adapter must not see a spurious "").
+probe_adapter() {
+  if [ -n "$2" ]; then bash "$1" probe "$2" >/dev/null 2>&1
+  else                 bash "$1" probe        >/dev/null 2>&1; fi
+}
 
 # ---------- pure helpers ----------
 gen_reqid() {
@@ -82,18 +103,23 @@ warn_no_timeout() {
 }
 
 synth_available() {
+  local a m
   case "$1" in
     claude) command -v claude >/dev/null 2>&1 ;;
-    *) [ -f "$ROOT/adapters/$1.sh" ] && bash "$ROOT/adapters/$1.sh" probe >/dev/null 2>&1 ;;
+    *) a="$(spec_adapter "$1")"; m="$(spec_model "$1")"
+       spec_valid "$1" && [ -f "$ROOT/adapters/$a.sh" ] \
+         && probe_adapter "$ROOT/adapters/$a.sh" "$m" ;;
   esac
 }
 run_synth() { # <name> <prompt-file> <out-file> <run>
-  local n="$1" p="$2" o="$3" run="$4" eff
+  local n="$1" p="$2" o="$3" run="$4" eff a m seff
   eff="$(manifest_get "$run" effort)"; [ -n "$eff" ] || eff=medium  # frozen effort; medium fallback
   if [ "$n" = claude ]; then
     _with_timeout "$T" claude -p "$(cat "$p")" --allowedTools "Read Grep Glob" > "$o" 2>"$run/synth.stderr.log"
   else
-    _with_timeout "$T" bash "$ROOT/adapters/$n.sh" run "$p" "$eff" "$o" 2>"$run/synth.stderr.log"
+    a="$(spec_adapter "$n")"; m="$(spec_model "$n")"
+    seff="$(spec_effort "$n")"; [ -n "$seff" ] || seff="$eff"   # per-entry @effort overrides frozen
+    run_adapter "$T" "$ROOT/adapters/$a.sh" "$p" "$seff" "$o" "$m" "$run/synth.stderr.log"
   fi
 }
 
@@ -230,10 +256,17 @@ cmd_prepare() {
   # probe/partition (newline-delimited; entries may carry a TAB+reason)
   local v ad prc runnable="" skip="" fail=""
   while IFS= read -r v; do [ -n "$v" ] || continue
-    ad="$ROOT/adapters/$v.sh"
+    if ! spec_valid "$v"; then
+      # a rejected entry is arbitrary text — neutralise any TAB before it enters the
+      # TAB-delimited fail record, so the manifest/stdout contract stays intact.
+      vsafe="$(printf '%s' "$v" | tr '\t' ' ')"
+      fail="$fail$vsafe	bad-spec
+"; continue
+    fi
+    ad="$ROOT/adapters/$(spec_adapter "$v").sh"
     if [ ! -f "$ad" ]; then fail="$fail$v	no-adapter
 "; continue; fi
-    bash "$ad" probe >/dev/null 2>&1; prc=$?
+    probe_adapter "$ad" "$(spec_model "$v")"; prc=$?
     if   [ "$prc" -eq 0 ];  then runnable="$runnable$v
 "
     elif [ "$prc" -eq 64 ]; then skip="$skip$v	unavailable
@@ -243,7 +276,12 @@ cmd_prepare() {
   done < <(read_verifiers)
 
   local synth=none sconf="$DATA/synthesizer.conf"
-  [ -f "$sconf" ] && synth="$(head -n1 "$sconf" | tr -d '[:space:]')"; [ -n "$synth" ] || synth=none
+  # trim only surrounding whitespace — stripping INNER spaces would silently "repair" a
+  # malformed value (e.g. `codex:bad model` -> `codex:badmodel`) into something runnable.
+  [ -f "$sconf" ] && synth="$(head -n1 "$sconf" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"; [ -n "$synth" ] || synth=none
+  # a hand-edited synthesizer.conf is untrusted: anything that is not claude/none and not a
+  # well-formed spec is disabled (never serialized into the TAB manifest, never run blindly).
+  case "$synth" in none|claude) ;; *) spec_valid "$synth" || synth=none ;; esac
 
   # atomic manifest
   local m="$run/manifest.tmp"
@@ -275,17 +313,21 @@ cmd_run_one() {
   [ "$#" -ge 2 ] || { echo "usage: verify.sh run-one <run-dir> <verifier>" >&2; exit 64; }
   local run="$1" v="$2"
   manifest_valid "$run" || { echo "invalid run-dir/manifest: $run" >&2; exit 64; }
-  manifest_list "$run" runnable | grep -qxF "$v" || { echo "verifier not in runnable: $v" >&2; exit 64; }
-  local effort prompt to
+  manifest_list "$run" runnable | grep -qxF -- "$v" || { echo "verifier not in runnable: $v" >&2; exit 64; }
+  local effort prompt to adapter model eff
   effort="$(manifest_get "$run" effort)"
   prompt="$(manifest_get "$run" prompt)"
   to="$(manifest_get "$run" timeout)"; [ -n "$to" ] || to="$T"
+  # $v is the full spec (cli[:model][@effort]) — resolve the adapter/model and let a
+  # per-entry @effort override the frozen dispatch effort.
+  adapter="$(spec_adapter "$v")"; model="$(spec_model "$v")"
+  eff="$(spec_effort "$v")"; [ -n "$eff" ] || eff="$effort"
   local vdir="$run/$v"; mkdir -p "$vdir"
   rm -f "$vdir/finished" "$vdir/rc"
   : > "$vdir/started"
   # adapter writes its verdict to the FILE; its stdout is silenced (no context leak),
   # diagnostics go to stderr.log. run-one itself prints nothing to stdout.
-  _with_timeout "$to" bash "$ROOT/adapters/$v.sh" run "$prompt" "$effort" "$vdir/verdict" >/dev/null 2>"$vdir/stderr.log"
+  run_adapter "$to" "$ROOT/adapters/$adapter.sh" "$prompt" "$eff" "$vdir/verdict" "$model" "$vdir/stderr.log"
   printf '%s' "$?" > "$vdir/rc.tmp"; mv "$vdir/rc.tmp" "$vdir/rc"
   : > "$vdir/finished"
   exit 0

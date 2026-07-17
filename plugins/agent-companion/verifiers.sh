@@ -14,6 +14,7 @@ ROOT="${CLAUDE_PLUGIN_ROOT:-$SELF}"
 DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
 CONF="$DATA/verifiers.conf"
 DEFAULT="$ROOT/verifiers.conf"
+. "$ROOT/lib/spec.sh"
 
 active_file() { if [ -f "$CONF" ]; then printf '%s\n' "$CONF"; else printf '%s\n' "$DEFAULT"; fi; }
 read_active()  { grep -v '^#' "$(active_file)" 2>/dev/null | grep -v '^[[:space:]]*$' || true; }
@@ -36,22 +37,30 @@ case "$cmd" in
     read_active | sed 's/^/  - /'
     echo "available adapters:"
     ls "$ROOT/adapters" 2>/dev/null | sed -e 's/\.sh$//' -e 's/^/  - /'
+    echo "entry format: cli[:model][@effort]  e.g. codex, codex:gpt-5.6-sol@high, grok@high"
     ;;
   add)
     name="${1:?usage: verifiers.sh add <name>}"
-    if [ ! -f "$ROOT/adapters/$name.sh" ]; then
-      echo "no adapter found: adapters/$name.sh — create it first (see creating-plugins skill)" >&2
+    # name may be a full spec cli[:model][@effort]; validate its grammar, then that the
+    # referenced adapter exists. Entries are matched EXACTLY: `codex` and `codex:m@high`
+    # are distinct, so `remove codex` never removes a model-pinned variant.
+    if ! spec_valid "$name"; then
+      echo "invalid entry: $name — use cli[:model][@effort] (effort in low|medium|high|xhigh|max)" >&2
+      exit 1
+    fi
+    if [ ! -f "$ROOT/adapters/$(spec_adapter "$name").sh" ]; then
+      echo "no adapter found: adapters/$(spec_adapter "$name").sh — create it first (see creating-plugins skill)" >&2
       exit 1
     fi
     ensure_override
-    if grep -qxF "$name" "$CONF"; then echo "$name is already active"; exit 0; fi
+    if grep -qxF -- "$name" "$CONF"; then echo "$name is already active"; exit 0; fi
     printf '%s\n' "$name" >> "$CONF"
     echo "added $name; active set is now:"; read_active | sed 's/^/  - /'
     ;;
   remove)
     name="${1:?usage: verifiers.sh remove <name>}"
     ensure_override
-    tmp="$(mktemp)"; grep -vxF "$name" "$CONF" > "$tmp" || true; mv "$tmp" "$CONF"
+    tmp="$(mktemp)"; grep -vxF -- "$name" "$CONF" > "$tmp" || true; mv "$tmp" "$CONF"
     echo "removed $name; active set is now:"; read_active | sed 's/^/  - /'
     ;;
   *)

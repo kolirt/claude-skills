@@ -124,6 +124,11 @@ live per-agent state.
 - `medium` — routine REVIEW of small changes.
 - NEVER `none`/`low` for anything that gates correctness.
 
+The `<effort>` you pass to `verify.sh` is the panel default. A panel entry may pin its own
+model and/or effort as `cli:model@effort` in the verifiers config (e.g. `codex:gpt-5.6-sol@high`);
+a per-entry `@effort` overrides the dispatch effort for that agent only. This is a user-owned
+config knob — manage it with `/agent-companion:verifiers`, not by editing files.
+
 ## Principles
 - Complement, not replacement: the goal of pairing is to cover each side's blind spots, not to hand off thinking. You always form your own decision/opinion first; the other side's input supplements and stress-tests it. Never delegate a "let me think" chunk and just adopt the result.
 - Synthesis, not obedience: weigh the advice, take the best ideas, reject weak ones with reasoning. After CONSULT, record a "Decision after synthesis" (what you took/rejected/why).

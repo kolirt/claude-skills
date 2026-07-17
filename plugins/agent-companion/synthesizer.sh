@@ -10,14 +10,16 @@ ROOT="${CLAUDE_PLUGIN_ROOT:-$SELF}"
 # Same stable persistent location as verify.sh / verifiers.sh.
 DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
 CONF="$DATA/synthesizer.conf"
+. "$ROOT/lib/spec.sh"
 
-current() { [ -f "$CONF" ] && head -n1 "$CONF" | tr -d '[:space:]' || true; }
+# trim only surrounding whitespace (NOT inner) so a malformed value isn't silently repaired.
+current() { [ -f "$CONF" ] && head -n1 "$CONF" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true; }
 
-valid() { # <name>
+valid() { # <name>  — may be a full spec cli[:model][@effort]
   case "$1" in
     none|off) return 0 ;;
     claude)   return 0 ;;                 # headless `claude -p` (uses Claude limits)
-    *)        [ -f "$ROOT/adapters/$1.sh" ] ;;
+    *)        spec_valid "$1" && [ -f "$ROOT/adapters/$(spec_adapter "$1").sh" ] ;;
   esac
 }
 
@@ -29,13 +31,14 @@ case "$cmd" in
     printf 'candidates: claude'
     for a in "$ROOT"/adapters/*.sh; do [ -f "$a" ] && printf ', %s' "$(basename "$a" .sh)"; done
     printf ', none\n'
+    echo "format: claude | none | cli[:model][@effort]  e.g. codex:gpt-5.6-sol@high"
     echo "config: $CONF"
     ;;
   set)
-    name="${1:?usage: synthesizer.sh set <claude|adapter|none>}"
+    name="${1:?usage: synthesizer.sh set <claude|cli[:model][@effort]|none>}"
     [ "$name" = off ] && name=none   # normalize: `set off` is an alias for `none`
     if ! valid "$name"; then
-      echo "unknown synthesizer: $name (use 'claude', an adapter name, or 'none')" >&2; exit 1
+      echo "invalid synthesizer: $name (use 'claude', 'none', or cli[:model][@effort] with an existing adapter)" >&2; exit 1
     fi
     mkdir -p "$DATA"; printf '%s\n' "$name" > "$CONF"
     echo "synthesizer set to: $name"

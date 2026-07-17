@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared run logic for the grok-family adapters (grok.sh, grok-composer.sh).
+# Shared run logic for the grok CLI adapter (grok.sh).
 #
 # The grok CLI is an agentic loop: it narrates ("Reviewing the diff…") between tool
 # calls, and `--output-format json` concatenates that narration AND the final answer
@@ -29,16 +29,19 @@ grok_has_status() {
   sed -E 's/[*`]//g; s/^[[:space:]_]+//' "$1" 2>/dev/null | grep -q '^STATUS:'
 }
 
-# grok_run <model> <prompt-file> <out-file>  -> exit code of grok itself
+# grok_run <model> <prompt-file> <out-file> [effort]  -> exit code of grok itself
 grok_run() {
-  local model="$1" prompt="$2" out="$3"
+  local model="$1" prompt="$2" out="$3" effort="${4:-}"
   local dir attempt raw rc
   dir="$(dirname "$out")"
 
   for attempt in 1 2; do
     raw="$dir/raw.json"; [ "$attempt" = 1 ] || raw="$dir/raw.retry.json"
 
+    # effort (optional) → grok's --reasoning-effort; a validated tier has no spaces, so the
+    # unquoted ${effort:+…} splits into exactly two argv words. Omitted when empty.
     grok --prompt-file "$prompt" -m "$model" \
+      ${effort:+--reasoning-effort "$effort"} \
       --sandbox read-only --no-auto-update --output-format json > "$raw"
     rc=$?
 

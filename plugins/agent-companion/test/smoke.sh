@@ -258,4 +258,87 @@ err="$( cd "$TMP" && run collect "$RUNN" 2>&1 >/dev/null )"; rc=$?
   && [ -f "$RUNN/complete" ] && [ ! -f "$RUNN/.inflight" ] \
   && echo "OK collect-no-verifier" || { echo "FAIL collect-no-verifier rc=$rc"; echo "$err"; exit 1; }
 
+# ---- spec.sh parser unit matrix (cli[:model][@effort]) ----
+( . "$ROOT/lib/spec.sh"
+  t() { # <spec> <adapter> <model> <effort>
+    [ "$(spec_adapter "$1")" = "$2" ] && [ "$(spec_model "$1")" = "$3" ] && [ "$(spec_effort "$1")" = "$4" ] \
+      || { echo "FAIL spec-parse [$1]: a=$(spec_adapter "$1") m=$(spec_model "$1") e=$(spec_effort "$1")"; exit 1; }; }
+  t codex                  codex ''          ''
+  t codex@high             codex ''          high
+  t codex:gpt-5.6-sol      codex gpt-5.6-sol ''
+  t codex:gpt-5.6-sol@high codex gpt-5.6-sol high
+  t codex:                 codex ''          ''
+  t codex@                 codex ''          ''
+  t codex:@high            codex ''          high
+  t codex:m@               codex m           ''
+  ok() { spec_valid "$1" || { echo "FAIL spec_valid rejected valid [$1]"; exit 1; }; }
+  no() { spec_valid "$1" && { echo "FAIL spec_valid accepted invalid [$1]"; exit 1; }; return 0; }
+  for s in codex codex@high codex:m codex:m@high codex:@high codex:m@; do ok "$s"; done
+  for s in ':x' '@high' 'codex/x' 'codex:a b' 'codex:m@bogus' 'codex:m@a@b' '' 'co dex' '-n' '-x:y@high'; do no "$s"; done
+  no "codex:$(printf 'x%.0s' $(seq 200))"   # over the 128-char component cap
+) || exit 1
+echo "OK spec-parser-matrix"
+
+# mecho: echoes the effort ($3) and model ($5) it was invoked with into its verdict.
+# NOTE arg positions — adapters are NOT shifted: $1=run $2=prompt $3=effort $4=out $5=model.
+cat > "$ROOT/adapters/mecho.sh" <<'A'
+#!/usr/bin/env bash
+[ "$1" = probe ] && exit 0
+n="$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')"
+printf 'STATUS: PASS\nREQUEST_ID: %s\nEFFORT=%s MODEL=%s\n' "$n" "$3" "${5:-}" > "$4"
+A
+chmod +x "$ROOT/adapters/mecho.sh"
+
+# spec routing: cli:model@effort must reach the adapter as model + (overriding) effort.
+# Dispatch effort is medium; the @high entry must win.
+printf 'mecho:some-model@high\n' > "$DATA/verifiers.conf"
+O="$( cd "$TMP" && run prepare review medium "$TMP/req.md" 2>/dev/null )"
+RUNX="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+printf '%s\n' "$O" | grep -q "^RUNNABLE	mecho:some-model@high$" || { echo "FAIL spec-routing: RUNNABLE line"; echo "$O"; exit 1; }
+( cd "$TMP" && run run-one "$RUNX" "mecho:some-model@high" ) >/dev/null 2>&1
+VX="$RUNX/mecho:some-model@high/verdict"
+grep -q 'MODEL=some-model' "$VX" && grep -q 'EFFORT=high' "$VX" \
+  && echo "OK spec-model-effort-routing" || { echo "FAIL spec-routing verdict"; cat "$VX" 2>/dev/null; exit 1; }
+
+# effort fallback: a bare entry uses the dispatch effort and passes NO model.
+printf 'mecho\n' > "$DATA/verifiers.conf"
+O="$( cd "$TMP" && run prepare review medium "$TMP/req.md" 2>/dev/null )"
+RUNY="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+( cd "$TMP" && run run-one "$RUNY" mecho ) >/dev/null 2>&1
+VY="$RUNY/mecho/verdict"
+grep -q 'EFFORT=medium' "$VY" && grep -q 'MODEL=$' "$VY" \
+  && echo "OK spec-effort-fallback" || { echo "FAIL spec-effort-fallback"; cat "$VY" 2>/dev/null; exit 1; }
+
+# malformed entry -> FAIL partition (bad-spec), never run blindly.
+printf 'mecho:bad model\n' > "$DATA/verifiers.conf"
+O="$( cd "$TMP" && run prepare review medium "$TMP/req.md" 2>/dev/null )"
+printf '%s\n' "$O" | grep -q "^FAIL	mecho:bad model	bad-spec$" \
+  && echo "OK spec-bad-spec-fails" || { echo "FAIL spec-bad-spec"; echo "$O"; exit 1; }
+
+# a TAB inside a malformed entry must not corrupt the TAB-delimited FAIL record.
+printf 'mecho\tbad\n' > "$DATA/verifiers.conf"
+O="$( cd "$TMP" && run prepare review medium "$TMP/req.md" 2>/dev/null )"
+printf '%s\n' "$O" | grep -q "^FAIL	mecho bad	bad-spec$" \
+  && echo "OK spec-bad-spec-tab-safe" || { echo "FAIL spec-bad-spec-tab-safe"; echo "$O"; exit 1; }
+
+# a malformed hand-edited synthesizer must be neutralized (disabled), never run/serialized.
+printf 'mpass\nmchg\n' > "$DATA/verifiers.conf"
+printf 'msynth:bad model\n' > "$DATA/synthesizer.conf"
+out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
+! echo "$out" | grep -q 'consolidated report' && [ "$rc" = 10 ] \
+  && echo "OK synth-malformed-neutralized" || { echo "FAIL synth-malformed rc=$rc"; echo "$out"; exit 1; }
+rm -f "$DATA/synthesizer.conf"
+
+# a bare entry must invoke `probe` with NO extra arg (custom strict adapters rely on this).
+cat > "$ROOT/adapters/mstrict.sh" <<'A'
+#!/usr/bin/env bash
+if [ "$1" = probe ]; then [ "$#" -eq 1 ] && exit 0 || exit 64; fi
+n="$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')"
+printf 'STATUS: PASS\nREQUEST_ID: %s\n' "$n" > "$4"
+A
+chmod +x "$ROOT/adapters/mstrict.sh"
+printf 'mstrict\n' > "$DATA/verifiers.conf"
+( cd "$TMP" && run review medium "$TMP/req.md" ) >/dev/null; rc=$?
+[ "$rc" = 0 ] && echo "OK bare-probe-no-extra-arg" || { echo "FAIL bare-probe-no-extra-arg rc=$rc"; exit 1; }
+
 echo "ALL SMOKE OK"

@@ -25,8 +25,9 @@ bash "${CLAUDE_PLUGIN_ROOT}/synthesizer.sh" show
 If it reports `synthesizer: unset` AND 2+ verifiers are active, ask the user which agent should
 consolidate multi-agent reports. Offer **exactly** the candidates printed on the `candidates:`
 line of `synthesizer.sh show` — present EACH one as its own distinct option (do NOT merge,
-drop, or abbreviate any; e.g. `grok` and `grok-composer` are different models and must both
-appear). Note only that `claude` uses Claude limits while the rest are external CLIs. Then
+drop, or abbreviate any). Note only that `claude` uses Claude limits while the rest are
+external CLIs, and that any non-claude choice may be refined to a specific model/effort as
+`cli:model@effort` (e.g. `codex:gpt-5.6-sol@high`). Then
 persist their choice:
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/synthesizer.sh" set <choice>

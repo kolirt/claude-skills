@@ -20,14 +20,19 @@ Native Claude Code plugin marketplace.
   unauthenticated CLI is skipped, not required to use a specific key):
   - `codex` — OpenAI Codex CLI
   - `gemini` — Google Gemini CLI
-  - `grok` — Grok CLI · **Grok Build** model (xAI)
-  - `grok-composer` — Grok CLI · **Composer 2.5 Fast** model (Cursor); same Grok CLI/subscription
+  - `grok` — Grok CLI · xAI's frontier model (whatever xAI ships today)
+
+  An entry is `cli[:model][@effort]`: pin a specific model and/or reasoning effort
+  per verifier — e.g. `codex:gpt-5.6-sol@high` or `grok@high`. Omit `:model` for the
+  CLI's own frontier default; omit `@effort` for the dispatch effort. Effort is one of
+  low|medium|high|xhigh|max and is honored by codex and grok (gemini has no effort knob).
+  Entries match **exactly**, so `codex` and `codex:gpt-5.5@high` can coexist.
 
   Add a new agent by dropping an adapter in `plugins/agent-companion/adapters/`
   and listing it. See `.claude/skills/creating-plugins`.
 
-  When 2+ verifiers run, a **synthesizer** can consolidate their reports into one
-  (so the session isn't flooded): `/agent-companion:synthesizer set <claude|adapter|none>`.
+  When 2+ verifiers run, a **synthesizer** can consolidate their reports into one (so the
+  session isn't flooded): `/agent-companion:synthesizer set <claude|cli[:model][@effort]|none>`.
 
 - **auditing-prs** — End-to-end GitHub Pull Request reviews via the `gh` CLI:
   fetch the PR (plus optional issue-tracker context), draft the review in chat,

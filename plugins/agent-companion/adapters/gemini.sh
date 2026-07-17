@@ -12,15 +12,20 @@ case "$cmd" in
     command -v gemini >/dev/null 2>&1 || exit 64
     exit 0;;
   run)
-    prompt="${1:?}"; effort="${2:-}"; out="${3:?}"
-    : "${effort:=}"  # Gemini CLI has no reasoning-effort knob; ignored.
+    prompt="${1:?}"; effort="${2:-}"; out="${3:?}"; model="${4:-}"
+    : "${effort:=}"  # Gemini CLI has no reasoning-effort knob; the @effort field is ignored.
+    # model is optional (4th arg): absent → gemini's own default model.
     # stdin (redirected, non-TTY) is read as the prompt and forces headless mode.
     # approval-mode=plan = read-only "plan" mode: the agent may read/grep/glob files
     # but cannot run any filesystem-mutating tool (write_file/replace) — a read-only
     # sandbox for a verifier. skip-trust avoids the repo trust prompt. Confirmed
     # against the gemini CLI as the correct headless read-only invocation.
     # stdout = verdict; stderr left to the caller (dispatcher logs it for diagnosis).
-    gemini --approval-mode=plan --skip-trust < "$prompt" > "$out"
+    if [ -n "$model" ]; then
+      gemini -m "$model" --approval-mode=plan --skip-trust < "$prompt" > "$out"
+    else
+      gemini --approval-mode=plan --skip-trust < "$prompt" > "$out"
+    fi
     exit $?;;
   *) echo "usage: gemini.sh probe|run" >&2; exit 64;;
 esac
