@@ -50,6 +50,12 @@ The most common miss. For a capability backed by a package/tool, capture **all**
   `Read` a file in another plugin (unsupported), and never restate another skill's steps.
 - Same-plugin core/ modules are referenced via `Read \`../../core/<module>.md\`` —
   reference, never inline.
+- **No conflicts**: every new skill COMPLEMENTS the knowledge base — it must not
+  contradict, override, or overlap the rules another skill owns. Before writing, check
+  the sibling skills that touch the same territory; where topics border each other,
+  the specialized skill keeps precedence and the new skill defers to it by name
+  (e.g. a general component skill defers form controls to `form-elements`, dialogs
+  to `modals`, placement to `architecture-fsd`).
 
 ## 7. Register + finish
 - Add the new pattern skill's row to the `vue-work` umbrella **index**.

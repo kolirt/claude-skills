@@ -79,9 +79,97 @@ build_diff() { # <repo> <out>
       done
 }
 
+# resolve_path <path> -> prints the symlink-resolved absolute path on stdout, rc 0.
+# rc 1 if no resolver is available or resolution fails (caller treats as reject).
+resolve_path() {
+  local p="$1" r
+  if command -v readlink >/dev/null 2>&1 && r="$(readlink -f -- "$p" 2>/dev/null)" && [ -n "$r" ]; then
+    printf '%s' "$r"; return 0
+  fi
+  if command -v realpath >/dev/null 2>&1 && r="$(realpath -- "$p" 2>/dev/null)" && [ -n "$r" ]; then
+    printf '%s' "$r"; return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    r="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$p" 2>/dev/null)" \
+      && [ -n "$r" ] && { printf '%s' "$r"; return 0; }
+  fi
+  return 1
+}
+
+# freeze_skills <request-file> <run-dir>
+# Parses a `SKILL_FILES:` block (grammar: starts at a literal `SKILL_FILES:` line, consumes
+# subsequent `^[[:space:]]*-[[:space:]]+<path>` lines, stops at the first non-matching line)
+# and freezes each accepted file into <run>/skills/NN-<basename>. No block -> no-op (and no
+# skills/ dir), which keeps build_prompt's output byte-identical for old-style requests.
+freeze_skills() {
+  local req="$1" run="$2" skilldir="$run/skills"
+  local in_block=0 idx=0 total=0 line path resolved base dest size
+  local -a seen=()
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$in_block" -eq 0 ]; then
+      [ "$line" = "SKILL_FILES:" ] && in_block=1
+      continue
+    fi
+    if [[ "$line" =~ ^[[:space:]]*-[[:space:]]+(.*)$ ]]; then
+      path="${BASH_REMATCH[1]}"
+      path="${path%"${path##*[![:space:]]}"}"   # strip trailing whitespace only
+    else
+      in_block=0
+      continue
+    fi
+    [ -n "$path" ] || continue
+    case "$path" in "~/"*) path="${HOME}/${path#\~/}";; esac   # ~/ expansion, no eval
+    case "$path" in
+      /*) : ;;
+      *) echo "agent-companion: SKILL_FILES: skip (not absolute): $path" >&2; continue;;
+    esac
+    if ! resolved="$(resolve_path "$path")"; then
+      echo "agent-companion: SKILL_FILES: skip (unresolvable): $path" >&2; continue
+    fi
+    if [ ! -f "$resolved" ]; then
+      echo "agent-companion: SKILL_FILES: skip (missing or not a regular file): $path" >&2; continue
+    fi
+    case "$resolved" in
+      *.md) : ;;
+      *) echo "agent-companion: SKILL_FILES: skip (resolved target is not .md): $path" >&2; continue;;
+    esac
+    local dup=0 s
+    for s in "${seen[@]:-}"; do [ "$s" = "$resolved" ] && { dup=1; break; }; done
+    if [ "$dup" -eq 1 ]; then
+      echo "agent-companion: SKILL_FILES: skip (duplicate): $path" >&2; continue
+    fi
+    seen+=("$resolved")
+    [ -d "$skilldir" ] || mkdir -p "$skilldir"
+    idx=$((idx + 1))
+    base="$(basename "$resolved")"
+    dest="$skilldir/$(printf '%02d' "$idx")-$base"
+    size="$(wc -c < "$resolved" 2>/dev/null | tr -d ' ')"; [ -n "$size" ] || size=0
+    if [ "$size" -gt 65536 ]; then
+      head -c 65536 "$resolved" > "$dest"
+      printf '\n[truncated]\n' >> "$dest"
+    else
+      cp "$resolved" "$dest"
+    fi
+    total=$((total + size))
+    echo "agent-companion: SKILL_FILES: accepted $resolved -> $(basename "$dest") (${size} bytes)" >&2
+  done < "$req"
+  [ "$idx" -gt 0 ] && \
+    echo "agent-companion: SKILL_FILES: $idx file(s) frozen, ${total} bytes total" >&2
+}
+
 build_prompt() { # <mode> <req> <reqid> <repo> <run>
   { cat "$ROOT/VERIFIER.md" 2>/dev/null || true
     cat "$2"
+    if [ -d "$5/skills" ]; then
+      local f slug
+      for f in "$5"/skills/*.md; do
+        [ -e "$f" ] || continue
+        slug="$(basename "$f" .md)"
+        printf '\n=== SKILL: %s ===\n' "$slug"
+        cat "$f"
+        printf '\n=== END SKILL: %s ===\n' "$slug"
+      done
+    fi
     printf '\nREQUEST_ID: %s\n' "$3"
     [ -s "$5/diff.patch" ] && printf 'DIFF_PATCH: %s\n' "$5/diff.patch"
     printf 'REPO_ROOT: %s\n' "$4"
@@ -251,6 +339,7 @@ cmd_prepare() {
   run="$DATA/handoff/$key/run-$reqid"; mkdir -p "$run"
   : > "$run/.inflight"
   case "$mode" in review|consult) build_diff "$repo" "$run/diff.patch";; esac
+  freeze_skills "$req" "$run"
   build_prompt "$mode" "$req" "$reqid" "$repo" "$run"
 
   # probe/partition (newline-delimited; entries may carry a TAB+reason)

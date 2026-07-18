@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+# agent-companion: UserPromptSubmit hook — durable manager-mode reminders.
+#
+# Runs on EVERY prompt of EVERY session, so it must be fast (one small state file, no git, no
+# scanning) and absolutely silent unless the mode was explicitly enabled in THIS session.
+#
+# Fail-open contract (non-negotiable): empty or malformed stdin, no python3, an unwritable
+# $DATA, or a corrupt state file all result in `exit 0` with NO output — never a partial or
+# non-JSON stdout. This hook must never block a prompt.
+#
+# NOTE: `python3 <<'PY'` would CONSUME the hook's stdin, so the event JSON would never reach the
+# program. The payload is therefore read into a variable first and the program is passed via
+# `python3 -c`, with the payload handed over through the environment.
+set +e
+set -u
+
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd 2>/dev/null)" || exit 0
+ROOT="${CLAUDE_PLUGIN_ROOT:-$(dirname "$SELF")}"
+STATE="$ROOT/lib/state.sh"
+[ -f "$STATE" ] || exit 0
+
+command -v python3 >/dev/null 2>&1 || exit 0
+
+payload="$(cat 2>/dev/null)"
+[ -n "$payload" ] || exit 0
+
+# Parse the event: line 1 = session_id, line 2 = on|off|none (the command the prompt carries).
+# The boundary in the pattern keeps `/agent-companion:onward` from matching.
+read -r -d '' PARSE <<'PYEOF'
+import json, os, re, sys
+try:
+    ev = json.loads(os.environ.get("AC_PAYLOAD", ""))
+except Exception:
+    sys.exit(1)
+if not isinstance(ev, dict):
+    sys.exit(1)
+sid = ev.get("session_id")
+if not isinstance(sid, str) or not sid.strip() or "\n" in sid:
+    sys.exit(1)
+prompt = ev.get("prompt")
+prompt = prompt if isinstance(prompt, str) else ""
+m = re.match(r"/?agent-companion:(on|off)(\s|$)", prompt.lstrip())
+sys.stdout.write(sid.strip() + "\n" + (m.group(1) if m else "none") + "\n")
+PYEOF
+
+parsed="$(AC_PAYLOAD="$payload" python3 -c "$PARSE" 2>/dev/null)" || exit 0
+[ -n "$parsed" ] || exit 0
+sid=""; cmd=""
+{ IFS= read -r sid; IFS= read -r cmd; } <<EOF
+$parsed
+EOF
+[ -n "$sid" ] || exit 0
+
+# The ONLY writer of stdout: exactly one JSON document, built by a single JSON encoder.
+emit() { # <additionalContext>
+  AC_CTX="$1" python3 -c 'import json, os, sys
+sys.stdout.write(json.dumps({"hookSpecificOutput": {
+    "hookEventName": "UserPromptSubmit",
+    "additionalContext": os.environ["AC_CTX"],
+}}) + "\n")' 2>/dev/null
+}
+
+# (a) The prompt itself carries the command — act on it, invalidate any pending marker with the
+#     SAME atomic rename the claim path uses, and return ONLY the confirmation. Deliberately no
+#     reminder in this invocation.
+case "$cmd" in
+  on)
+    bash "$STATE" on "$sid" >/dev/null 2>&1
+    bash "$STATE" drop-want >/dev/null 2>&1
+    emit "agent-companion: manager mode is now ACTIVE for this session (it persists across compaction; \`/clear\` turns it off). Follow MANAGER.md — you are the manager and the verifier panel gates the work."
+    exit 0
+    ;;
+  off)
+    bash "$STATE" off "$sid" >/dev/null 2>&1
+    bash "$STATE" drop-want >/dev/null 2>&1
+    emit "agent-companion: manager mode is now OFF for this session. Stop following the MANAGER protocol and work normally."
+    exit 0
+    ;;
+esac
+
+# (b) No command in the prompt — claim a pending marker written by the slash command itself.
+bash "$STATE" claim "$sid" >/dev/null 2>&1
+
+# (c) Active session: ALWAYS increment and persist the counter, inject only when the throttle
+#     has matured. `bump` prints nothing when the session is not active.
+counters="$(bash "$STATE" bump "$sid" 2>/dev/null)"
+[ -n "$counters" ] || exit 0
+pc=""; lt=""
+read -r pc lt <<EOF
+$counters
+EOF
+[ -n "$pc" ] && [ -n "$lt" ] || exit 0
+
+bash "$STATE" should-inject "$pc" "$lt" >/dev/null 2>&1 || exit 0
+
+emit "agent-companion reminder: manager mode is ACTIVE — you are the MANAGER, not a solo implementer. The consult / review / audit / diagnose / research gates are MANDATORY, not optional: consult before every architecture, contract, security, migration, test-strategy or 2+-option fork; review after every completed logical unit and before declaring work done; always reproduce the \`=== verdicts ===\` table in your reply. If you no longer remember the protocol, re-read \${CLAUDE_PLUGIN_ROOT}/MANAGER.md before continuing."
+bash "$STATE" mark-inject "$sid" >/dev/null 2>&1
+exit 0

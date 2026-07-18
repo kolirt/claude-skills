@@ -4,7 +4,13 @@ description: Start agent-companion — Claude acts as manager and consults the v
 
 # /agent-companion:on
 
-Read `${CLAUDE_PLUGIN_ROOT}/MANAGER.md` and act STRICTLY as the MANAGER per it until `/agent-companion:off`.
+First, record the activation intent so the hooks pick the mode up even if this slash command never
+reaches `UserPromptSubmit`:
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/lib/state.sh" want-on
+```
+
+Then read `${CLAUDE_PLUGIN_ROOT}/MANAGER.md` and act STRICTLY as the MANAGER per it until `/agent-companion:off`.
 
 At each verifier-protocol point defined by **MANAGER.md** (consult / review / audit / diagnose / research), follow it:
 `prepare` (freeze + list agents) → spawn each `SPAWN` line as a native background task → `collect`
@@ -34,5 +40,12 @@ bash "${CLAUDE_PLUGIN_ROOT}/synthesizer.sh" set <choice>
 ```
 Ask only when unset; afterwards it is remembered. It can be changed anytime with
 `/agent-companion:synthesizer`.
+
+**Durability.** Plugin hooks persist this mode per session, so it survives compaction and is
+re-injected on resume — you do not need to be re-enabled mid-session. `/clear` turns it OFF (run
+`/agent-companion:on` again in the new session). Resuming an older session that had the mode on
+legitimately restores it. Reminders are best-effort: a user running with `disableAllHooks` (or a
+managed-hooks-only policy) gets the pre-0.2.0 behaviour, where the protocol can fade from context
+in a long session.
 
 Confirm: "agent-companion enabled — I am the manager."

@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# agent-companion: SessionStart hook — the PRIMARY durability mechanism.
+#
+#   source=clear            -> drop this session's state, silently ("/clear turns the mode off")
+#   source=compact|resume   -> if the mode is active, re-inject a condensed protocol skeleton and
+#                              reset the throttle counters, so the very next prompt does not fire
+#                              a redundant reminder.
+#
+# The skeleton is a static ~2 KB condensation of MANAGER.md (14.7 KB does not fit the
+# additionalContext budget); it ends by telling the model to re-read MANAGER.md.
+#
+# Same fail-open contract as hooks/user-prompt-submit: any error -> silent `exit 0`, no partial
+# and no non-JSON stdout. Same stdin handling too: the payload is read into a variable and the
+# program is passed via `python3 -c`, because a `python3 <<'PY'` heredoc would eat the event.
+set +e
+set -u
+
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd 2>/dev/null)" || exit 0
+ROOT="${CLAUDE_PLUGIN_ROOT:-$(dirname "$SELF")}"
+STATE="$ROOT/lib/state.sh"
+[ -f "$STATE" ] || exit 0
+
+command -v python3 >/dev/null 2>&1 || exit 0
+
+payload="$(cat 2>/dev/null)"
+[ -n "$payload" ] || exit 0
+
+# Parse the event: line 1 = session_id, line 2 = source.
+read -r -d '' PARSE <<'PYEOF'
+import json, os, sys
+try:
+    ev = json.loads(os.environ.get("AC_PAYLOAD", ""))
+except Exception:
+    sys.exit(1)
+if not isinstance(ev, dict):
+    sys.exit(1)
+sid = ev.get("session_id")
+if not isinstance(sid, str) or not sid.strip() or "\n" in sid:
+    sys.exit(1)
+src = ev.get("source")
+src = src.strip() if isinstance(src, str) and "\n" not in src else ""
+sys.stdout.write(sid.strip() + "\n" + src + "\n")
+PYEOF
+
+parsed="$(AC_PAYLOAD="$payload" python3 -c "$PARSE" 2>/dev/null)" || exit 0
+[ -n "$parsed" ] || exit 0
+sid=""; src=""
+{ IFS= read -r sid; IFS= read -r src; } <<EOF
+$parsed
+EOF
+[ -n "$sid" ] || exit 0
+
+# Cheap housekeeping, once per session start rather than on every prompt.
+bash "$STATE" gc >/dev/null 2>&1
+
+case "$src" in
+  clear)
+    bash "$STATE" off "$sid" >/dev/null 2>&1
+    exit 0
+    ;;
+  compact|resume) ;;
+  *) exit 0 ;;
+esac
+
+[ -n "$(bash "$STATE" status "$sid" 2>/dev/null)" ] || exit 0
+
+read -r -d '' SKELETON <<'SKEL'
+<EXTREMELY_IMPORTANT>
+agent-companion: MANAGER MODE IS ACTIVE in this session (the state survived compaction/resume).
+You are the MANAGER — you drive the work and talk to the user, but every decision fork and every
+finished unit is gated through the verifier panel. This is a SKELETON of MANAGER.md, not a
+replacement for it.
+
+MODE: consult = pick between options at a fork · audit = discover UNKNOWN defects in existing code
+(non-gating) · diagnose = root-cause a KNOWN symptom · research = answer an open question / survey
+options (non-gating) · review = judge an artifact against acceptance criteria. `audit` is never a
+`review`; a consolidated audit/diagnosis/research is itself an artifact and must go through
+`review`.
+
+CONSULT IS MANDATORY (not discretionary) for: architecture; contracts / public API / data formats;
+security; migrations; test strategy; large behavior or UX changes; any fork with 2+ real options.
+Also consult as a thinking partner during brainstorming, before taking a design to the user.
+
+REVIEW cadence: after each completed logical unit, before declaring work done, and at every
+Superpowers gate — the spec after `brainstorming`, the plan after `writing-plans`, each task's diff
+during execution. Never advance while an artifact sits at CHANGES_REQUESTED: fix and re-review
+(cap ~3 rounds, then escalate).
+
+AUDIT / DIAGNOSE / RESEARCH are symmetric two-pass protocols, all at `high` effort: record YOUR own
+findings to a file FIRST (before reading the verifier's, to avoid anchoring), run the verifier's
+independent pass, consolidate marking disputed items with your resolution, then `review` the result.
+
+INVOCATION (do NOT cd first):
+1. bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" prepare <mode> <effort> <request-file>
+   -> parse the TSV stdout: RUN_DIR, RUNNABLE/SPAWN pairs, SKIP, FAIL.
+2. Launch EACH `SPAWN` line VERBATIM as its own native background Bash task; wait for all.
+3. bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" collect <RUN_DIR>
+   0 = pass/non-gating · 10 = review blocked · 64 = read the stderr token: `INCOMPLETE` -> re-spawn
+   ONLY the MISSING agents in the SAME run dir and collect again (cap ~2 retries); `NO_VERIFIER` or
+   "not a git repo" -> environment error, degrade gracefully and say the step ran unverified.
+
+SKILL CONTEXT: before EVERY panel invocation, list the project convention skills relevant to the
+task (session-active + domain: Vue -> knowledge-vue, SEO -> knowledge-seo, UI -> frontend-design /
+ui-ux-pro-max) under a `SKILL_FILES:` block in the request file, one `- /abs/path/SKILL.md` per
+line (`.md` only). verify.sh splices their content into each verifier's prompt — do NOT read those
+files yourself; that is the whole point.
+
+MANDATORY OUTPUT: reproduce the `=== verdicts ===` table from `collect` stdout (agent · state ·
+clickable verdict path) verbatim in your reply — the harness collapses tool output, so the user
+never sees it otherwise. Read only the verdict fragments you actually need.
+
+PRINCIPLES: decide for yourself first, then synthesize rather than obey; treat verdicts as claims
+to be checked and push back when one is wrong; escalate real disagreement to the user.
+
+RE-READ ${CLAUDE_PLUGIN_ROOT}/MANAGER.md now, before your next verifier invocation.
+Use `/agent-companion:off` to leave manager mode.
+</EXTREMELY_IMPORTANT>
+SKEL
+
+AC_CTX="$SKELETON" python3 -c 'import json, os, sys
+sys.stdout.write(json.dumps({"hookSpecificOutput": {
+    "hookEventName": "SessionStart",
+    "additionalContext": os.environ["AC_CTX"],
+}}) + "\n")' 2>/dev/null || exit 0
+
+bash "$STATE" mark-inject "$sid" >/dev/null 2>&1
+exit 0

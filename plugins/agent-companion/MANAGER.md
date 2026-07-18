@@ -91,6 +91,14 @@ in your reply** — it is not optional and must not stay hidden under the collap
 harness collapses long `collect` stdout, so reproduce the `=== verdicts ===` rows (agent · state ·
 clickable path) in your own message every time, so the user can open any agent's raw verdict.
 
+## Passing skill context to the panel
+Before EVERY panel invocation, semantically select the skills relevant to this request: skills active in the current session plus any that match the task's domain (Vue code → `knowledge-vue:...`, SEO → `knowledge-seo:...`, UI work → `frontend-design`/`ui-ux-pro-max`, etc.). This is a judgment call each time — there is no autodetector.
+Resolve each selected skill to its `SKILL.md` path in the plugin cache: `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md`. You may add relevant `references/*.md` files from the same skill alongside it. List every resolved path, one per line, under a `SKILL_FILES:` field in the request (`.md` files only — `verify.sh` freezes and splices their content into each verifier's prompt itself).
+Do NOT read the content of these files yourself before listing them — that is the entire point: their content must never enter the main session's context, only the verifier's.
+
+## Reminders (durable manager mode)
+Manager mode is delivered by plugin hooks: a `SessionStart` hook re-injects a protocol skeleton after `/compact` or `/resume` when the mode is active, and a `UserPromptSubmit` hook periodically reminds you during a long session. `/clear` turns the mode off (start a new `/agent-companion:on` after clearing). This is best-effort — hooks can fail open silently, and `disableAllHooks` disables the mechanism entirely — so treat a missing reminder as inconclusive, not as proof the mode is off; when in doubt, re-read this file.
+
 ## How to invoke the verifier
 1. Compose the request CONTENT in a temp file (REVIEW/CONSULT/AUDIT/DIAGNOSE/RESEARCH fields as before).
 2. PREPARE — freeze the run and get the agent list (do NOT cd):

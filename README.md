@@ -35,6 +35,17 @@ Native Claude Code plugin marketplace.
   When 2+ verifiers run, a **synthesizer** can consolidate their reports into one (so the
   session isn't flooded): `/agent-companion:synthesizer set <claude|cli[:model][@effort]|none>`.
 
+  **Durable manager mode.** Plugin hooks persist the on/off state per session, so the
+  protocol survives compaction and is re-injected on resume, with a throttled reminder
+  in long sessions. `/clear` turns the mode off (enable it again with
+  `/agent-companion:on`). Hooks are best-effort — `disableAllHooks` leaves the
+  pre-0.2.0 behaviour.
+
+  **Skill-aware panel.** The manager lists the project's convention skills under a
+  `SKILL_FILES:` block in the request (`.md` paths only); `verify.sh` splices their
+  content straight into each verifier's prompt, so the conventions reach the panel
+  without ever entering the main session's context.
+
 - **auditing** — On-demand audits of a **whole application** from a chosen
   perspective. Strictly read-only: every skill reports findings with evidence and
   names the skill that owns the fix, but never changes the repository itself.
@@ -59,7 +70,7 @@ Native Claude Code plugin marketplace.
 
 - [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) — marketplace manifest; lists every plugin and its version (source of truth)
 - [`plugins/agent-companion/`](plugins/agent-companion) — verifier-panel manager plugin
-  ([`verify.sh`](plugins/agent-companion/verify.sh) dispatcher · [`MANAGER.md`](plugins/agent-companion/MANAGER.md) · [`adapters/`](plugins/agent-companion/adapters) · [`commands/`](plugins/agent-companion/commands))
+  ([`verify.sh`](plugins/agent-companion/verify.sh) dispatcher · [`MANAGER.md`](plugins/agent-companion/MANAGER.md) · [`adapters/`](plugins/agent-companion/adapters) · [`commands/`](plugins/agent-companion/commands) · [`hooks/`](plugins/agent-companion/hooks) durable-mode reminders)
 - [`plugins/auditing/`](plugins/auditing) — whole-application audit plugin
   ([`skills/business-analysis/`](plugins/auditing/skills/business-analysis) · [`skills/seo/`](plugins/auditing/skills/seo) · shared [`core/`](plugins/auditing/core))
 - [`plugins/auditing-prs/`](plugins/auditing-prs) — GitHub PR review plugin
