@@ -5,7 +5,7 @@ description: Use when reading or writing browser storage (localStorage / session
 
 # persistence (Vue) — browser storage via a typed wrapper
 
-Read `../../core/placement.md` first (resolve `{shared-lib}`).
+Read `../../core/placement.md` first for the `{shared-lib}` token; paths resolve in the active architecture doc.
 
 All browser storage access is centralised in two thin wrappers:
 `{shared-lib}/local-persistence` (localStorage) and
@@ -87,7 +87,7 @@ Storage keys are owned by the module that uses them. Declare them as local strin
 next to the store or feature that reads/writes them:
 
 ```ts
-// {entity}/model/store/index.ts — keys declared at the call site
+// {entity} — entity store — keys declared at the call site
 const SESSION_AUTHENTICATED_KEY = 'session.authenticated'
 const SESSION_TOKEN_KEY = 'session.token'
 

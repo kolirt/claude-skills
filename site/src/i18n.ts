@@ -27,6 +27,8 @@ const en: Dict = {
   'hero.uptodate': 'up to date',
 
   'card.open': 'open →',
+  'card.skills.one': 'skill',
+  'card.skills.many': 'skills',
   'cmd.copy': 'copy',
   'cmd.copied': 'copied ✓',
 
@@ -35,7 +37,10 @@ const en: Dict = {
   'skill.h.check': 'how a check works',
   'skill.h.commands': 'commands',
   'skill.h.modes': 'modes of consultation',
+  'skill.h.skills': 'skills',
   'skill.h.source': 'source',
+  'skill.skillsNote':
+    'each skill activates on its own triggers — Claude picks the relevant one while it works.',
   'skill.install1': '1 · add the marketplace',
   'skill.install2': '2 · install the plugin',
   'skill.installNote':

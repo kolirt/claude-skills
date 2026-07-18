@@ -5,8 +5,8 @@ description: Use when the developer asks to add a modal/dialog in a Vue project.
 
 # Modals (Vue) — capability skill (`@kolirt/vue-modal`)
 
-Read `../../core/placement.md` first (resolve the `{...}` location tokens used below
-for the current project's architecture).
+Read `../../core/placement.md` first for the `{...}` location tokens used below; paths
+resolve in the active architecture doc.
 Defer to the `plugin-registration` skill (by name) for registering the package, and
 to the `page-middlewares` skill (by name) for the route-change cleanup middleware.
 Do not restate those skills' steps here.
@@ -123,7 +123,7 @@ Do not restate those skills' steps here.
   the `page-middlewares` skill (it carries the `closeModalsMiddleware` example) and
   register it globally — do not restate the middleware or its snippet here.
 
-## 4. Placement (tokens — resolve via `placement.md`)
+## 4. Placement (tokens)
 
 - [invariant · desired] **Group infrastructure** (`*ModalWrapper.vue` +
   `*ModalTarget.vue`) → `{shared-ui}/modals/groups/<group>/` — one folder per group.

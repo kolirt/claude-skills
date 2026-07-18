@@ -8,7 +8,7 @@ description: Use when fetching or mutating backend data in a Vue project, or whe
 Data fetching and mutations go through TanStack Query. Requests reach the backend via
 the `http-request` skill (by name) — but never directly from the call site.
 
-Read `../../core/placement.md` first (resolve `{entity}` / `{shared-lib}`).
+Read `../../core/placement.md` first for the `{entity}` / `{shared-lib}` tokens; paths resolve in the active architecture doc.
 
 ## Layering (the key rule)
 - [invariant · desired] Components and features **never** call `useHttpRequest`
@@ -99,13 +99,14 @@ Read `../../core/placement.md` first (resolve `{entity}` / `{shared-lib}`).
 
 ## Queries
 - [invariant · desired] A query is named **`use*Query`** and lives in
-  `{entity}/model/query/`. Import `useQuery` (and SSR variants `useSsrQuery` /
+  the `{entity}` module as an **entity query** — the active architecture doc resolves where
+  inside the module it goes. Import `useQuery` (and SSR variants `useSsrQuery` /
   `useSsrInfiniteQuery`) from the **shared query wrapper** `{shared-lib}/query` —
   **never** directly from `@tanstack/vue-query`.
   ```ts
-  // {entity}/model/query/use<Entity>Query.ts
+  // {entity} — entity query
   import { useQuery } from '{shared-lib}/query'
-  import { entityApi } from '../../api'
+  import { entityApi } from '{entity}/api'   // the entity's own api — same module
   import { entityKeys } from './keys'
 
   export function useEntityQuery() {
@@ -173,7 +174,8 @@ Pick these by how volatile the data is, so the agent sets them itself instead of
 
 ## Mutations
 - [invariant · desired] A mutation is named **`use*Action`** and lives in
-  `{entity}/model/action/`. Import `useMutation` + `useQueryClient` directly from
+  the `{entity}` module as an **entity action** — the active architecture doc resolves where
+  inside the module it goes. Import `useMutation` + `useQueryClient` directly from
   `@tanstack/vue-query` (mutations have no shared wrapper). `onSuccess` invalidates the
   affected keys.
   ```ts
@@ -210,7 +212,7 @@ Pick these by how volatile the data is, so the agent sets them itself instead of
 
 ## Query keys — `@lukemorales/query-key-factory`
 - [invariant · desired] Keys come from a `createQueryKeys` factory, one per entity in
-  `{entity}/model/query/keys.ts` — the single source of truth for that entity's cache
+  the `{entity}` module as the **entity query keys** — the single source of truth for that entity's cache
   namespace. **No string-literal keys at call sites.**
   ```ts
   import { createQueryKeys } from '@lukemorales/query-key-factory'

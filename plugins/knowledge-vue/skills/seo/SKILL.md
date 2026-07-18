@@ -1,11 +1,11 @@
 ---
 name: seo
-description: Use when wiring SEO meta tags, Open Graph properties, or JSON-LD structured data into a Vue page via @unhead/vue. Covers the Vue delivery layer only — for SEO principles defer to the `meta-tags`, `structured-data`, `social-preview`, `canonicalization-and-redirects`, and `international` skills from the knowledge-seo plugin. For server-side head rendering defer to the `ssr` skill.
+description: Use when wiring SEO meta tags, Open Graph properties, or JSON-LD structured data into a Vue page via @unhead/vue. Covers the Vue delivery layer only — for SEO principles defer to the `meta-tags`, `structured-data`, `social-preview`, `canonicalization-and-redirects`, and `international` skills from the knowledge-seo plugin. For server-side head rendering defer to the active project-type doc (core/project-types/<t>.md).
 ---
 
 # seo (Vue) — head/meta/JSON-LD delivery via @unhead
 
-Read `../../core/placement.md`
+Read `../../core/placement.md` for the token vocabulary; paths resolve in the active architecture doc.
 
 ## Rules
 
@@ -161,7 +161,8 @@ useJsonLd(computed(() => productSchema({
 
 The head **instance** is created by the `createHead({ ssr })` plugin factory in
 `{plugins}/head.ts` (server/client unhead chosen at runtime) and registered via `app.use(head)`
-in the app factory — see the `plugin-registration` and `ssr` skills. Do NOT create an ad-hoc
+in the app factory — see the `plugin-registration` skill and the active project-type doc
+(`core/project-types/<t>.md`). Do NOT create an ad-hoc
 `createHead({...})` here. The site-name `titleTemplate` is configured **once** at the app root:
 
 ```ts
@@ -173,7 +174,7 @@ useHead({
 })
 ```
 
-## Placement (tokens — resolve via `../../core/placement.md`)
+## Placement (tokens)
 
 - [invariant · desired] `useSeoMeta`, `useJsonLd`, schema factories, `buildCanonical`, `buildAbsoluteUrl` → `{shared-lib}/seo`.
 - [invariant · desired] `titleTemplate` root config → `{app}`.
@@ -198,5 +199,5 @@ useHead({
 - `social-preview` — Open Graph and Twitter Card principles (knowledge-seo)
 - `canonicalization-and-redirects` — canonical URL strategy (knowledge-seo)
 - `international` — hreflang and locale principles (knowledge-seo)
-- `ssr` — server-side head rendering (knowledge-vue)
+- `core/project-types/<t>.md` — server-side head rendering for the active project type
 - `plugin-registration` — wiring a Vue plugin into the app (knowledge-vue)

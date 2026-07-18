@@ -1,56 +1,51 @@
 # Placement (Vue) — where files go
 
 The **location vocabulary** for the Vue domain. A skill never hard-codes a path; it
-places its artifacts using the **tokens** below, and this file resolves each token to
-a concrete path for the **current project's architecture**.
+places its artifacts using the **tokens** below. This file *names* the tokens and their
+roles — it does not resolve them to paths. Path resolution for the active architecture
+lives in `core/architectures/<a>.md` (`fsd.md` or `non-fsd.md`), pre-loaded by `vue-work`
+step 0.
 
-## 1. Detect the architecture
-- **FSD** — the source root has numbered layer directories (`01-app`, `02-pages`, …,
-  `07-shared`).
-- **non-FSD** — a flat `src/` (e.g. `src/components`, `src/pages`).
-- If it cannot be determined, **ask the developer**.
+## 1. Location tokens → role
 
-## 2. Location tokens → concrete paths
+| token | role |
+|---|---|
+| `{app}` | Composition root: entry files, bootstrap. |
+| `{plugins}` | Vue `app.use` plugin factories. |
+| `{initial-plugins}` | Per-request `createApp` factory + imperative bootstrap initialisers. |
+| `{routes}` | Route records, one file per domain. |
+| `{pages-utils}` | Route builder functions (`page()`, `group()`, `redirect()`, `getDefaultMeta()`). |
+| `{pages-types}` | Routing types (`Route`, `Middleware`). |
+| `{pages-config}` | Page-layer config: `Layouts` enum, `GlobalMiddlewares` array, `fallbackRoute` constant. |
+| `{middlewares}` | Per-route middleware implementation files. |
+| `{global-middlewares}` | Global middleware implementation files. |
+| `{pages-ui}` | Page components (thin frames), grouped by domain. |
+| `{layouts}` | Layout components. |
+| `{shared-config}` | Value constants only, used by 2+ layers, zero behaviour (e.g. `RouteNames` enum). |
+| `{shared-ui}` | Domain-neutral primitive components. |
+| `{shared-lib}` | Mini-libraries wrapping an external system, or app-wide UI-state singletons. |
+| `{shared-utils}` | Single pure helper functions with broad reuse and no external-system boundary (e.g. a `cn()` class merger). |
+| `{composition}` | Stateless domain composites: lays out an entity and its relations; no state, no fetch, no routing. |
+| `{feature}` | One user action = one slice: mutation forms, read-fetchers, imperative triggers. |
+| `{widget}` | Stateful composite reused on 2+ pages, or a large independent block. |
+| `{entity}` | Business entity: full slice (api + state + read/mutate) declared at once. |
+| `{assets}` | Global stylesheets and static files. |
 
-| token | FSD | non-FSD |
-|---|---|---|
-| `{app}` | `01-app` | `src/app` |
-| `{plugins}` | `01-app/plugins` | `src/plugins` |
-| `{initial-plugins}` | `01-app/initial-plugins` | `src/initial-plugins` |
-| `{routes}` | `02-pages/routes` | `src/router/routes` |
-| `{pages-utils}` | `02-pages/utils` | `src/router/utils` |
-| `{pages-types}` | `02-pages/types.ts` | `src/router/types.ts` |
-| `{pages-config}` | `02-pages/config` | `src/router/config` |
-| `{middlewares}` | `02-pages/middlewares` | `src/router/middlewares` |
-| `{global-middlewares}` | `02-pages/global-middlewares` | `src/router/middlewares/global` |
-| `{pages-ui}` | `02-pages/ui/<domain>` | `src/pages/<domain>` |
-| `{layouts}` | `02-pages/layouts` | `src/layouts` |
-| `{shared-config}` | `07-shared/config` | `src/config` |
-| `{shared-ui}` | `07-shared/ui` | `src/components` |
-| `{shared-lib}` | `07-shared/lib` | `src/lib` |
-| `{composition}` | `05-composition` | `src/components` |
-| `{feature}` | `04-features/<name>` | `src/components/<name>` |
-| `{widget}` | `03-widgets/<name>` | `src/components/<name>` |
-| `{entity}` | `06-entities/<name>` | `src/composables/<name>` |
-| `{assets}` | `07-shared/assets` | `src/assets` |
-
-Tokens with no native non-FSD layer (`{feature}`, `{widget}`, `{composition}`)
-collapse to the flat components location.
-
-`{app}` holds the two entry files (`entryClient.ts`, `entryServer.ts`) and the root component.
-The per-request `createApp` factory and imperative bootstrap initialisers live in
-`{initial-plugins}` (`01-app/initial-plugins`), and the Vue `app.use` plugin factories in
-`{plugins}` (`01-app/plugins`) — not directly in `{app}`.
+`{app}` holds the app bootstrap surface and the root component. The per-request `createApp`
+factory and imperative bootstrap initialisers live in `{initial-plugins}`, and the Vue
+`app.use` plugin factories in `{plugins}` — not directly in `{app}`. The concrete bootstrap
+shape (how many entry files, what each one does) is defined by the active project type in
+`core/project-types/<t>.md`, not here.
 
 **Routing buckets are NOT interchangeable** — do not collapse them into one `config/`:
-- `{shared-config}` (`07-shared/config`) — **value constants only**, used by 2+ layers, zero
-  behaviour (e.g. the `RouteNames` enum, `LEGAL_LINKS`). Never functions, never types.
-- `{pages-config}` (`02-pages/config`) — page-layer config: the `Layouts` enum, the
-  `GlobalMiddlewares` array, and the `fallbackRoute` constant.
-- `{pages-utils}` (`02-pages/utils`) — route **builder functions** (`page()`, `group()`,
-  `redirect()`, `getDefaultMeta()`). Functions never go in any `config/`.
-- `{pages-types}` (`02-pages/types.ts`) — routing **types** (`Route`, `Middleware`). Types
-  never go in any `config/`.
+- `{shared-config}` — **value constants only**, used by 2+ layers, zero behaviour (e.g. a
+  `RouteNames` enum, `LEGAL_LINKS`). Never functions, never types.
+- `{pages-config}` — page-layer config: the `Layouts` enum, the `GlobalMiddlewares` array,
+  and the `fallbackRoute` constant.
+- `{pages-utils}` — route **builder functions** (`page()`, `group()`, `redirect()`,
+  `getDefaultMeta()`). Functions never go in any `config/`.
+- `{pages-types}` — routing **types** (`Route`, `Middleware`). Types never go in any
+  `config/`.
 - `{middlewares}` / `{global-middlewares}` — middleware **implementation files**, one per
   file named `<name>.middleware.ts`; the `GlobalMiddlewares` array that lists them lives in
   `{pages-config}`.
@@ -60,31 +55,14 @@ re-exports only (`export { foo } from './foo'`), never implementation. The actua
 in sibling files (one logical unit per file: `registry.ts`, `useQuery.ts`, …). Putting the
 implementation directly in `index.ts` is the anti-pattern.
 
-> Notation: `{token}` is a placement token — resolve it via this table; in an **import
-> path** a token resolves under the project's `@`/`~` src alias. Non-token placeholders
-> use `<...>` (e.g. `<API_BASE>`, `<your-app-name>`), never `{...}`.
+> Notation: `{token}` is a placement token — resolve it via the active
+> `core/architectures/<a>.md`; in an **import path** a token resolves under the project's
+> `@`/`~` src alias. Non-token placeholders use `<...>` (e.g. `<API_BASE>`,
+> `<your-app-name>`), never `{...}`.
 
-## 3. Naming conventions
+## 2. Naming conventions
 
 [invariant · desired] Follow these project-wide file and folder naming rules:
 - **Folders → kebab-case** (`http-request`, `global-middlewares`, `add-comment`).
 - **TS/JS files → camelCase** (`globalMiddlewares.ts`, `closeModals.middleware.ts`, `routeNames.ts`, `useHttpRequest.ts`, `entryClient.ts`).
 - **Vue SFC components → PascalCase** (`DefaultLayout.vue`, `PostCard.vue`).
-
-## 4. FSD layer reference
-Numbered layers, dependency direction downward (`01-app` → … → `07-shared`):
-- `01-app` — bootstrap: the two entry files (`entryClient.ts`/`entryServer.ts`), the
-  per-request `createApp` factory + imperative initialisers (`initial-plugins/`), Vue
-  `app.use` plugin factories (`plugins/`), and the root component.
-- `02-pages` — routing: route definitions (`routes/`), page components (`ui/`),
-  route builders (`utils/`, incl. `getDefaultMeta`), routing types (`types.ts`), per-route
-  middlewares (`middlewares/`), global middlewares (`global-middlewares/`), page-layer config
-  (`config/`: `Layouts` enum + `GlobalMiddlewares` array + `fallbackRoute`).
-- `03-widgets` — composite UI blocks (domain-grouped).
-- `04-features` — user-facing flows (domain-grouped).
-- `05-composition` — stateless UI composites (no state, no fetching) — custom layer.
-- `06-entities` — business entities (`api/` + `model/` + `ui/`).
-- `07-shared` — shared `lib/` `ui/` `config/` `types/`, no domain knowledge.
-
-Slice shape inside a domain folder: `api/` + `model/` + `ui/` + a barrel `index.ts`.
-A skill that needs a layer not in the token table refers to it by its name here.

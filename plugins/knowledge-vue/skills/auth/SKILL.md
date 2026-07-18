@@ -9,11 +9,12 @@ How auth state, login, logout, and 401 auto-logout work. Composes the
 `tanstack-query` skill (queries/mutations + cache eviction) and the `http-request`
 skill (the 401 hook) — defer to them by name.
 
-Read `../../core/placement.md` first (resolve `{entity}` / `{plugins}`).
+Read `../../core/placement.md` first for the `{entity}` / `{plugins}` tokens; paths resolve in the active architecture doc.
 
 ## Session store
-- [invariant · desired] Auth state lives in a **session store** at `{entity}/model/store/`
-  (the entity is `session`) — a module-level reactive flag, hydrated from
+- [invariant · desired] Auth state lives in a **session store** — the `{entity}` module's
+  **entity store** (the entity is `session`); the active architecture doc resolves where
+  inside the module it goes — a module-level reactive flag, hydrated from
   `localStorage` on boot. `useSessionStore()` exposes `isAuthenticated` (computed).
   `markAuthenticated()` / `clearAuthenticated()` are standalone exported functions that
   mutate the flag **and** sync `localStorage`.
@@ -23,8 +24,9 @@ Read `../../core/placement.md` first (resolve `{entity}` / `{plugins}`).
   `enabled: computed(() => session.isAuthenticated.value)` (they don't run while logged out).
 - [invariant · desired] **Tag** every auth-dependent query with
   `meta: { requiresAuth: true }` (the meta type is declared in the `tanstack-query` setup)
-  so it can be **evicted** on logout/401. The predicate lives in the session entity's
-  `{entity}/model/query/`:
+  so it can be **evicted** on logout/401. The predicate lives in the session `{entity}`
+  module alongside its **entity query** — the active architecture doc resolves where
+  inside the module it goes:
   ```ts
   export function isAuthQuery(query: Query): boolean {
     return query.meta?.requiresAuth === true

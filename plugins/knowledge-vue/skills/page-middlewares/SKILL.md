@@ -11,13 +11,15 @@ it by name; do not restate it here.
 
 Read `../../core/disciplines/routing-discipline.md` first (route-by-name + the shared
 `fallbackRoute`).
-Read `../../core/placement.md` first (resolve `{middlewares}` / `{global-middlewares}` /
-`{pages-config}` / `{pages-types}`).
+- [invariant · desired] This skill applies under runtime = vite-vue; under Nuxt, routing/pages/layouts/middleware are Nuxt-owned (file-based) — see core/runtimes/nuxt.md.
+
+Read `../../core/placement.md` first for the `{middlewares}` / `{global-middlewares}` /
+`{pages-config}` / `{pages-types}` tokens; paths resolve in the active architecture doc.
 
 ## Middleware contract
 
 - [invariant · desired] A middleware is a function `(to, from) => false | void | object`.
-  The `Middleware` **type** lives in `{pages-types}` (`02-pages/types.ts`, alongside `Route`)
+  The `Middleware` **type** lives in `{pages-types}` (alongside `Route`)
   — never in any `config/`:
   ```ts
   // {pages-types}
@@ -62,9 +64,9 @@ The `{global-middlewares}/index.ts` barrel re-exports it under a descriptive ali
 (`export { middleware as closeModalsMiddleware } from './closeModals.middleware'`); register
 that alias in the `GlobalMiddlewares` array (see `vue-router`).
 
-## Placement (tokens — resolve via `placement.md`)
+## Placement (tokens)
 
 - [invariant · desired] Per-route middleware impl → `{middlewares}/<name>.middleware.ts`.
 - [invariant · desired] Global middleware impl → `{global-middlewares}/<name>.middleware.ts`.
 - [invariant · desired] The `GlobalMiddlewares` array → `{pages-config}`.
-- [invariant · desired] The `Middleware` type → `{pages-types}` (`02-pages/types.ts`).
+- [invariant · desired] The `Middleware` type → `{pages-types}`.

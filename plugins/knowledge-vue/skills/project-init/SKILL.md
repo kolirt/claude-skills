@@ -6,33 +6,44 @@ description: Use when scaffolding a new Vue project (SPA or SSR) or auditing one
 # project-init (Vue) — scaffold conventions
 
 Applied without being asked when bootstrapping a Vue project. Covers two permanent baseline
-concerns: **mode-aware build scripts** and **robots.txt by default**. Both apply to ANY Vue
-project.
+concerns: **mode-aware build scripts** and **robots.txt by default**. This skill applies under
+runtime = vite-vue — the scaffold commands, build scripts, and `vite-plugin-robots` wiring below
+are Vite-specific. Under Nuxt, entry-file scaffolding is gated off by step 0 (Nuxt owns the app
+bootstrap) and robots.txt delivery is Nuxt/Nitro-owned instead — see core/runtimes/nuxt.md and
+the `robots` skill, which already forbids installing `vite-plugin-robots` there.
+
+> **`{runtime, architecture, projectType}` are determined by step 0 of `vue-work`, not here.**
+> Step 0 detects them on an existing project and ASKS on a greenfield one. `project-init`
+> **realizes** the greenfield arm of that determination — it is where the asking actually
+> happens during scaffolding — but it never re-decides a constant step 0 already fixed.
 
 > **SSR is OPTIONAL — the default is a SPA.** SSR is an additional layer added only when the
-> project actually needs server-side rendering (see the `ssr` skill). Every other convention
-> (stores without Pinia, http-request, TanStack Query, modals, …) works exactly the same with
-> or without SSR. Do not assume a project is SSR.
+> project actually needs server-side rendering. Every other convention (stores without Pinia,
+> http-request, TanStack Query, modals, …) works exactly the same with or without SSR. Do not
+> assume a project is SSR. The concrete bootstrap shape for either case lives in the active
+> project-type doc (`core/project-types/<t>.md`).
 
 > **Architecture (FSD vs non-FSD) is the developer's CHOICE — do NOT silently assume FSD.**
 > Every convention skill works with both: FSD (numbered layers `01-app`…`07-shared`) and
-> non-FSD (a flat `src/`). `placement.md` resolves each placement token for whichever
-> architecture is in use. For a GREENFIELD project, ASK; for an EXISTING one, detect (numbered
-> layer dirs → FSD, else non-FSD).
+> non-FSD (a flat `src/`). `placement.md` defines the token vocabulary; the active
+> architecture doc (`core/architectures/<architecture>.md`) resolves each token to a path.
 
-- [invariant · desired] At scaffold time, **ask the developer: SSR or CSR (SPA)?** — never
-  assume. The answer decides whether the SSR add-on applies (server bundle, entry split, and
-  the `ssr` / `hydration` skills). For an EXISTING project, detect it instead of asking (is
-  there a server entry / a `--ssr` build script?).
+- [invariant · desired] On a GREENFIELD scaffold, **ask the developer: SSR or CSR (SPA)?** —
+  never assume. This ask is the greenfield arm of step 0's `projectType` determination, not an
+  independent decision. The answer decides whether the SSR add-on applies (server bundle, entry
+  split, `hydration`) and which project-type doc is loaded. For an EXISTING project, step 0 has
+  already detected it (server entry / `--ssr` build script) — do not re-ask.
   - ✅ do: "Should this be SSR or a CSR/SPA? SSR adds a server bundle + hydration; CSR is the
     simpler default."
   - ❌ don't: silently scaffold SSR (server bundle, entryServer) for a plain `yarn create vite`
     request — why: SSR is a deliberate choice that adds a Node server and build complexity.
 
-- [invariant · desired] At scaffold time, **ask the developer: FSD or plain (non-FSD) structure?**
-  — never silently default to FSD. The answer decides the folder layout (numbered `01-app`…
-  `07-shared` vs a flat `src/`); all convention skills apply either way via `placement.md`. For
-  an EXISTING project, detect instead of asking (numbered layer dirs → FSD, else non-FSD).
+- [invariant · desired] On a GREENFIELD scaffold, **ask the developer: FSD or plain (non-FSD)
+  structure?** — never silently default to FSD. This ask is the greenfield arm of step 0's
+  `architecture` determination, not an independent decision. The answer decides the folder
+  layout (numbered `01-app`…`07-shared` vs a flat `src/`); all convention skills apply either
+  way via the active architecture doc. For an EXISTING project, step 0 has already detected it
+  (numbered layer dirs → FSD, else non-FSD) — do not re-ask.
   - ✅ do: "Should this use FSD (numbered layers) or a plain flat `src/` structure?"
   - ❌ don't: assume FSD because the conventions mention it, or rebuild a plain structure into
     numbered FSD without being asked — why: architecture is the developer's call, not a default.
@@ -83,11 +94,10 @@ needs the split.
   ```
   The SSR build runs three steps: client bundle (`--ssrManifest`), server bundle
   (`--ssr <entryServer>`), and a `tsc` server bootstrap.
-- [invariant · desired] (SSR) scaffold the `{initial-plugins}/` layer — the per-request
-  `createApp` factory (`{initial-plugins}/createApp.ts`), any imperative initialisers
-  (e.g. `initHttpRequest`), and a barrel `{initial-plugins}/index.ts` — plus **exactly two**
-  entry files `{app}/entryClient.ts` and `{app}/entryServer.ts` that import from it. There is
-  no third shared `entry.ts`. Details: the `ssr` skill.
+- [invariant · desired] The bootstrap scaffold — the `createApp` factory, the
+  `{initial-plugins}/` layer and its barrel, and which entry files exist — is **owned by the
+  active project-type doc** (`core/project-types/<t>.md`). Scaffold what that doc prescribes;
+  do not restate or invent a bootstrap shape here.
 
 ## Robots baseline (installed by default)
 
@@ -162,7 +172,9 @@ scaffolded on init so that development and staging builds are never inadvertentl
 - **Robots principles** (crawl semantics, `noindex`, policy design): see the `robots` skill.
 - **Robots delivery** in Vue (SSR-served `robots.txt`, per-environment switching in detail):
   see the knowledge-vue `robots` skill.
+- **Bootstrap / entry scaffolding** (createApp, entries, `{initial-plugins}`): see the active
+  project-type doc `core/project-types/<t>.md`.
 
 ## Related skills (by name)
 
-robots · ssr
+robots · hydration

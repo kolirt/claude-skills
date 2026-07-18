@@ -9,7 +9,7 @@ The single shared wrapper through which **every** backend request goes. Built on
 native `fetch`. CSRF lives **inside** this module (no separate csrf module — that
 split caused a circular import).
 
-Read `../../core/placement.md` first (resolve `{shared-lib}`).
+Read `../../core/placement.md` first for the `{shared-lib}` token; paths resolve in the active architecture doc.
 
 ## Core rule
 - [invariant · desired] Every HTTP request goes through the shared wrapper
@@ -71,6 +71,6 @@ Read `../../core/placement.md` first (resolve `{shared-lib}`).
   `form` sink / `onValidationError`. Notification + unauthorized handlers are module
   singletons set once at app boot (`setNotificationHandler` / `setUnauthorizedHandler`).
 
-## Placement (tokens — resolve via `placement.md`)
+## Placement (tokens)
 - [invariant · desired] The wrapper lives in `{shared-lib}/http-request/`. CSRF is a
   private part of it — **no** `{shared-lib}/csrf/` folder.

@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import type { Plugin } from '../types'
+import { computed } from 'vue'
 import { t } from '../i18n'
-defineProps<{ plugin: Plugin; index: number }>()
+const props = defineProps<{ plugin: Plugin; index: number }>()
+const skillCount = computed(() => props.plugin.skills?.length ?? 0)
+const skillLabel = computed(() =>
+  skillCount.value === 1 ? t('card.skills.one') : t('card.skills.many'),
+)
 </script>
 
 <template>
@@ -20,6 +25,7 @@ defineProps<{ plugin: Plugin; index: number }>()
     <p class="card__desc">{{ plugin.description }}</p>
     <div class="card__foot">
       <span class="dim">{{ plugin.install }}</span>
+      <span v-if="skillCount" class="card__skills">{{ skillCount }} {{ skillLabel }}</span>
       <span class="card__go">{{ t('card.open') }}</span>
     </div>
   </RouterLink>
@@ -102,6 +108,12 @@ defineProps<{ plugin: Plugin; index: number }>()
 .card__foot .dim {
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card__skills {
+  flex: none;
+  margin-left: auto;
+  color: var(--fg-dim);
   white-space: nowrap;
 }
 .card__go {

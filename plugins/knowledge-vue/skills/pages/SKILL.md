@@ -10,8 +10,10 @@ How to declare routes and pages. This skill assumes the router is already set up
 and attach it through `meta.middleware`.
 
 Read `../../core/disciplines/routing-discipline.md` first (route-by-name + `fallbackRoute`).
-Read `../../core/placement.md` first (resolve `{routes}` / `{pages-utils}` / `{pages-types}` /
-`{pages-config}` / `{shared-config}` / `{pages-ui}`).
+- [invariant · desired] This skill applies under runtime = vite-vue; under Nuxt, routing/pages/layouts/middleware are Nuxt-owned (file-based) — see core/runtimes/nuxt.md.
+
+Read `../../core/placement.md` first for the `{routes}` / `{pages-utils}` / `{pages-types}` /
+`{pages-config}` / `{shared-config}` / `{pages-ui}` tokens; paths resolve in the active architecture doc.
 
 ## Rules
 
@@ -49,7 +51,7 @@ Read `../../core/placement.md` first (resolve `{routes}` / `{pages-utils}` / `{p
 
 One builder per file (`page.ts`, `group.ts`, `redirect.ts`, plus `getDefaultMeta` in
 `meta.ts`); `{pages-utils}/index.ts` is a barrel that re-exports each by name. The `Route`
-and `Middleware` types they reference come from `{pages-types}` (`02-pages/types.ts`) — never
+and `Middleware` types they reference come from `{pages-types}` — never
 from any `config/`.
 
 ```ts
@@ -134,11 +136,11 @@ import defaultRoutes from './default'
 export const routes = [...defaultRoutes, ...blogRoutes]
 ```
 
-## Placement (tokens — resolve via `placement.md`)
+## Placement (tokens)
 - [invariant · desired] Route files → `{routes}/<domain>.ts` + `{routes}/index.ts`.
 - [invariant · desired] `RouteNames` enum (cross-layer) → `{shared-config}`.
 - [invariant · desired] `Layouts` enum and `fallbackRoute` constant (page-layer) → `{pages-config}`.
 - [invariant · desired] Route builders (`page`/`group`/`redirect`/`getDefaultMeta`) →
   `{pages-utils}`, one per file + a barrel `index.ts`.
-- [invariant · desired] `Route` / `Middleware` types → `{pages-types}` (`02-pages/types.ts`).
+- [invariant · desired] `Route` / `Middleware` types → `{pages-types}`.
 - [invariant · desired] Page components → `{pages-ui}` (e.g. `<domain>/<Name>Page.vue`).

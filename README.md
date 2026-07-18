@@ -6,10 +6,13 @@ Native Claude Code plugin marketplace.
 
 ```text
 /plugin marketplace add kolirt/claude-skills
-/plugin install agent-companion@claude-skills
-/plugin install auditing@claude-skills
-/plugin install auditing-prs@claude-skills
+/plugin install <name>@claude-skills
 ```
+
+Every plugin below installs the same way — swap in its name:
+`agent-companion`, `knowledge`, `knowledge-seo`, `knowledge-vue`, `planning`,
+`auditing`, `auditing-prs`. Some plugins declare dependencies on others (see
+each entry) — install the dependency too, the plugin does not do it for you.
 
 ## Plugins
 
@@ -46,6 +49,80 @@ Native Claude Code plugin marketplace.
   content straight into each verifier's prompt, so the conventions reach the panel
   without ever entering the main session's context.
 
+- **knowledge** — Stack-independent base for the developer's own coding-knowledge
+  plugins: a human-gated capture loop that turns tacit conventions into tagged
+  rules and skills, codified into the relevant domain plugin (`knowledge-vue`,
+  and any future `knowledge-<stack>`). Not stack knowledge itself — install a
+  domain plugin for that.
+  - `capture` — do the work on a small greenfield example, ask the developer
+    how they want each decision point handled, draft a tagged rule, get their
+    explicit accept/reject before writing anything, then codify it (a
+    genuinely new pattern becomes a new skill in the domain plugin).
+
+- **knowledge-seo** — Stack-independent SEO policy knowledge: what "correct"
+  looks like for meta tags, structured data, sitemaps, robots, and the rest —
+  independent of any framework. Depends on `knowledge`. Consumed by
+  `knowledge-vue`'s delivery skills (`seo`, `robots`) and required by
+  `auditing:seo`.
+  - `meta-tags` — title/description/canonical/robots meta, favicon, head validity
+  - `structured-data` — schema.org JSON-LD type selection + required fields
+  - `social-preview` — Open Graph + Twitter/X Cards, per-platform quirks
+  - `canonicalization-and-redirects` — canonical URLs, duplicate content,
+    redirects, status codes, trailing slashes, site/HTTPS migrations
+  - `international` — hreflang, x-default, locale URL architecture, geotargeting
+  - `javascript-seo` — crawlability/indexability for JS/SPA apps (SSR, routing,
+    lazy-loading, render parity)
+  - `media-seo` — image/video alt text, filenames, formats, image & video sitemaps
+  - `page-experience` — Core Web Vitals, HTTPS, security headers, mobile-friendliness
+  - `robots` — robots.txt policy: crawl access, sitemap link, AI-crawler allow/deny
+  - `sitemaps` — XML sitemap structure, lastmod, sitemap index, submission
+  - `url-structure` — URL/route design, pagination, faceted nav, internal linking
+  - `indexnow` — instant URL-change notification for Bing/Yandex/Seznam/Naver/Yep
+  - `generative-seo` — AI answer engines (AI Overviews, ChatGPT Search,
+    Perplexity): llms.txt, AI-crawler access, entity authority
+
+- **knowledge-vue** — One developer's Vue conventions as intent-triggered
+  skills, with baseline SEO applied by default. Depends on `knowledge`
+  (capture) and `knowledge-seo` (policy). Ships a `SessionStart` hook. All
+  Vue work is expected to route through `vue-work` first: it establishes the
+  project model — runtime (`vite-vue` vs Nuxt), then under `vite-vue` the
+  architecture (`fsd` vs flat `src/`) and project type (`ssr` vs `csr`) —
+  before dispatching to a pattern skill. Path resolution for the active
+  architecture lives in `core/architectures/<a>.md`; the bootstrap process for
+  the active project type lives in `core/project-types/<t>.md`;
+  `core/placement.md` is the architecture-neutral token vocabulary every
+  pattern skill places files with.
+  - `vue-work` — the router: establishes runtime/architecture/project-type,
+    then dispatches to the right pattern skill. Self-activating.
+  - `project-init` — scaffold a new project's baseline deps, build scripts,
+    and default robots.txt
+  - `vue-router` — one-time vue-router install + registration
+  - `pages` — route/page declaration conventions
+  - `page-middlewares` — authoring a single nav middleware
+  - `layouts` — page layouts, the `Layouts` enum, the layout resolver
+  - `components` — component boundaries, props/emits/slots, reuse discovery
+  - `form-elements` — form-control wrapper discipline (skeleton, capture-filled)
+  - `forms` — form validation discipline (skeleton, capture-filled)
+  - `modals` — install + register `@kolirt/vue-modal`, scaffold wrappers
+  - `stores` — module-reactive shared state (no Pinia, no `defineStore`)
+  - `persistence` — localStorage/sessionStorage wrapper discipline
+  - `http-request` — shared HTTP wrapper; raw fetch/axios at call sites forbidden
+  - `tanstack-query` — queries, mutations, query keys, cache invalidation
+  - `auth` — login/logout, gating auth-only data, auto-logout on 401
+  - `hydration` — restoring browser-only state after SSR (SSR projects only)
+  - `seo` — Vue delivery layer for meta/OG/JSON-LD via `@unhead/vue`; defers
+    SEO principles to `knowledge-seo`
+  - `robots` — robots.txt delivery via `vite-plugin-robots`; defers policy to
+    `knowledge-seo`'s `robots` skill
+  - `plugin-registration` — the developer's Vue-plugin registration discipline,
+    reused by name from other capability skills
+
+- **planning** — Plan-then-build workflow, container for the two workflow skills.
+  - `brainstorm` — interviews the user one question at a time about a task,
+    then writes a self-contained plan file under `docs/plans/`
+  - `implement` — takes an existing plan (usually from `brainstorm`, often in
+    a fresh session) and executes it, either inline or via subagent orchestration
+
 - **auditing** — On-demand audits of a **whole application** from a chosen
   perspective. Strictly read-only: every skill reports findings with evidence and
   names the skill that owns the fix, but never changes the repository itself.
@@ -71,13 +148,23 @@ Native Claude Code plugin marketplace.
 - [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) — marketplace manifest; lists every plugin and its version (source of truth)
 - [`plugins/agent-companion/`](plugins/agent-companion) — verifier-panel manager plugin
   ([`verify.sh`](plugins/agent-companion/verify.sh) dispatcher · [`MANAGER.md`](plugins/agent-companion/MANAGER.md) · [`adapters/`](plugins/agent-companion/adapters) · [`commands/`](plugins/agent-companion/commands) · [`hooks/`](plugins/agent-companion/hooks) durable-mode reminders)
+- [`plugins/knowledge/`](plugins/knowledge) — stack-independent capture-loop base
+  ([`skills/capture/`](plugins/knowledge/skills/capture) · shared [`core/`](plugins/knowledge/core))
+- [`plugins/knowledge-seo/`](plugins/knowledge-seo) — stack-independent SEO policy knowledge
+  ([`skills/`](plugins/knowledge-seo/skills) — 13 skills, one per SEO concern · [`hooks/`](plugins/knowledge-seo/hooks))
+- [`plugins/knowledge-vue/`](plugins/knowledge-vue) — one developer's Vue conventions
+  ([`skills/vue-work/`](plugins/knowledge-vue/skills/vue-work) router · [`skills/`](plugins/knowledge-vue/skills) — 19 skills total ·
+  [`core/`](plugins/knowledge-vue/core) shared docs: [`runtimes/`](plugins/knowledge-vue/core/runtimes) · [`architectures/`](plugins/knowledge-vue/core/architectures) · [`project-types/`](plugins/knowledge-vue/core/project-types) · [`placement.md`](plugins/knowledge-vue/core/placement.md) · [`disciplines/`](plugins/knowledge-vue/core/disciplines) ·
+  [`hooks/`](plugins/knowledge-vue/hooks) — `SessionStart` hook)
+- [`plugins/planning/`](plugins/planning) — plan-then-build workflow
+  ([`skills/brainstorm/`](plugins/planning/skills/brainstorm) · [`skills/implement/`](plugins/planning/skills/implement))
 - [`plugins/auditing/`](plugins/auditing) — whole-application audit plugin
   ([`skills/business-analysis/`](plugins/auditing/skills/business-analysis) · [`skills/seo/`](plugins/auditing/skills/seo) · shared [`core/`](plugins/auditing/core))
 - [`plugins/auditing-prs/`](plugins/auditing-prs) — GitHub PR review plugin
   ([`skills/audit-pr/`](plugins/auditing-prs/skills/audit-pr) · [`skills/prepush-audit/`](plugins/auditing-prs/skills/prepush-audit) · shared [`core/`](plugins/auditing-prs/core))
 - [`.claude/skills/`](.claude/skills) — repo-local maintainer skills (auto-discovered in this repo): [`creating-plugins/`](.claude/skills/creating-plugins) (scaffold/validate new plugins) · [`authoring-knowledge-skills/`](.claude/skills/authoring-knowledge-skills) (checklist for knowledge-* skills)
-- [`site/`](site) — Vite + Vue web catalog, data-driven from `marketplace.json`
-- [`build-site.sh`](build-site.sh) — generates `site/public/data.json` from the manifests (version-validated; the generated file is gitignored)
+- [`site/`](site) — Vite + Vue web catalog, data-driven from `marketplace.json`; the catalog page also lists each plugin's skills
+- [`build-site.sh`](build-site.sh) — generates `site/public/data.json` from the manifests (version-validated; the generated file is gitignored, not checked into the repo)
 
 ## Develop
 

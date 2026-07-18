@@ -8,6 +8,7 @@ import AgentPanel from '../components/AgentPanel.vue'
 const props = defineProps<{ id: string }>()
 const plugin = computed(() => findPlugin(props.id))
 const isCompanion = computed(() => props.id === 'agent-companion')
+const hasSkills = computed(() => (plugin.value?.skills.length ?? 0) > 0)
 </script>
 
 <template>
@@ -75,16 +76,40 @@ const isCompanion = computed(() => props.id === 'agent-companion')
         <p class="prose dim note">{{ t('skill.modesNote') }}</p>
       </section>
 
-      <section class="block reveal" style="animation-delay: 0.44s">
-        <h2 class="block__h"><span class="faint">05</span> {{ t('skill.h.source') }}</h2>
+      <section v-if="hasSkills" class="block reveal" style="animation-delay: 0.44s">
+        <h2 class="block__h"><span class="faint">05</span> {{ t('skill.h.skills') }}</h2>
+        <dl class="defs">
+          <template v-for="s in plugin.skills" :key="s.name">
+            <dt><span class="accent">{{ s.name }}</span></dt>
+            <dd>{{ s.description }}</dd>
+          </template>
+        </dl>
+        <p class="prose dim note">{{ t('skill.skillsNote') }}</p>
+      </section>
+
+      <section class="block reveal" style="animation-delay: 0.5s">
+        <h2 class="block__h"><span class="faint">{{ hasSkills ? '06' : '05' }}</span> {{ t('skill.h.source') }}</h2>
         <a class="src" :href="plugin.source" target="_blank" rel="noopener">{{ plugin.source }} ↗</a>
       </section>
     </template>
 
-    <section v-else class="block reveal" style="animation-delay: 0.28s">
-      <h2 class="block__h"><span class="faint">02</span> {{ t('skill.h.source') }}</h2>
-      <a class="src" :href="plugin.source" target="_blank" rel="noopener">{{ plugin.source }} ↗</a>
-    </section>
+    <template v-else>
+      <section v-if="hasSkills" class="block reveal" style="animation-delay: 0.28s">
+        <h2 class="block__h"><span class="faint">02</span> {{ t('skill.h.skills') }}</h2>
+        <dl class="defs">
+          <template v-for="s in plugin.skills" :key="s.name">
+            <dt><span class="accent">{{ s.name }}</span></dt>
+            <dd>{{ s.description }}</dd>
+          </template>
+        </dl>
+        <p class="prose dim note">{{ t('skill.skillsNote') }}</p>
+      </section>
+
+      <section class="block reveal" style="animation-delay: 0.34s">
+        <h2 class="block__h"><span class="faint">{{ hasSkills ? '03' : '02' }}</span> {{ t('skill.h.source') }}</h2>
+        <a class="src" :href="plugin.source" target="_blank" rel="noopener">{{ plugin.source }} ↗</a>
+      </section>
+    </template>
 
     <RouterLink to="/" class="back reveal" style="animation-delay: 0.4s">{{ t('skill.back') }}</RouterLink>
   </article>
@@ -183,6 +208,8 @@ const isCompanion = computed(() => props.id === 'agent-companion')
 }
 .defs dd {
   margin: 5px 0 0;
+  max-width: 64ch;
+  overflow-wrap: break-word;
   padding-left: 16px;
   border-left: 2px solid var(--border-bright);
   color: var(--fg);

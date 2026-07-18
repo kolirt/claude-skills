@@ -6,14 +6,15 @@ description: Use when fixing browser-only state (localStorage-backed, navigator.
 # hydration (Vue) — fix browser-only state after mount (SSR projects only)
 
 **Hydration is a sub-concern of SSR, not a standalone mechanism** — `runHydrations()` is wired
-into the SSR client entry (see the `ssr` skill). It exists only because the server rendered a
-fallback that the client must reconcile.
+into the SSR client entry (see the active project-type doc, `core/project-types/ssr.md`). It
+exists only because the server rendered a fallback that the client must reconcile.
 
 **If the project has no SSR, this skill is not needed at all.** With CSR/SPA there is no server
 render to reconcile — read browser values directly at module-level initialisation time (see the
-`stores` skill's no-SSR branch). Whether a project is SSR or CSR is decided at `project-init`.
+`stores` skill's no-SSR branch). Whether a project is SSR or CSR is determined by step 0 of
+`vue-work` (`projectType`), detected or asked once and then assumed here.
 
-Read `../../core/placement.md` first (resolve `{shared-lib}`, `{app}`).
+Read `../../core/placement.md` first for the `{shared-lib}`, `{app}` tokens; paths resolve in the active architecture doc.
 
 ## Why hydration is needed
 
@@ -106,7 +107,7 @@ function onReady() {
 ## Registering a hydration callback in a store
 
 ```ts
-// {entity}/model/store/index.ts  (SSR project)
+// {entity} — entity store  (SSR project)
 import { reactive } from 'vue'
 import { useLocalPersistence } from '{shared-lib}/local-persistence'
 import { registerHydration } from '{shared-lib}/hydration'
@@ -141,4 +142,4 @@ browser:
 
 ## Related skills (by name)
 
-stores · ssr
+stores · persistence

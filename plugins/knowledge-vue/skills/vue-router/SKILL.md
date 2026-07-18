@@ -12,8 +12,10 @@ the `pages` skill.
 
 Read `../../core/disciplines/routing-discipline.md` first (route-by-name + the shared
 `fallbackRoute`).
-Read `../../core/placement.md` first (resolve `{plugins}` / `{pages-config}` /
-`{global-middlewares}`).
+- [invariant · desired] This skill applies under runtime = vite-vue; under Nuxt, routing/pages/layouts/middleware are Nuxt-owned (file-based) — see core/runtimes/nuxt.md.
+
+Read `../../core/placement.md` first for the `{plugins}` / `{pages-config}` /
+`{global-middlewares}` tokens; paths resolve in the active architecture doc.
 
 ## 1. Install + register
 - `yarn add vue-router`.
@@ -82,7 +84,7 @@ function wireMiddlewares(router: Router) {
   requires hash history) is explicitly fine. Defer crawlability principles to the
   `javascript-seo` skill (knowledge-seo) by name.
 
-## Placement (tokens — resolve via `placement.md`)
+## Placement (tokens)
 - [invariant · desired] Router factory → `{plugins}/router.ts`.
 - [invariant · desired] `GlobalMiddlewares` array → `{pages-config}`.
 - [invariant · desired] Global middleware impl files (incl. the layout middleware) →

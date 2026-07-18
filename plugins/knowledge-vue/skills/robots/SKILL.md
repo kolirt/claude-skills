@@ -5,7 +5,13 @@ description: Use when adding or managing robots.txt delivery in a Vue/Vite proje
 
 # robots (Vue) — robots.txt delivery via vite-plugin-robots
 
-Read `../../core/placement.md`
+Read `../../core/placement.md` for the token vocabulary; paths resolve in the active architecture doc.
+
+- [invariant · desired] [runtime: vite-vue] robots.txt DELIVERY is runtime-specific. Under
+  runtime = vite-vue the delivery mechanism is `vite-plugin-robots`, as described below. Under
+  Nuxt the file is served by Nuxt/Nitro instead (public asset or a Nitro route) — see
+  core/runtimes/nuxt.md; do not install `vite-plugin-robots` there. The robots.txt POLICY is
+  runtime-independent — defer to the `robots` skill from knowledge-seo either way.
 
 ## Overview
 

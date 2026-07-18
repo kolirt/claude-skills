@@ -5,7 +5,7 @@ description: Use when adding or editing reactive shared state in a Vue project �
 
 # stores (Vue) — module-reactive state
 
-Read `../../core/placement.md` first (resolve `{entity}`, `{widget}`, `{feature}`, `{shared-lib}`).
+Read `../../core/placement.md` first for the `{entity}`, `{widget}`, `{feature}`, `{shared-lib}` tokens; paths resolve in the active architecture doc.
 
 State is managed with plain Vue reactivity at module level — no Pinia, no `defineStore`.
 One module = one singleton instance per app boot.
@@ -29,9 +29,9 @@ One module = one singleton instance per app boot.
 
 | Variety | Location | Persistence | Reactive scope |
 |---|---|---|---|
-| Entity store | `{entity}/model/store/` | yes — via `persistence` skill | module-level singleton |
-| Widget view-state | `{widget}/model/` | no | module-level singleton |
-| Feature state | `{feature}/model/` | no | per-mount (fresh on each `setup` call) |
+| Entity store | `{entity}` — entity store | yes — via `persistence` skill | module-level singleton |
+| Widget view-state | `{widget}` — widget view-state | no | module-level singleton |
+| Feature state | `{feature}` — feature view-state | no | per-mount (fresh on each `setup` call) |
 
 - **Entity store** — holds business state that survives navigation and may be persisted.
   Storage keys are declared as local string constants at the call site; storage access uses
@@ -66,7 +66,7 @@ One module = one singleton instance per app boot.
 ## Module-reactive entity store — annotated sample
 
 ```ts
-// {entity}/model/store/index.ts
+// {entity} — entity store
 import { computed, reactive } from 'vue'
 import { useLocalPersistence } from '{shared-lib}/local-persistence'
 // import { registerHydration } from '{shared-lib}/hydration'  // ← uncomment for SSR projects
@@ -133,4 +133,4 @@ export function useSessionStore() {
 
 ## Related skills (by name)
 
-persistence · hydration · tanstack-query · architecture-fsd
+persistence · hydration · tanstack-query

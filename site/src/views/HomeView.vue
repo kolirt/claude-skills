@@ -10,9 +10,10 @@ const q = ref('')
 const results = computed(() => {
   const needle = q.value.trim().toLowerCase()
   if (!needle) return catalog.value.plugins
-  return catalog.value.plugins.filter((p) =>
-    `${p.name} ${p.description}`.toLowerCase().includes(needle),
-  )
+  return catalog.value.plugins.filter((p) => {
+    const skills = (p.skills ?? []).map((s) => `${s.name} ${s.description}`).join(' ')
+    return `${p.name} ${p.description} ${skills}`.toLowerCase().includes(needle)
+  })
 })
 </script>
 

@@ -9,8 +9,10 @@ How page layouts are created, registered, and resolved. Defer to `page-middlewar
 (by name) for the middleware contract and to `vue-router` (by name) for registering
 the resolver in `GlobalMiddlewares`.
 
-Read `../../core/placement.md` first (resolve `{layouts}` / `{pages-config}` /
-`{global-middlewares}` / `{pages-types}`).
+Read `../../core/placement.md` first for the `{layouts}` / `{pages-config}` /
+`{global-middlewares}` / `{pages-types}` tokens; paths resolve in the active architecture doc.
+- [invariant · desired] This skill applies under runtime = vite-vue; under Nuxt, routing/pages/layouts/middleware are Nuxt-owned (file-based) — see core/runtimes/nuxt.md.
+
 
 ## Create a layout
 - [invariant · desired] A layout is a component **`<Name>Layout.vue`** in `{layouts}`.
@@ -40,19 +42,23 @@ Read `../../core/placement.md` first (resolve `{layouts}` / `{pages-config}` /
 - [invariant · desired] A **global layout middleware** resolves the component from the
   enum via `import.meta.glob` and is registered in `GlobalMiddlewares` (see
   `vue-router`); author it per the `page-middlewares` contract. The glob path is
-  **relative to the middleware file**, so it depends on where the middleware and
-  `{layouts}` sit (FSD `02-pages/global-middlewares` → `../layouts`; adjust the relative
-  path for non-FSD layouts). Author it per the `page-middlewares` contract — own file
+  **relative to the middleware file**, so compute it from where `{global-middlewares}` and
+  `{layouts}` resolve in the active architecture doc — the two tokens sit at different
+  depths per architecture, so never copy a literal glob between projects.
+  Author it per the `page-middlewares` contract — own file
   `{global-middlewares}/layout.middleware.ts`, `Middleware` type from `{pages-types}`, named
   `export { middleware }`, re-exported from the barrel as `layoutMiddleware`:
   ```ts
   // {global-middlewares}/layout.middleware.ts
   import type { Middleware } from '{pages-types}'
 
-  const imports = import.meta.glob('../layouts/*.vue', { import: 'default' })
+  // <rel> = the path from {global-middlewares} to {layouts}, per the active architecture
+  // doc — the two tokens sit at different depths per architecture. Both literals below
+  // must use the SAME <rel>, or the lookup key will not match a glob entry.
+  const imports = import.meta.glob('<rel>/*.vue', { import: 'default' })
 
   const middleware: Middleware = async (to) => {
-    to.meta.layout.component = (await imports[`../layouts/${to.meta.layout.type}.vue`]()) as Component
+    to.meta.layout.component = (await imports[`<rel>/${to.meta.layout.type}.vue`]()) as Component
   }
 
   export { middleware }
