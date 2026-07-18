@@ -1,7 +1,8 @@
 # recognition — content → schema recognition map
 
 **This is the single source of truth for the content→schema recognition map.**
-The `seo-audit` skill and the `vue-work` skill reference this table by name when
+The `auditing:seo` skill (auditing plugin — `/plugin install auditing@claude-skills`)
+and the `vue-work` skill reference this table by name when
 auto-applying structured data based on page content patterns.
 
 ---
@@ -35,8 +36,9 @@ auto-applying structured data based on page content patterns.
 
 ## Usage by referencing skills
 
-- **seo-audit**: scans visible page content against the patterns above; flags missing or
-  mismatched schema types as audit findings.
+- **auditing:seo**: scans visible page content against the patterns above; flags missing or
+  mismatched schema types as audit findings. Lives in the separate `auditing` plugin
+  (`/plugin install auditing@claude-skills`).
 - **vue-work**: when auto-generating page schema, resolves the correct `@type` by matching
   the page's content patterns to this table before delegating to the appropriate schema
   factory.

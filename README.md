@@ -7,6 +7,7 @@ Native Claude Code plugin marketplace.
 ```text
 /plugin marketplace add kolirt/claude-skills
 /plugin install agent-companion@claude-skills
+/plugin install auditing@claude-skills
 /plugin install auditing-prs@claude-skills
 ```
 
@@ -34,6 +35,19 @@ Native Claude Code plugin marketplace.
   When 2+ verifiers run, a **synthesizer** can consolidate their reports into one (so the
   session isn't flooded): `/agent-companion:synthesizer set <claude|cli[:model][@effort]|none>`.
 
+- **auditing** — On-demand audits of a **whole application** from a chosen
+  perspective. Strictly read-only: every skill reports findings with evidence and
+  names the skill that owns the fix, but never changes the repository itself.
+  - `business-analysis` — reconstructs the product model from code and reports
+    broken flows, entities without a lifecycle, monetization leaks, and
+    contradictions between stated intent and implementation.
+  - `seo` — static SEO baseline check across the project. **Requires the
+    `knowledge-seo` plugin** (`/plugin install knowledge-seo@claude-skills`),
+    which owns all SEO policy knowledge; without it the skill stops instead of
+    auditing.
+
+  For audits of a **PR diff** rather than the whole application, use `auditing-prs`.
+
 - **auditing-prs** — End-to-end GitHub Pull Request reviews via the `gh` CLI:
   fetch the PR (plus optional issue-tracker context), draft the review in chat,
   publish inline + summary comments with consistent conventions, and resolve
@@ -46,6 +60,8 @@ Native Claude Code plugin marketplace.
 - [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) — marketplace manifest; lists every plugin and its version (source of truth)
 - [`plugins/agent-companion/`](plugins/agent-companion) — verifier-panel manager plugin
   ([`verify.sh`](plugins/agent-companion/verify.sh) dispatcher · [`MANAGER.md`](plugins/agent-companion/MANAGER.md) · [`adapters/`](plugins/agent-companion/adapters) · [`commands/`](plugins/agent-companion/commands))
+- [`plugins/auditing/`](plugins/auditing) — whole-application audit plugin
+  ([`skills/business-analysis/`](plugins/auditing/skills/business-analysis) · [`skills/seo/`](plugins/auditing/skills/seo) · shared [`core/`](plugins/auditing/core))
 - [`plugins/auditing-prs/`](plugins/auditing-prs) — GitHub PR review plugin
   ([`skills/audit-pr/`](plugins/auditing-prs/skills/audit-pr) · [`skills/prepush-audit/`](plugins/auditing-prs/skills/prepush-audit) · shared [`core/`](plugins/auditing-prs/core))
 - [`.claude/skills/`](.claude/skills) — repo-local maintainer skills (auto-discovered in this repo): [`creating-plugins/`](.claude/skills/creating-plugins) (scaffold/validate new plugins) · [`authoring-knowledge-skills/`](.claude/skills/authoring-knowledge-skills) (checklist for knowledge-* skills)

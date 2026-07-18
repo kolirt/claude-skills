@@ -1,0 +1,8 @@
+{
+  "name": "auditing",
+  "version": "0.1.0",
+  "description": "On-demand audits of a WHOLE application from a chosen perspective: business-analysis (product integrity, flows, monetization) and seo (SEO baseline). Read-only — reports findings, never fixes them. Audits of PR diffs and changes belong to the auditing-prs plugin. The seo skill requires the knowledge-seo plugin to be installed separately.",
+  "author": {
+    "name": "kolirt"
+  }
+}
