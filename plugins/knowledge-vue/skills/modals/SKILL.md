@@ -11,6 +11,12 @@ Defer to the `plugin-registration` skill (by name) for registering the package, 
 to the `page-middlewares` skill (by name) for the route-change cleanup middleware.
 Do not restate those skills' steps here.
 
+Read `references/modal.md` and reproduce it — it holds the complete files for the
+modal plugin, the shared wrappers and the default confirm modal. The etalon follows
+this skill's placement convention (group infrastructure under `groups/<group>/`,
+each concrete modal in its own sibling folder); the etalon registers both baseline
+groups, `main` and `prompt`.
+
 > **[invariant · desired] Read the package's own AI guide BEFORE writing any modal
 > code.** `@kolirt/vue-modal` ships an agent-facing reference at
 > `node_modules/@kolirt/vue-modal/AGENTS.md` — it is the authoritative source for the
@@ -29,15 +35,11 @@ Do not restate those skills' steps here.
 - Install: `yarn add @kolirt/vue-modal reka-ui`.
 - [invariant · desired] Register the package **through the `plugin-registration`
   skill** (a factory file, not inline). The modal group config lives inside that factory.
-- [preference · desired] Default groups are **`default`** and **`confirm`**; the
+- [preference · desired] Default groups are **`main`** and **`prompt`**; the
   project adds more groups as it needs them.
-- [invariant · desired] Make group names type-safe via module augmentation:
-  ```ts
-  import type { DefineGroups } from '@kolirt/vue-modal'
-  declare module '@kolirt/vue-modal' {
-    interface ModalGroupRegistry extends DefineGroups<['default', 'confirm']> {}
-  }
-  ```
+- [invariant · desired] Make group names type-safe via module augmentation: extend
+  `ModalGroupRegistry` with `DefineGroups<[...]>` listing every registered group name
+  (see the etalon's `declare module` block).
 - [preference · desired] Each group gets its own `*ModalTarget.vue` mounted in the
   root layout, rather than inline `<ModalTarget>` tags scattered in `App.vue`.
 
@@ -53,68 +55,27 @@ Do not restate those skills' steps here.
     thin and consistent, and a styling change happens in one place.
 - [invariant · desired] **Group infrastructure** (a group's `*ModalWrapper.vue` +
   `*ModalTarget.vue`) is kept **separate from concrete modals** — see Placement below.
-- On first setup, scaffold wrappers for `default` and `confirm`, plus a default
-  **`ConfirmModal`** (group `confirm`) and its `useConfirmModal` composable (§3) —
+- On first setup, scaffold wrappers for `main` and `prompt`, plus a default
+  **`ConfirmModal`** (group `prompt`) and its `useConfirmModal` composable (§3) —
   confirmation dialogs are needed in every project. `ConfirmModal` takes the message
-  and button labels as props, with sensible defaults:
-  ```ts
-  // interface.ts (confirm-modal folder) — props/types live here, not inline in the .vue
-  export interface ConfirmModalProps {
-    title?: string
-    message: string
-    confirmText?: string
-    cancelText?: string
-  }
-  ```
-  ```vue
-  <!-- ConfirmModal.vue (group: confirm) -->
-  <script lang="ts" setup>
-  import { useModalContext } from '@kolirt/vue-modal'
-  import ConfirmModalWrapper from '../groups/confirm/ConfirmModalWrapper.vue'
-  import type { ConfirmModalProps } from './interface'
-
-  withDefaults(defineProps<ConfirmModalProps>(), { confirmText: 'Confirm', cancelText: 'Cancel' })
-
-  defineOptions({ modalGroup: 'confirm' })
-  const { confirm, close } = useModalContext<boolean>()
-  </script>
-
-  <template>
-    <ConfirmModalWrapper>
-      <h2 v-if="title">{{ title }}</h2>
-      <p>{{ message }}</p>
-      <button @click="close()">{{ cancelText }}</button>
-      <button @click="confirm(true)">{{ confirmText }}</button>
-    </ConfirmModalWrapper>
-  </template>
-  ```
+  and button labels as props, with sensible defaults, renders through its group
+  wrapper, and uses `useModalContext<boolean>()` for `close`/`confirm` — props/types
+  live in a sibling `interface.ts`, never inline-only in the `.vue` (see the etalon).
 
 ## 3. Usage — define + open
 
 - [invariant · desired] A concrete modal sets `defineOptions({ modalGroup: '<group>' })`,
   renders through its group wrapper, and uses `useModalContext<T>()` for `close` /
   `confirm`.
-- [invariant · desired] Opening a modal goes through a **dedicated `use*Modal`
-  composable, co-located in the SAME slice as the modal**. The call site **never**
-  calls `openModal()` directly — it must not know the open details, it just opens.
-  - ✅ do:
-    ```ts
-    import { ModalClosedError, openModal } from '@kolirt/vue-modal'
-    import ConfirmModal from './ConfirmModal.vue'
-
-    export function useConfirmModal() {
-      function confirm(opts: {
-        title?: string; message: string; confirmText?: string; cancelText?: string
-      }): Promise<boolean> {
-        return openModal<boolean>(ConfirmModal, { props: opts }).catch((e) => {
-          if (e instanceof ModalClosedError) return false // dismissed = false
-          throw e
-        })
-      }
-      return { confirm }
-    }
-    ```
+- [invariant · desired] Opening a **domain** modal (feature/widget) goes through a
+  dedicated `use*Modal` composable, co-located in the SAME slice as the modal. The
+  call site **never** calls `openModal()` directly — it must not know the open
+  details, it just opens.
+  - ✅ do: a `use*Modal` composable that calls `openModal()` and catches
+    `ModalClosedError` to resolve a sensible default on dismiss.
   - ❌ don't: `openModal(ConfirmModal, { props })` at the call site.
+  - A **generic/shared** modal's `use*Modal` (e.g. `useConfirmModal`) is the same
+    pattern, but placed in `{shared-lib}` instead — see §4.
 - [preference · desired] Value-returning modals resolve a `Promise<T>` and catch
   `ModalClosedError` (dismiss → a sensible default); fire-and-forget modals swallow
   with `.catch(() => {})`.
@@ -128,20 +89,22 @@ Do not restate those skills' steps here.
 - [invariant · desired] **Group infrastructure** (`*ModalWrapper.vue` +
   `*ModalTarget.vue`) → `{shared-ui}/modals/groups/<group>/` — one folder per group.
   Each group folder has a barrel `index.ts` re-exporting the wrapper and target.
-- [invariant · desired] A **generic/shared concrete modal** (e.g. `ConfirmModal`) and
-  its composable → `{shared-ui}/modals/<name>-modal/` — its own folder, never inside
-  the group-infrastructure folder.
-  Each concrete-modal folder has a barrel `index.ts`.
+- [invariant · desired] A **generic/shared concrete modal** (e.g. `ConfirmModal`) →
+  `{shared-ui}/modals/<name>-modal/` — its own folder, never inside the
+  group-infrastructure folder. Each concrete-modal folder has a barrel `index.ts`.
 - [invariant · desired] A concrete modal folder contains: the `.vue` component, an
   **`interface.ts`** declaring its props/types (`<Name>Props`, request/variant types),
-  its `use*Modal.ts` composable, and an `index.ts` barrel re-exporting all three.
-  Component props/types belong in `interface.ts`, not inline-only in the `.vue`.
-  ```ts
-  // <name>-modal/index.ts
-  export { default as <Name>Modal } from './<Name>Modal.vue'
-  export type { <Name>ModalProps } from './interface'
-  export { use<Name>Modal } from './use<Name>Modal'
-  ```
+  and an `index.ts` barrel re-exporting both (component, types — see the etalon's
+  `confirm-modal/index.ts`). Component props/types belong in `interface.ts`, not
+  inline-only in the `.vue`.
+- [invariant · desired] Its `use*Modal.ts` composable does **not** live in that same
+  folder — it wraps `openModal`/`ModalClosedError` from `@kolirt/vue-modal` (an
+  external system) as an app-wide singleton, which is `{shared-lib}`'s role, not
+  `{shared-ui}`'s (see `core/placement.md`). It goes in its own
+  `{shared-lib}/<name>-modal/` folder with its own barrel, and is imported by
+  consumers from there (see the etalon's `{shared-lib}/confirm-modal/`).
 - [invariant · desired] A **domain modal** lives in its owning slice with its
   composable co-located: feature → `{feature}` (`ui/` + `model/`); widget → `{widget}`
-  (`ui/` + `model/`). The `use*Modal` always lives in the same slice as its modal.
+  (`ui/` + `model/`). The `use*Modal` always lives in the same slice as its modal —
+  this co-location rule is for domain modals only; a generic/shared modal follows the
+  `{shared-lib}` split above instead.

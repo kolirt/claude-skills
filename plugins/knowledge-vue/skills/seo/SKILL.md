@@ -7,178 +7,62 @@ description: Use when wiring SEO meta tags, Open Graph properties, or JSON-LD st
 
 Read `../../core/placement.md` for the token vocabulary; paths resolve in the active architecture doc.
 
+Read `references/seo.md` and reproduce it — it holds the complete files for the seo lib, the
+schema builders and a consuming page.
+
 ## Rules
 
-- [invariant · desired] `useHead` and every direct `@unhead/vue` import live ONLY inside `{shared-lib}/seo`. Pages, widgets, and entities NEVER import `@unhead` directly — they import `useSeoMeta` and `useJsonLd` from the seo-lib barrel.
-- [invariant · desired] SEO meta is set at the page level (`{pages-ui}/<Name>Page.vue`), once, at the top of `<script setup>`. JSON-LD is placed where its source data lives, typically the same page. Never call `useSeoMeta` from a widget — meta would be applied twice on the same route.
+- [invariant · desired] Application code — pages, widgets, entities, and layouts — NEVER imports `@unhead/vue` directly; it imports `useSeoMeta` and `useJsonLd` from the seo-lib barrel (`{shared-lib}/seo`). The one sanctioned exception is the head plugin factory (`{plugins}/head.ts`), owned by the active project-type bootstrap etalon, which legitimately imports `@unhead/vue` to construct the head instance itself.
+- [invariant · desired] SEO meta is set at the page level (`{pages-ui}/<domain>/<Name>Page.vue`), once, at the top of `<script setup>`. JSON-LD is placed where its source data lives, typically the same page. Never call `useSeoMeta` from a widget — meta would be applied twice on the same route.
 - [invariant · desired] All options are passed reactively: via a `computed` getter or a value accepted by `MaybeRefOrGetter`. A plain bare object is not reactive and will not update on navigation.
 - [invariant · desired] The site name is applied once via a root `titleTemplate` in `{app}`. Pages set only the clean page title string — no per-page suffix.
-- [invariant · desired] JSON-LD content is XSS-escaped before injection: `.replace(/</g, '\u003c')` converts every `<` to its six-character Unicode escape, preventing `</script>` injection.
+- [invariant · desired] JSON-LD content is XSS-escaped before injection: `.replace(/</g, '\\u003c')` converts every `<` to its six-character Unicode escape, preventing `</script>` injection. The double backslash is load-bearing — a single backslash (`'<'`) is a JS Unicode-escape literal that the engine collapses back into a literal `<` at parse time, so the `.replace()` silently becomes a no-op with zero XSS protection.
 - [invariant · desired] `buildCanonical(route)` enforces the canonical query-allowlist via vue-router and returns the canonical path. `og:url` is set to the same canonical value. Absolute URLs are produced by `buildAbsoluteUrl`, which reads the origin from an env variable and emits a warning in production when the variable is empty.
 - [invariant · desired] A schema factory accepts a neutral input type (`*SchemaInput`), never a domain entity. The page maps `entity → input` before calling the factory.
 
-## seo-lib — useSeoMeta
+## seo-lib shape
 
-```ts
-// {shared-lib}/seo/useSeoMeta.ts
-import { useHead } from '@unhead/vue'
-import { toValue, type MaybeRefOrGetter } from 'vue'
-import { useRoute } from 'vue-router'
-import { buildCanonical, buildAbsoluteUrl } from './canonical'
+`{shared-lib}/seo/useSeoMeta.ts` accepts a `MaybeRefOrGetter` options object (title,
+description, an optional `ogImage`, an optional `canonical` override) and calls `useHead`
+inside a getter. It truncates the title and description before use — long values overflow
+search-result and social-card snippets — and builds `og:title`/`og:description`/Twitter meta
+plus the `canonical` link from `buildCanonical(route)` when no explicit override is given.
 
-export interface SeoMetaInput {
-  title: string
-  description: string
-  siteName: string
-  image?: string
-  locale?: string
-  robots?: string
-}
+`{shared-lib}/seo/buildCanonical.ts` and `buildAbsoluteUrl.ts` implement the canonical-URL
+rule above: `buildCanonical` keeps only an allow-listed set of query params, sorts them for a
+stable string, and delegates to `buildAbsoluteUrl`, which prepends the origin read from an env
+variable and warns in production when that variable is empty.
 
-export function useSeoMeta(input: MaybeRefOrGetter<SeoMetaInput>) {
-  const route = useRoute()
+`{shared-lib}/seo/useJsonLd.ts` calls `useHead` with a `script` entry of type
+`application/ld+json`, whose `innerHTML` is the schema JSON with every `<` escaped per the rule
+above before injection.
 
-  useHead(() => {
-    const v = toValue(input)
-    const title = v.title.slice(0, 70)
-    const description = v.description.slice(0, 160)
-    const canonical = buildAbsoluteUrl(buildCanonical(route))
-
-    return {
-      title,
-      meta: [
-        { name: 'description', content: description },
-        { property: 'og:title', content: title },
-        { property: 'og:description', content: description },
-        { property: 'og:url', content: canonical },
-        { property: 'og:site_name', content: v.siteName },
-        { property: 'og:locale', content: v.locale ?? 'en_US' },
-        ...(v.image
-          ? [
-              { property: 'og:image', content: v.image },
-              { name: 'twitter:card', content: 'summary_large_image' },
-            ]
-          : []),
-        { name: 'robots', content: v.robots ?? 'index, follow' },
-      ],
-      link: [{ rel: 'canonical', href: canonical }],
-    }
-  })
-}
-```
-
-## seo-lib — canonical
-
-```ts
-// {shared-lib}/seo/canonical.ts
-import type { RouteLocationNormalizedLoaded } from 'vue-router'
-
-/** Query params that define content identity. All others (UTM, tracking, etc.) are dropped. */
-const ALLOWED_QUERY_PARAMS = new Set(['page', 'sort', 'category', 'filter', 'q'])
-
-/**
- * Prepend the site origin (from env) to a path.
- * Warns in production when VITE_APP_ORIGIN is not set — the resulting URL
- * will be relative and canonical tags may be ignored by crawlers.
- */
-export function buildAbsoluteUrl(path: string): string {
-  const origin = import.meta.env.VITE_APP_ORIGIN ?? ''
-  if (!origin && import.meta.env.PROD) {
-    console.warn('[seo] VITE_APP_ORIGIN is not set — canonical URL will be relative.')
-  }
-  return `${origin}${path}`
-}
-
-/**
- * Build a canonical URL for the given route.
- * Keeps only ALLOWED_QUERY_PARAMS, sorts them for a stable string,
- * drops tracking / UTM params, and returns an absolute URL.
- *
- * Example: /products?page=2&utm_source=email&sort=price
- *          → https://example.com/products?page=2&sort=price
- */
-export function buildCanonical(route: RouteLocationNormalizedLoaded): string {
-  const kept = Object.entries(route.query)
-    .filter(([key]) => ALLOWED_QUERY_PARAMS.has(key))
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value ?? ''))}`)
-    .join('&')
-
-  const path = route.path + (kept ? `?${kept}` : '')
-  return buildAbsoluteUrl(path)
-}
-```
-
-## seo-lib — useJsonLd
-
-```ts
-// {shared-lib}/seo/useJsonLd.ts
-import { useHead } from '@unhead/vue'
-import { toValue, type MaybeRefOrGetter } from 'vue'
-
-export function useJsonLd(schema: MaybeRefOrGetter<object>) {
-  useHead(() => {
-    const escaped = JSON.stringify(toValue(schema)).replace(/</g, '\u003c')
-    return {
-      script: [{ type: 'application/ld+json', innerHTML: escaped }],
-    }
-  })
-}
-```
-
-## Page usage
-
-```vue
-<!-- {pages-ui}/product/ProductPage.vue -->
-<script setup lang="ts">
-import { computed } from 'vue'
-import { useSeoMeta, useJsonLd } from '@/shared/lib/seo'
-import { productSchema } from '@/shared/lib/seo/schemas/product'
-import { useProductStore } from '@/entities/product'
-
-const store = useProductStore()
-const item = computed(() => store.current)
-
-useSeoMeta(computed(() => ({
-  title: item.value?.name ?? 'Product',
-  description: item.value?.summary ?? '',
-  image: item.value?.imageUrl,
-  siteName: 'My Shop',
-  locale: 'en_US',
-})))
-
-useJsonLd(computed(() => productSchema({
-  name: item.value?.name ?? '',
-  description: item.value?.summary ?? '',
-  image: item.value?.imageUrl,
-  price: item.value?.price,
-  currency: item.value?.currency ?? 'USD',
-})))
-</script>
-```
+A consuming page (see `references/seo.md`'s `HomePage.vue`) imports `useSeoMeta` and
+`useJsonLd` from the seo-lib barrel, calls `useSeoMeta` once at the top of `<script setup>`,
+and calls `useJsonLd` with a schema built by a factory from `{shared-lib}/seo/schemas`.
 
 ## titleTemplate (once, in {app})
 
-The head **instance** is created by the `createHead({ ssr })` plugin factory in
-`{plugins}/head.ts` (server/client unhead chosen at runtime) and registered via `app.use(head)`
-in the app factory — see the `plugin-registration` skill and the active project-type doc
-(`core/project-types/<t>.md`). Do NOT create an ad-hoc
-`createHead({...})` here. The site-name `titleTemplate` is configured **once** at the app root:
-
-```ts
-// {app} root component setup — applied once, isomorphic
-import { useHead } from '@unhead/vue'
-
-useHead({
-  titleTemplate: (title) => (title ? `${title} — My Shop` : 'My Shop'),
-})
-```
+The head **instance** is created by the `createHead()` plugin factory in `{plugins}/head.ts` and
+registered via `app.use(head)` in the app factory — see the `plugin-registration` skill and the
+active project-type doc (`core/project-types/<t>.md`). The factory's shape depends on the
+project type: SSR's `createHead({ ssr })` is async and dynamically imports the server or client
+`unhead` build at runtime per request (`core/project-types/ssr.md`,
+`core/references/bootstrap-ssr.md`); CSR's `createHead()` is sync, takes no arguments, and
+statically imports the client `unhead` build (`core/references/bootstrap-csr.md`). Do NOT create
+an ad-hoc `createHead({...})` here. The site-name
+`titleTemplate` is configured **once**, isomorphically, in the root component's `<script
+setup>`, by calling `useTitleTemplate(siteName)` — a small composable exported from the seo-lib
+barrel (`{shared-lib}/seo`) that owns the `useHead({ titleTemplate: ... })` call. The root
+component imports `useTitleTemplate` from `{shared-lib}/seo` and never imports `@unhead/vue`
+itself — see the `layouts` skill's `references/layouts.md` (SSR) / `layouts.csr.md` (CSR) for
+the exact call site.
 
 ## Placement (tokens)
 
 - [invariant · desired] `useSeoMeta`, `useJsonLd`, schema factories, `buildCanonical`, `buildAbsoluteUrl` → `{shared-lib}/seo`.
 - [invariant · desired] `titleTemplate` root config → `{app}`.
-- [invariant · desired] Per-page `useSeoMeta` / `useJsonLd` calls → `{pages-ui}/<Name>Page.vue`.
+- [invariant · desired] Per-page `useSeoMeta` / `useJsonLd` calls → `{pages-ui}/<domain>/<Name>Page.vue`.
 
 ## ✅ / ❌
 
@@ -187,9 +71,9 @@ useHead({
 | Import `useSeoMeta` / `useJsonLd` from `{shared-lib}/seo` | Import `useHead` or `@unhead/vue` outside `{shared-lib}/seo` |
 | Call `useSeoMeta` once, at the top of the page component | Call `useSeoMeta` from a widget or entity component |
 | Pass a `computed` getter so meta updates reactively | Pass a plain object literal (not reactive) |
-| Escape JSON-LD with `.replace(/</g, '\u003c')` | Inject raw JSON-LD without escaping `<` |
+| Escape JSON-LD with `.replace(/</g, '\\u003c')` | Inject raw JSON-LD without escaping `<` |
 | Set `og:url` to the value returned by `buildCanonical(route)` | Set `og:url` to `window.location.href` or a hardcoded string |
-| Declare `titleTemplate` once in `{app}` | Append the site name inside the per-page title string |
+| Declare `titleTemplate` once in `{app}` via `useTitleTemplate` from `{shared-lib}/seo` | Append the site name inside the per-page title string, or call `useHead({ titleTemplate })` directly in `{app}` |
 | Map entity → `*SchemaInput` in the page before calling the factory | Pass a raw domain entity to a schema factory |
 
 ## Related skills (by name)

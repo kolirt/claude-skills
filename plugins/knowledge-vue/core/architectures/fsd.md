@@ -27,6 +27,7 @@ project's `@`/`~` src alias (e.g. `@/07-shared/ui`).
 
 | token | FSD path |
 |---|---|
+| `{project-root}` | `.` (the repository root itself, outside the src tree) |
 | `{app}` | `01-app` |
 | `{plugins}` | `01-app/plugins` |
 | `{initial-plugins}` | `01-app/initial-plugins` |
@@ -36,17 +37,22 @@ project's `@`/`~` src alias (e.g. `@/07-shared/ui`).
 | `{pages-config}` | `02-pages/config` |
 | `{middlewares}` | `02-pages/middlewares` |
 | `{global-middlewares}` | `02-pages/global-middlewares` |
-| `{pages-ui}` | `02-pages/ui/<domain>` |
+| `{pages-ui}` | `02-pages/ui` |
 | `{layouts}` | `02-pages/layouts` |
 | `{shared-config}` | `07-shared/config` |
 | `{shared-ui}` | `07-shared/ui` |
 | `{shared-lib}` | `07-shared/lib` |
 | `{shared-utils}` | `07-shared/utils` |
 | `{composition}` | `05-composition` |
-| `{feature}` | `04-features/<name>` |
-| `{widget}` | `03-widgets/<name>` |
-| `{entity}` | `06-entities/<name>` |
+| `{feature}` | `04-features` |
+| `{widget}` | `03-widgets` |
+| `{entity}` | `06-entities` |
 | `{assets}` | `07-shared/assets` |
+
+Every token above names a **bucket only** — the slice/domain name is never part of the
+token value. The author writes it after the token (`{entity}` + `session` →
+`06-entities/session`, `{pages-ui}` + `checkout` → `02-pages/ui/checkout`). See
+`../placement.md` §1 for the rule and its per-consumer rendering.
 
 `{app}` resolves to `01-app` and holds the app bootstrap surface and the root component. The
 per-request `createApp` factory and imperative bootstrap initialisers live in
@@ -56,12 +62,12 @@ the active project type in `core/project-types/<t>.md`, not here.
 
 ## 3. "Where does it go" — decision order (take first match)
 
-1. **Domain entity** → `{entity}` (`06-entities/<name>`) — entity-first: declare the full slice at once, never a thin stub. [preference · desired]
-2. **User action** (mutation, form submit, read-trigger) → `{feature}` (`04-features/<name>`) — one action = one slice.
-3. **Assemble a ready entity UI** (no own state, no fetch, no routing; reused across contexts) → `{composition}` (`05-composition/<name>`) — actions arrive via slots, not props.
-4. **Stateful composite reused on 2+ pages**, or a large independent block that stands alone → `{widget}` (`03-widgets/<name>`). Uncombined main content stays in the page; not every block is a widget. [preference · desired]
+1. **Domain entity** → `{entity}` (`06-entities`) — entity-first: declare the full slice at once, never a thin stub. [preference · desired]
+2. **User action** (mutation, form submit, read-trigger) → `{feature}` (`04-features`) — one action = one slice.
+3. **Assemble a ready entity UI** (no own state, no fetch, no routing; reused across contexts) → `{composition}` (`05-composition`) — actions arrive via slots, not props.
+4. **Stateful composite reused on 2+ pages**, or a large independent block that stands alone → `{widget}` (`03-widgets`). Uncombined main content stays in the page; not every block is a widget. [preference · desired]
 5. **Domain-neutral primitive / utility / infrastructure** → `07-shared/<segment>` — see section 6.
-6. **Route-level assembly** → `{pages-ui}` (`02-pages/ui/<domain>`) — the page component is a thin frame that composes layers below.
+6. **Route-level assembly** → `{pages-ui}` (`02-pages/ui`) — the page component is a thin frame that composes layers below.
 
 ## 4. Dependency rules
 
@@ -94,11 +100,18 @@ segment names.
 ### Per-layer anatomy
 
 - **`01-app`** — the bootstrap entry file(s) at the layer root (count and shape defined by the active project type in `core/project-types/<t>.md`); `initial-plugins/` (the per-request `createApp()` factory, SSR-safe with no module-level state, plus imperative bootstrap initialisers that must run before `app.mount()`, and a barrel `index.ts`); `plugins/` (one file per Vue `app.use` plugin factory). The factory does NOT live at the layer root or in an entry file. Imports from any layer; imported by none.
-- **`02-pages`** — `routes/<domain>.ts` composed in `routes/index.ts`; `ui/<Domain>/<Name>Page.vue` (thin frame); `layouts/`; `middlewares/` and `global-middlewares/` (`<name>.middleware.ts`); `config/` (the `Layouts` enum, the `GlobalMiddlewares` array, the `fallbackRoute` constant — NOT route builders, NOT the `RouteNames` enum, which is cross-layer and lives in `{shared-config}`); `utils/` (route builders `page()`, `group()`, `redirect()`, `getDefaultMeta()`); `types.ts` (`Route`, `Middleware`). A page is approximately one slice, and a page component does not pull entity data directly into its body — the only exception is a middleware reading an entity store for auth/guard decisions.
+- **`02-pages`** — `routes/<domain>.ts` composed in `routes/index.ts`; `ui/<domain>/<Name>Page.vue` (thin frame); `layouts/`; `middlewares/` and `global-middlewares/` (`<name>.middleware.ts`); `config/` (the `Layouts` enum, the `GLOBAL_MIDDLEWARES` array, the `FALLBACK_ROUTE` constant — NOT route builders, NOT the `RouteNames` enum, which is cross-layer and lives in `{shared-config}`); `utils/` (route builders `page()`, `group()`, `redirect()`, `getDefaultMeta()`); `types.ts` (`Route`, `Middleware`). A page is approximately one slice, and a page component does not pull entity data directly into its body — the only exception is a middleware reading an entity store for auth/guard decisions.
 - **`03-widgets`** — `ui/` (the composite) + `model/use<Name>.ts` (view-state composable). Widgets have **no `api/`**: they read data through entity query-composables and fire mutations through features. [preference · desired] Not every block is a widget; uncombined main content belongs in the page.
 - **`04-features`** — one user action = one slice, in one of three forms: form + mutation (`{ form, submit, submitError }`), read-fetcher (`{ items, isLoading }`), imperative trigger (`{ trigger, isPending }`). Anatomy: `ui/` + `model/use<Name>.ts`. **No `api/`** (that goes in the entity) and **no `lib/`**. State is strictly per-mount; module-level store variables are forbidden in features.
 - **`05-composition`** — the slice **is** the component folder: `<Name>.vue` + `interface.ts` (CVA variants) + `index.ts`; no `ui/`, `model/`, or `api/` sub-directories. [invariant · desired] Stateless: no reactive state, no data fetching, no routing logic — if any are needed, promote to a widget. [invariant · desired] Does not import features or widgets; actions reach the component via slots (`<template #actions>`), never via imported feature components.
 - **`06-entities`** — full slice declared all at once: `api/`, `model/store/`, `model/action/`, `model/query/`, `model/realtime/`, `ui/`, `config/`. [preference · desired] Entity-first: avoid thin entities that hold only types or only a store.
+
+[preference · desired] **Entity nesting.** An entity lives either directly under `{entity}`
+(`{entity}/session`) or inside a domain folder (`{entity}/auth/session`). Both are valid; the
+domain folder is optional grouping used when it makes the layer easier to navigate. The
+segments (`api/`, `model/`, `ui/`, `config/`) always sit INSIDE the entity folder, never
+inside the domain folder — `{entity}/auth/model/store/` is the error this rule exists to
+prevent.
 
 ## 6. Internal module layout
 
@@ -109,13 +122,16 @@ section 5.
 
 | role | FSD location |
 |---|---|
-| entity store | `{entity}/model/store/` |
-| entity query | `{entity}/model/query/` |
-| entity query keys | `{entity}/model/query/keys.ts` |
-| entity action | `{entity}/model/action/` |
-| entity api | the entity's `api/` segment |
-| widget view-state | `{widget}/model/` |
-| feature view-state | `{feature}/model/` |
+| entity store | `{entity}/[<domain>/]<name>/model/store/` |
+| entity query | `{entity}/[<domain>/]<name>/model/query/` |
+| entity query keys | `{entity}/[<domain>/]<name>/model/query/keys.ts` |
+| entity action | `{entity}/[<domain>/]<name>/model/action/` |
+| entity api | `{entity}/[<domain>/]<name>/api/` |
+| widget view-state | `{widget}/<name>/model/` |
+| feature view-state | `{feature}/<name>/model/` |
+
+`[...]` marks an optional path segment; `<...>` is the existing non-token placeholder
+notation (see `../placement.md`).
 
 ## 7. `07-shared` segments
 
@@ -128,9 +144,18 @@ section 5.
 | `ui/` | Stateless, domain-neutral primitive components (buttons, inputs, typography). |
 | `utils/` | Pure helper functions with broad reuse across 2+ layers. |
 
-- [invariant · desired] Each `07-shared/` segment that exposes consumable items (`ui/`, `lib/`, `utils/`) has a barrel `index.ts`; external callers import from the segment barrel only — never deep-import an internal file (`@/07-shared/ui`, not `@/07-shared/ui/SomeComp.vue`).
+- [invariant · desired] `07-shared/ui` has **no segment-root barrel**. Each component
+  **family** (`buttons`, `icons`, `form`, `modals`, …) is its own folder under
+  `07-shared/ui` with its own `index.ts`, and that family barrel is the public entry point
+  — `07-shared/ui/buttons`, `07-shared/ui/icons`. Importing a component file directly
+  (`07-shared/ui/buttons/BaseButton.vue`) is still the anti-pattern; there is no single
+  `07-shared/ui/index.ts` aggregating every family.
+- [invariant · desired] `07-shared/utils` exposes one segment-root barrel `index.ts`;
+  external callers import from it only — never deep-import an internal file
+  (`@/07-shared/utils`, not `@/07-shared/utils/cn.ts`).
+- [invariant · desired] `{shared-lib}` has **no segment-root barrel**. Each module is imported through its own **module barrel** — `{shared-lib}/http-request`, never a deep implementation file (`{shared-lib}/http-request/client.ts`) and never one mega-barrel aggregating every module at `07-shared/lib/index.ts`.
 - [invariant · desired] `{shared-utils}`'s `index.ts` is a **pure barrel** — explicit named re-exports only (`export { cn } from './cn'`), never implementation — same rule as `{shared-lib}`. Each helper still lives in its own file (`cn.ts`, `formatDate.ts`, …); the barrel is what makes `import { cn } from '{shared-utils}'` resolve.
-- [invariant · desired] Global stylesheets and all static assets (images, fonts, SVGs) live in `{assets}` (`07-shared/assets`), organised as `styles/`, `images/`, `fonts/`. The app entry imports global CSS from `{assets}/styles/...`. No CSS or assets in `{app}`.
+- [invariant · desired] Global stylesheets and all static assets (images, fonts, SVGs) live in `{assets}` (`07-shared/assets`), organised as `styles/`, `images/`, `fonts/`. `{initial-plugins}/createApp.ts` imports global CSS from `{assets}/styles/...`, not the app entry. No CSS or assets in `{app}`.
 - [invariant · desired] `utils/` contains **a single pure function**: no state, no lifecycle, no external-system boundary, no side effects. If any of those are present, it belongs in `lib/`.
 - [invariant · desired] `lib/` is **a module with a boundary**: it wraps an external system (fetch, `localStorage`, WebSocket, OAuth, analytics) OR it is an app-wide UI-state singleton (e.g. a notification queue, a modal stack). A `{shared-lib}/<name>/` entry lives in a dedicated subfolder whose `index.ts` is a **pure barrel** — explicit named re-exports only (`export { foo } from './foo'`), never `export *`, never implementation. The actual code lives in sibling files (one logical unit per file: `registry.ts`, `useQuery.ts`, …). The public surface is usually a `use<Name>` composable, but may be free functions or a small set of wrappers — whatever the boundary needs.
 - [invariant · desired] **All access to an external system goes through the matching `lib/`** — e.g. `localStorage` only through `lib/local-persistence`, HTTP only through `lib/http-request`. Direct calls to `localStorage`, `fetch`, etc. outside their `lib/` are an anti-pattern.
@@ -141,7 +166,7 @@ section 5.
 Do not collapse them into one `config/`:
 
 - `{shared-config}` (`07-shared/config`) — **value constants only**, used by 2+ layers, zero behaviour (e.g. the `RouteNames` enum). Never functions, never types.
-- `{pages-config}` (`02-pages/config`) — page-layer config: the `Layouts` enum, the `GlobalMiddlewares` array, and the `fallbackRoute` constant.
+- `{pages-config}` (`02-pages/config`) — page-layer config: the `Layouts` enum, the `GLOBAL_MIDDLEWARES` array, and the `FALLBACK_ROUTE` constant.
 - `{pages-utils}` (`02-pages/utils`) — route **builder functions** (`page()`, `group()`, `redirect()`, `getDefaultMeta()`). Functions never go in any `config/`.
 - `{pages-types}` (`02-pages/types.ts`) — routing **types** (`Route`, `Middleware`). Types never go in any `config/`.
-- `{middlewares}` / `{global-middlewares}` — middleware **implementation files**, one per file named `<name>.middleware.ts`; the `GlobalMiddlewares` array that lists them lives in `{pages-config}`.
+- `{middlewares}` / `{global-middlewares}` — middleware **implementation files**, one per file named `<name>.middleware.ts`; the `GLOBAL_MIDDLEWARES` array that lists them lives in `{pages-config}`.

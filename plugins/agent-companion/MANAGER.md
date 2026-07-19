@@ -106,6 +106,9 @@ Manager mode is delivered by plugin hooks: a `SessionStart` hook re-injects a pr
    Parse stdout TSV: `RUN_DIR\t<path>`, one `RUNNABLE\t<v>` + `SPAWN\t<v>\t<command>` per runnable
    agent, plus `SKIP`/`FAIL` lines. Exit 64 here = env/invocation error (not a git repo, bad mode,
    missing request file) — degrade gracefully, do not proceed as verified.
+   If stderr warns "per-verifier timeout is DISABLED": still proceed with the dispatch, but ASK the
+   user (once per session) to run `brew install coreutils` — without `timeout`/`gtimeout` the hard
+   cap cannot be enforced and a hung verifier CLI would stall the panel indefinitely.
 3. SPAWN — launch EACH `SPAWN` command line VERBATIM as its OWN native background Bash task (one per
    agent). The harness draws the live per-agent status rows; their output/exit is NOT the verdict.
 4. WAIT for all background tasks to finish.

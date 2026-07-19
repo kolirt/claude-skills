@@ -21,6 +21,19 @@ delegates to the docs and skills that do own the pieces.
   them are gated off. Use them by name as the corresponding work comes up (adding a
   route, a layout, setting up the router, writing a middleware, wiring a plugin).
 
+- [invariant · desired] The `vue()` plugin registration, dev-server settings, and `@`
+  alias definition in `{project-root}/vite.config.ts` are what makes `runtime = vite-vue`
+  real rather than assumed: the `vue()` plugin in the `plugins` array, the dev-server
+  block (`host` / `port` / `allowedHosts`), and the `@` alias under `resolve.alias`
+  mapping to the `src` dir. The full file — including these pieces — is owned by
+  `project-init`'s scaffold etalons (`project-scaffold.md` / `project-scaffold.csr.md`);
+  read one of those by name and reproduce it whole. There is no separate
+  runtime-specific slice file to read here — a partial excerpt would be worse than a
+  duplicate, since reproducing a slice truncates the real config. There is also no
+  separate SSR-specific Vite plugin or `ssr`/`build.ssr` block — the SSR client/server
+  bundle split is driven entirely by CLI build flags documented in `project-init`'s
+  `package.json` scripts, not by anything in `vite.config.ts` itself.
+
 This doc's only job is the branch check above: confirm `runtime = vite-vue`, then hand
 off to architecture + project-type + the relevant skill. It does not restate any of
 their rules.

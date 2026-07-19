@@ -1,6 +1,6 @@
 {
   "name": "agent-companion",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Claude runs as manager and consults several independent verifier agents in parallel \u2014 each returns its own verdict. Manager mode survives compaction, and the panel is fed the project's own convention skills.",
   "author": {
     "name": "kolirt"

@@ -10,6 +10,9 @@ the `http-request` skill (by name) — but never directly from the call site.
 
 Read `../../core/placement.md` first for the `{entity}` / `{shared-lib}` tokens; paths resolve in the active architecture doc.
 
+Read `references/query-module.md` and reproduce it — it holds the complete files for the
+query wrapper, the QueryClient plugin, and a representative entity slice.
+
 ## Layering (the key rule)
 - [invariant · desired] Components and features **never** call `useHttpRequest`
   directly. They call a `use*Query` / `use*Action`. The query's `queryFn` / mutation's
@@ -22,27 +25,9 @@ Read `../../core/placement.md` first for the `{entity}` / `{shared-lib}` tokens;
   (+ `@tanstack/query-broadcast-client-experimental` for cross-tab sync). Register
   through the `plugin-registration` skill: a `createVueQuery({ ssr })` factory that
   creates the `QueryClient`, wires the broadcast (client only), and returns
-  `{ queryClient, install(app) }`.
-  ```ts
-  // {plugins}/vueQuery.ts
-  export function createVueQuery(options: { ssr?: boolean }) {
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: {
-        staleTime: 30_000, gcTime: 5 * 60_000,
-        throwOnError: (e) => e instanceof HttpAbortError,   // only abort errors throw
-        retry: (n, e) => !(e instanceof HttpAbortError) && n < 3,
-      } },
-    })
-    if (!options.ssr) broadcastQueryClient({ queryClient, broadcastChannel: '<app>' })
-    return { queryClient, install: (app: App) => app.use(VueQueryPlugin, { queryClient }) }
-  }
-  ```
+  `{ queryClient, install(app) }` — see `{plugins}/vueQuery.ts` in the etalon.
 - [invariant · desired] Augment `queryMeta` (colocated in the plugin file):
-  ```ts
-  declare module '@tanstack/vue-query' {
-    interface Register { queryMeta: { requiresAuth?: boolean } }
-  }
-  ```
+  `declare module '@tanstack/vue-query' { interface Register { queryMeta: { requiresAuth?: boolean } } }`.
 - [invariant · desired] **Cross-tab broadcast** (`@tanstack/query-broadcast-client-experimental`):
   `broadcastQueryClient({ queryClient, broadcastChannel: '<app>' })` — called **only on the
   client** (`!ssr`) inside the factory; server renders never touch it. The channel name is
@@ -62,27 +47,10 @@ Read `../../core/placement.md` first for the `{entity}` / `{shared-lib}` tokens;
   `useSsrQuery` / `useSsrInfiniteQuery` as **owned typed const bindings** (not bare
   re-exports from the package). It is a small hand-written module, not a package.
 - [invariant · desired] `withSsrBlock` must guard reactive options with an `isRef` check
-  and pass through extra arguments:
-  ```ts
-  // {shared-lib}/query/withSsrBlock.ts
-  import { isRef } from 'vue'
-  export function withSsrBlock<T extends (...args: any[]) => any>(master: T): T {
-    return ((options: any, ...rest: any[]) => {
-      if (import.meta.env.SSR && options && typeof options === 'object' && !isRef(options)) {
-        return master({ ...options, enabled: false }, ...rest)
-      }
-      return master(options, ...rest)
-    }) as T
-  }
-  ```
+  and pass through extra arguments (see `{shared-lib}/query/withSsrBlock.ts` in the etalon).
 - [invariant · desired] SSR-enabled variants are **owned typed const bindings**, not bare
-  re-exports from the package:
-  ```ts
-  // {shared-lib}/query/useSsrQuery.ts
-  import { useQuery as useQueryMaster } from '@tanstack/vue-query'
-  export const useSsrQuery: typeof useQueryMaster = useQueryMaster
-  ```
-  (NOT `export { useQuery as useSsrQuery } from '@tanstack/vue-query'`.)
+  re-exports from the package — `export const useSsrQuery: typeof useQueryMaster = useQueryMaster`
+  (NOT `export { useQuery as useSsrQuery } from '@tanstack/vue-query'`).
 - [invariant · desired] Follow the `{shared-lib}` barrel discipline — **one unit per file**,
   `index.ts` re-exports only:
   ```
@@ -102,24 +70,10 @@ Read `../../core/placement.md` first for the `{entity}` / `{shared-lib}` tokens;
   the `{entity}` module as an **entity query** — the active architecture doc resolves where
   inside the module it goes. Import `useQuery` (and SSR variants `useSsrQuery` /
   `useSsrInfiniteQuery`) from the **shared query wrapper** `{shared-lib}/query` —
-  **never** directly from `@tanstack/vue-query`.
-  ```ts
-  // {entity} — entity query
-  import { useQuery } from '{shared-lib}/query'
-  import { entityApi } from '{entity}/api'   // the entity's own api — same module
-  import { entityKeys } from './keys'
-
-  export function useEntityQuery() {
-    return useQuery({
-      queryKey: entityKeys.item.queryKey,
-      queryFn: entityApi,                 // api fn calls useHttpRequest() internally
-      select: (r) => r.result,
-      enabled: computed(() => session.isAuthenticated.value),  // gate
-      retry: false,
-      meta: { requiresAuth: true },       // eviction tag — see auth skill
-    })
-  }
-  ```
+  **never** directly from `@tanstack/vue-query`. `queryFn` calls the entity's own api
+  function (which calls `useHttpRequest()` internally), the query always has a `select`,
+  and auth-gated queries add `enabled` + `meta: { requiresAuth: true }` — see
+  `useFindPostQuery` in the etalon for the full shape.
 - [preference · desired] Parameterized queries keep reactivity by wrapping the key in a
   `computed(() => keys.method(toValue(params)).queryKey)`.
 - [invariant · desired] Every API response uses the envelope **`{ ok: true, result: T }`**.
@@ -132,24 +86,12 @@ Read `../../core/placement.md` first for the `{entity}` / `{shared-lib}` tokens;
   precondition (auth, a non-empty id list, a min search length).
 - [preference · desired] Regular (non-infinite) paginated queries may add
   `placeholderData: keepPreviousData` (import `keepPreviousData` from `@tanstack/vue-query`)
-  to avoid flicker between pages.
+  to avoid flicker between pages — see `usePaginatePostsQuery` in the etalon.
 
 ## Infinite queries (pagination)
 - [invariant · desired] Pagination is **page-number** based via `useInfiniteQuery` (from the
   shared wrapper). `queryFn` receives `pageParam`; `initialPageParam: 1`; `getNextPageParam`
   reads the raw response (`result.page < result.lastPage → result.page + 1`, else `undefined`).
-  ```ts
-  useInfiniteQuery({
-    queryKey: computed(() => keys.paginate({ ...toValue(params), perPage }).queryKey),
-    queryFn: ({ pageParam }) => paginateApi({ ...toValue(params), page: pageParam, perPage }),
-    initialPageParam: 1,
-    getNextPageParam: ({ result }) => (result.page < result.lastPage ? result.page + 1 : undefined),
-    select: (data) => ({
-      items: data.pages.flatMap((p) => p.result.items),
-      total: data.pages.at(-1)?.result.total ?? 0,
-    }),
-  })
-  ```
 - [invariant · desired] `select` **always flattens** `data.pages` into a plain
   `{ items, total }` — consumers **never** touch `data.pages` or the raw `InfiniteData`.
 - [preference · desired] Infinite-scroll UI mechanics (`fetchNextPage` / `hasNextPage` /
@@ -178,17 +120,13 @@ Pick these by how volatile the data is, so the agent sets them itself instead of
   inside the module it goes. Import `useMutation` + `useQueryClient` directly from
   `@tanstack/vue-query` (mutations have no shared wrapper). `onSuccess` invalidates the
   affected keys.
-  ```ts
-  export function useEntityAction() {
-    const queryClient = useQueryClient()
-    return useMutation({
-      mutationFn: (payload) => entityApi(payload),
-      onSuccess: async () => {
-        await queryClient.invalidateQueries({ queryKey: entityKeys.item.queryKey })
-      },
-    })
-  }
-  ```
+- [invariant · desired] Invalidate with the shape that matches what the write affected:
+  invalidate the **key subtree** via `keys.method._def` when the write affects a
+  list/paginated dataset with many possible key variants (e.g. creating a post touches
+  every `paginatePosts` filter combination); invalidate the **single known key** via
+  `keys.method.queryKey` when exactly one record is affected (e.g. `sessionKeys.me.queryKey`
+  after login). See `useCreatePostAction` (subtree) and `useLoginViaDiscordAction` (single
+  key) in the etalon.
 - [preference · desired] Feature composables (`{feature}`) wrap an entity action and
   expose a clean `submit()` / `isPending`; they add no extra cache logic.
 - [preference · desired] **Optimistic updates** — for mutations where the UI must react
@@ -213,15 +151,10 @@ Pick these by how volatile the data is, so the agent sets them itself instead of
 ## Query keys — `@lukemorales/query-key-factory`
 - [invariant · desired] Keys come from a `createQueryKeys` factory, one per entity in
   the `{entity}` module as the **entity query keys** — the single source of truth for that entity's cache
-  namespace. **No string-literal keys at call sites.**
-  ```ts
-  import { createQueryKeys } from '@lukemorales/query-key-factory'
-  export const sessionKeys = createQueryKeys('session', { me: null })          // static
-  export const articleKeys = createQueryKeys('articles', {                     // parameterized
-    findArticle: (p: FindPayload) => [p],
-  })
-  // access: sessionKeys.me.queryKey  ·  articleKeys.findArticle({ id }).queryKey
-  ```
+  namespace. **No string-literal keys at call sites.** Static entries take `null`
+  (`sessionKeys.me`), parameterized entries take a function (`postKeys.paginatePosts`).
+  See `keys.ts` in this skill's etalon for the `blog/post` entity; the `session` entity's
+  `keys.ts` is owned by the `auth` skill's own etalon.
 - [invariant · desired] The **same** key expression is used in the query and in any
   invalidation/removal — never re-typed.
 

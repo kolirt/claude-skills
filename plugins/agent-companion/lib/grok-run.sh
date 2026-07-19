@@ -40,9 +40,18 @@ grok_run() {
 
     # effort (optional) → grok's --reasoning-effort; a validated tier has no spaces, so the
     # unquoted ${effort:+…} splits into exactly two argv words. Omitted when empty.
+    # --always-approve: headless has nobody to answer a permission prompt, and grok resolves
+    # an unanswered one by CANCELLING the whole turn (stopReason=Cancelled, rc=0, narration-only
+    # .text → fail-closed FAIL). Any shell command its analyzer won't auto-whitelist (e.g. a
+    # chained `cd … && python3 script.py; …`) triggers this. Targeted --allow rules do NOT
+    # unblock it (tested: Bash(*), tool-level — still Cancelled); only --always-approve does.
+    # Safe here: --sandbox read-only is OS-enforced (seatbelt) — writes and network stay blocked.
+    # --no-plan: plan mode ends in a wait-for-approval that headless can never answer — the same
+    # abort class as unapproved commands. Inactive today (config has permission_mode="ask"), but
+    # the adapter must not depend on the user's ~/.grok/config.toml staying that way.
     grok --prompt-file "$prompt" -m "$model" \
       ${effort:+--reasoning-effort "$effort"} \
-      --sandbox read-only --no-auto-update --output-format json > "$raw"
+      --sandbox read-only --always-approve --no-plan --no-auto-update --output-format json > "$raw"
     rc=$?
 
     grok_extract_text "$raw" > "$out"

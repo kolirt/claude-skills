@@ -92,7 +92,7 @@ files, and submission channels.
 - [invariant · desired] Reference the sitemap (or sitemap index) from
   `robots.txt` using the `Sitemap:` directive with the absolute URL.
   This lets all crawlers discover it without relying on Search Console alone.
-  Full `robots.txt` authoring is covered by the `robots` skill.
+  Full `robots.txt` authoring is covered by the `robots` skill from knowledge-seo.
 
 ```
 Sitemap: https://example.com/sitemap-index.xml
@@ -113,7 +113,7 @@ Sitemap: https://example.com/sitemap-index.xml
 
 ## Related skills (by name)
 
-- `robots` — authoring `robots.txt`, including the `Sitemap:` directive
+- `robots` from knowledge-seo — authoring `robots.txt`, including the `Sitemap:` directive
 - `international` — full hreflang strategy across HTML, HTTP headers, and sitemaps
 - `indexnow` — real-time URL push notifications (IndexNow protocol)
 - `canonicalization-and-redirects` — canonical URL selection and redirect rules

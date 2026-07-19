@@ -11,6 +11,8 @@ split caused a circular import).
 
 Read `../../core/placement.md` first for the `{shared-lib}` token; paths resolve in the active architecture doc.
 
+Read `references/http-request-module.md` and reproduce it — it holds the complete files for this module.
+
 ## Core rule
 - [invariant · desired] Every HTTP request goes through the shared wrapper
   `useHttpRequest()` — **never** raw `fetch` / `axios` / `ofetch` at a call site.
@@ -31,14 +33,11 @@ Read `../../core/placement.md` first for the `{shared-lib}` token; paths resolve
 
 ## The wrapper
 - [invariant · desired] `useHttpRequest()` is a plain function (the `use` prefix is a
-  naming convention, not a Vue composable) returning verb helpers:
-  ```ts
-  const { request, get, post, put, patch, delete: del, head, options } = useHttpRequest()
-  // get<T>(url, data?, options?) → Promise<T>, etc.; `request` is the raw escape hatch
-  ```
+  naming convention, not a Vue composable) returning verb helpers `get`/`post`/`put`/
+  `patch`/`delete`/`head`/`options` (each `(url, data?, options?) → Promise<T>`), plus
+  `request` as the raw escape hatch.
 - [invariant · desired] Built on native `fetch`: base URL from `import.meta.env.VITE_API_URL`
-  (e.g. `const BASE_URL = import.meta.env.VITE_API_URL ?? ''`) — **never** a hardcoded
-  constant in `{shared-config}`. Always `Accept: application/json` and
+  — **never** a hardcoded constant in `{shared-config}`. Always `Accept: application/json` and
   `credentials: 'include'`.
 - [preference · desired] Body defaults to `FormData`; `options.asJson` switches to
   JSON. `put`/`patch`/`delete` are tunneled via a `_method` field over `POST` (server
@@ -49,19 +48,15 @@ Read `../../core/placement.md` first for the `{shared-lib}` token; paths resolve
   helpers (`ensureCsrf` / `invalidateCsrf` / `csrfHeader`). There is **no** separate
   `csrf` module and **no** cross-module import — that is what removes the circular
   import. If another module (e.g. a WebSocket client) needs CSRF, `http-request`
-  **exports** `ensureCsrf` / `invalidateCsrf`; consumers never re-implement it.
-  ```ts
-  // inside request.ts
-  let _csrfToken: string | null = null
-  let _csrfInflight: Promise<void> | null = null
-  async function _fetchCsrfToken() { /* GET <API_BASE>/api/csrf → body.result.csrfToken */ }
-  function _ensureCsrf(): Promise<void> { /* no-op if cached; dedupes in-flight */ }
-  function _invalidateCsrf() { _csrfToken = null; _csrfInflight = null }
-  function _csrfHeader() { return _csrfToken ? { 'X-CSRF-TOKEN': _csrfToken } : null }
-  ```
+  **exports** `ensureCsrf` / `invalidateCsrf`; consumers never re-implement it. The
+  private helpers fetch the token from `<API_BASE>/api/csrf` (`body.result.csrfToken`),
+  cache it, dedupe concurrent in-flight fetches, and expose a header getter.
 - [invariant · desired] Mutating requests (`post/put/patch/delete`) `await _ensureCsrf()`
   and attach the `X-CSRF-TOKEN` header. On a **419** (CSRF expired) for a mutating
   request: `_invalidateCsrf()` → `_ensureCsrf()` → **retry once**.
+- [invariant · desired] Under SSR, `_ensureCsrf()` early-returns without fetching or
+  caching a token — the module is shared across concurrent requests, so a per-user
+  token must never be cached on the server.
 
 ## Errors & handlers
 - [preference · desired] Throw a typed `HttpRequestError` (exposes `status`, `body`,

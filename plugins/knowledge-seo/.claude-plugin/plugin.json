@@ -1,7 +1,7 @@
 {
   "name": "knowledge-seo",
-  "version": "0.1.2",
-  "description": "Stack-independent SEO conventions as intent-triggered skills so a site is built with baseline SEO by default: meta-tags, structured-data, robots, sitemaps, url-structure, canonicalization-and-redirects, javascript-seo, page-experience, media-seo, international, social-preview, indexnow, generative-seo. Owns SEO policy knowledge only — the former seo-audit skill moved to `auditing:seo` in the auditing plugin (`/plugin install auditing@claude-skills`). Domain delivery plugins (knowledge-vue) depend on this.",
+  "version": "0.1.3",
+  "description": "Stack-independent SEO conventions as intent-triggered skills so a site is built with baseline SEO by default: meta-tags, structured-data, robots, sitemaps, url-structure, canonicalization-and-redirects, javascript-seo, page-experience, media-seo, international, social-preview, indexnow, generative-seo. Owns SEO policy knowledge only \u2014 the former seo-audit skill moved to `auditing:seo` in the auditing plugin (`/plugin install auditing@claude-skills`). Domain delivery plugins (knowledge-vue) depend on this.",
   "author": {
     "name": "kolirt"
   },

@@ -6,8 +6,9 @@ description: Use when fixing browser-only state (localStorage-backed, navigator.
 # hydration (Vue) — fix browser-only state after mount (SSR projects only)
 
 **Hydration is a sub-concern of SSR, not a standalone mechanism** — `runHydrations()` is wired
-into the SSR client entry (see the active project-type doc, `core/project-types/ssr.md`). It
-exists only because the server rendered a fallback that the client must reconcile.
+into the root component's `<Suspense @resolve>` handler (see the active project-type doc,
+`core/project-types/ssr.md`). It exists only because the server rendered a fallback that the
+client must reconcile.
 
 **If the project has no SSR, this skill is not needed at all.** With CSR/SPA there is no server
 render to reconcile — read browser values directly at module-level initialisation time (see the
@@ -15,6 +16,10 @@ render to reconcile — read browser values directly at module-level initialisat
 `vue-work` (`projectType`), detected or asked once and then assumed here.
 
 Read `../../core/placement.md` first for the `{shared-lib}`, `{app}` tokens; paths resolve in the active architecture doc.
+
+Read `references/hydration.md` and reproduce it — it holds the complete files for the
+hydration registry only. The store that registers a callback is owned by the `stores`
+skill's `store.ssr.md` etalon (see below).
 
 ## Why hydration is needed
 
@@ -52,74 +57,22 @@ centralises all restores into a single, ordered, synchronous pass.
 ## Implementation
 
 The module follows the `{shared-lib}` barrel discipline: `index.ts` re-exports only; the
-registry lives in a sibling `registry.ts`.
-
-```ts
-// {shared-lib}/hydration/index.ts — pure barrel
-export { registerHydration, runHydrations } from './registry'
-```
-
-```ts
-// {shared-lib}/hydration/registry.ts
-type HydrationFn = () => void
-
-const registry = new Map<string, HydrationFn>()
-let ran = false
-
-export function registerHydration(name: string, fn: HydrationFn): void {
-  if (import.meta.env.SSR) return
-  if (ran) {
-    fn()   // late registrant — run immediately
-    return
-  }
-  registry.set(name, fn)
-}
-
-export function runHydrations(): void {
-  if (import.meta.env.SSR) return
-  registry.forEach((fn, name) => {
-    try { fn() } catch (err) { console.error(`[hydration] ${name}`, err) }
-  })
-  registry.clear()
-  ran = true
-}
-```
+registry implementation lives in a sibling `registry.ts` — see `references/hydration.md`
+for the complete pair of files.
 
 ## Wiring `runHydrations()` in the root component
 
-```vue
-<!-- {app}/App.vue (or the root layout component that wraps <Suspense>) -->
-<template>
-  <Suspense @resolve="onReady">
-    <RouterView />
-  </Suspense>
-</template>
-
-<script setup lang="ts">
-import { runHydrations } from '{shared-lib}/hydration'
-
-function onReady() {
-  runHydrations()
-}
-</script>
-```
+The single call site lives in the root component's `<Suspense @resolve>` handler. That
+file is owned by the `layouts` skill (`{app}/App.vue`, wrapping `<RouterView>`); its
+etalon (`references/layouts.md`) shows the complete wiring and is not duplicated here.
 
 ## Registering a hydration callback in a store
 
-```ts
-// {entity} — entity store  (SSR project)
-import { reactive } from 'vue'
-import { useLocalPersistence } from '{shared-lib}/local-persistence'
-import { registerHydration } from '{shared-lib}/hydration'
-
-const { get } = useLocalPersistence()
-const AUTHENTICATED_KEY = 'session.authenticated'   // key declared at the call site (persistence skill)
-const state = reactive({ authenticated: false })
-
-registerHydration('session', () => {
-  state.authenticated = get(AUTHENTICATED_KEY, false)
-})
-```
+A store registers its callback at module level and reads its persisted value through the
+`persistence` skill's wrapper, keyed by a `STORAGE_KEYS` entry declared in a sibling
+`keys.ts` file (never an inline string literal at the call site) — see the `stores`
+skill's `store.ssr.md` etalon for the complete store file (hydration is SSR-only, so the
+SSR variant is the one that applies here).
 
 ## Use cases
 

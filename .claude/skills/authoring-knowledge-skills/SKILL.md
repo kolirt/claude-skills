@@ -55,9 +55,72 @@ The most common miss. For a capability backed by a package/tool, capture **all**
   the sibling skills that touch the same territory; where topics border each other,
   the specialized skill keeps precedence and the new skill defers to it by name
   (e.g. a general component skill defers form controls to `form-elements`, dialogs
-  to `modals`, placement to `architecture-fsd`).
+  to `modals`, placement to `core/placement.md` + the active `core/architectures/<a>.md`).
 
-## 7. Register + finish
+## 7. Reference-first: full-file etalons, never "directions"
+A skill that makes the agent **write code** MUST ship a full-file etalon in
+`references/` — a partial snippet is a *direction*, and the agent re-interprets a
+direction slightly differently every run. The SKILL.md body keeps the rules and says
+"read `references/<artifact>.md` and reproduce it"; the etalon carries the code.
+
+Etalon contract (checked by `validate.py`):
+- One file per artifact: `references/<artifact>.md`, English.
+- A `## Files` inventory at the top — one line per generated file, `` - `{token}/path/to/file.ext` ``.
+- Then, for each file: a `**File:** \`{token}/path/to/file.ext\`` line **outside** any code
+  block, immediately followed by exactly ONE fenced block with a language
+  (```ts / ```vue / ```json / …) holding the file's **complete** content.
+- The inventory and the `**File:**` markers must be the same set — no file listed but
+  unwritten, none written but unlisted.
+- Paths use placement tokens (§4). Project-root files (`package.json`, `vite.config.ts`,
+  `.env.*`, robots files) use `{project-root}`.
+- Every etalon passes a **human gate**: draft → the developer approves or corrects →
+  only then integrate. Same discipline as `knowledge:capture`; never merge an
+  unapproved etalon.
+
+**Where an etalon ends.** An etalon reproduces ONE artifact, not the whole application, so it is
+self-contained only within its own module:
+- A **relative** import (`./x`, `../x`) points inside the etalon's own module — the etalon MUST ship
+  that file. A relative import with no `**File:**` entry behind it is a defect: the reader cannot
+  reproduce a working module.
+- A **token** import (`{shared-lib}/toast`, `{widget}/header`) points at another bucket the project
+  owns — an external reference. The etalon does NOT ship it, and must not: duplicating it would
+  create a second, drifting copy of a file another etalon (or the consumer project) owns.
+Two etalons that both need the same file: exactly one ships it, the other imports it by token and
+says so in prose.
+
+**The one exception — VARIANTS.** Two etalons may ship the same path when they are mutually
+exclusive alternatives chosen by a project-model constant (`projectType`, `architecture`,
+`runtime` — fixed by `vue-work` step 0), so a reader reproduces exactly one of them, never both.
+A CSR scaffold and an SSR scaffold both shipping `{project-root}/package.json` is correct; two
+etalons of the same project type both shipping it is not. A variant etalon MUST declare itself in
+its header, on its own line:
+
+    Variant: projectType=csr
+
+Anything else that ships a path another etalon already ships is a defect, and the worse form is
+**divergence**: two copies with different content, where the reader silently gets whichever they
+happened to read last.
+
+Deliberately empty skeleton skills (awaiting a capture session) are exempt until filled.
+
+## 8. Plugin vs consumer repo — the boundary
+A plugin carries **conventions**, the consumer repo carries **facts**. Stack versions,
+build/test commands, real directory paths, env names, deploy specifics belong to the
+consumer project's `CLAUDE.md` — never to a plugin file. If a rule cannot be stated
+without naming a concrete project's path or command, it is a project fact, not a
+convention: leave it out of the plugin.
+
+**Carve-out — SCAFFOLD etalons may pin a baseline version set.** A `project-init`-style
+etalon that reproduces a generated `package.json` (or other scaffold manifest) necessarily
+writes concrete dependency versions and build scripts — that is the thing being
+scaffolded, not a claim about any consumer project's stack. Pinning a baseline version set
+in a SCAFFOLD etalon is a point-in-time snapshot the developer approved at the human gate
+(§7), not a violation of this section. This carve-out is narrow: it covers the etalon's
+**file content** only. The **prose** of a skill (the rules body, outside `references/`)
+must still never assert project-specific stack facts — it states the convention, not a
+version number, and defers the concrete pin to the etalon.
+
+## 9. Register + finish
 - Add the new pattern skill's row to the `vue-work` umbrella **index**.
 - **Project-neutral**: NO project names or absolute paths in any plugin file — generic
   names/tokens only (numbered FSD layers like `01-app` are structure, not a project name).

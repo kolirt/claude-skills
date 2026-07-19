@@ -11,13 +11,13 @@ definitions. Referenced by the routing skills (`vue-router`, `pages`,
   - ❌ don't: `router.push('/products')`; `<RouterLink to="/products">` — why: names survive path refactors and are enum-checked; raw paths break silently.
 
 - [invariant · desired] There is a single, configurable **fallback route**
-  (`fallbackRoute`) declared in **`{pages-config}`** (page-layer config, alongside
-  `Layouts` and the `GlobalMiddlewares` array) — never hard-coded inside a middleware
+  (`FALLBACK_ROUTE`) declared in **`{pages-config}`** (page-layer config, alongside
+  `Layouts` and the `GLOBAL_MIDDLEWARES` array) — never hard-coded inside a middleware
   and never in `{routes}/index.ts`. The middleware runner and any "denied → redirect"
   use this constant, so the fallback target changes in exactly one place.
-  - ✅ do: `export const fallbackRoute = { name: RouteNames.Home }` in `{pages-config}`;
-    middlewares `return fallbackRoute` to bounce.
-  - ❌ don't: declare `fallbackRoute` in `{routes}/index.ts`; `return next({ name: RouteNames.Home })` hard-coded in each middleware.
+  - ✅ do: `export const FALLBACK_ROUTE = { name: RouteNames.Home }` in `{pages-config}`;
+    middlewares `return FALLBACK_ROUTE` to bounce.
+  - ❌ don't: declare `FALLBACK_ROUTE` in `{routes}/index.ts`; `return next({ name: RouteNames.Home })` hard-coded in each middleware.
 
 - [invariant · desired] **404 is implicit — never declare a catch-all `*` / `:pathMatch(.*)*`
   route and never create a `NotFoundPage`.** An unmatched URL is detected by a global

@@ -12,7 +12,7 @@ rules and expresses file placement in the tokens defined by `core/placement.md`.
 ## Step 0 — establish the project model (do this FIRST)
 
 - [invariant · desired] Before dispatching to ANY pattern skill, establish
-  `{runtime, architecture, projectType}` — or, under `nuxt`, establish `runtime` and
+  `<runtime, architecture, projectType>` — or, under `nuxt`, establish `runtime` and
   explicitly settle that `architecture`/`projectType` are not applicable and are
   deferred to the developer (see branch 2). These are **session constants**: determined
   once for the project, then assumed by every skill that follows. A pattern skill never
@@ -81,6 +81,11 @@ remaining constants:
   delivery specifics to the `seo` skill, both by name.
 
 ## Pattern index
+[invariant · desired] A skill that makes you write code ships a **full-file etalon** in its
+`references/`. Read that etalon and reproduce it — the skill body carries the rules, the
+etalon carries the code. Never improvise a file whose etalon exists; never treat a rule's
+prose as a substitute for the etalon it points at.
+
 Pick the entry that matches the intent; it carries the specifics. Rows marked
 `[runtime: vite-vue only]` are **gated off when `runtime = nuxt`** — Nuxt owns that
 surface, so follow `core/runtimes/nuxt.md` instead.

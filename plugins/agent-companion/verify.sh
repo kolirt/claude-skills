@@ -7,7 +7,10 @@ ROOT="${CLAUDE_PLUGIN_ROOT:-$SELF}"
 DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
 . "$ROOT/lib/verdict.sh"
 . "$ROOT/lib/spec.sh"
-T="${AGENT_COMPANION_TIMEOUT:-180}"
+# Per-verifier hard cap, seconds. A generous SAFETY NET, not a pacing tool: it wraps BOTH
+# retry attempts of an adapter, and honest reviews run 4-12 min (codex 169-688s observed,
+# grok ~290s) — anything still alive past 30 min is hung, not slow.
+T="${AGENT_COMPANION_TIMEOUT:-1800}"
 
 # run_adapter <timeout> <adapter-sh> <prompt> <effort> <out> <model> <stderr-log>
 # Invoke an adapter's `run`, passing the model as a 4th arg ONLY when non-empty (a bare
@@ -185,8 +188,8 @@ _with_timeout() {
 warn_no_timeout() {
   if ! command -v timeout >/dev/null 2>&1 && ! command -v gtimeout >/dev/null 2>&1; then
     echo "agent-companion: no 'timeout'/'gtimeout' on PATH — per-verifier timeout is DISABLED" \
-         "(relying on each CLI's own limits; a hung CLI can stall the panel)." \
-         "Install coreutils for a hard cap." >&2
+         "(a hung CLI can stall the panel forever)." \
+         "ASK THE USER to install it: brew install coreutils (macOS; provides gtimeout)." >&2
   fi
 }
 
@@ -332,6 +335,7 @@ cmd_prepare() {
   [ "$#" -ge 3 ] || { echo "usage: verify.sh prepare <mode> <effort> <request-file>" >&2; exit 64; }
   local mode="$1" effort="$2" req="$3"
   validate_invocation "$mode" "$req"
+  warn_no_timeout   # prepare is the entry point the manager actually calls — warn where it is seen
   local repo; repo="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not a git repo" >&2; exit 64; }
   cleanup_old
   local reqid key run
@@ -492,8 +496,8 @@ cmd_collect() {
 
 cmd_run() {
   [ "$#" -ge 3 ] || { echo "usage: verify.sh run <mode> <effort> <request-file>" >&2; exit 64; }
-  warn_no_timeout
-  # prepare with contract stdout suppressed (we spawn run-one ourselves; no need to parse)
+  # prepare with contract stdout suppressed (we spawn run-one ourselves; no need to parse);
+  # warn_no_timeout fires inside cmd_prepare.
   local out prc
   out="$(cmd_prepare "$@")"; prc=$?
   [ "$prc" -eq 0 ] || exit "$prc"

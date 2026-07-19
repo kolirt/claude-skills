@@ -10,6 +10,12 @@ Read `../../core/placement.md` first for the `{entity}`, `{widget}`, `{feature}`
 State is managed with plain Vue reactivity at module level — no Pinia, no `defineStore`.
 One module = one singleton instance per app boot.
 
+Read `references/store.md` (CSR) or `references/store.ssr.md` (SSR) and
+reproduce the one matching the project's `projectType` (fixed by the
+`vue-work` skill's step 0) — never both. Each holds the complete files for
+all three store shapes; the two variants differ only in
+`useSessionStore.ts`'s persistence-init arm (see "Persistence init" below).
+
 ## Core rules
 
 - [invariant · desired] **No Pinia. No `defineStore`.** State is a module-level `reactive()`
@@ -34,93 +40,34 @@ One module = one singleton instance per app boot.
 | Feature state | `{feature}` — feature view-state | no | per-mount (fresh on each `setup` call) |
 
 - **Entity store** — holds business state that survives navigation and may be persisted.
-  Storage keys are declared as local string constants at the call site; storage access uses
-  the `persistence` skill (by name).
+  Storage keys live in a `keys.ts` file beside the store, holding one `STORAGE_KEYS` const
+  object (`as const`) plus a `StorageKey` type derived from it — never scattered string
+  literals. Storage access uses the `persistence` skill (by name).
 - **Widget view-state** — UI-only state (open/closed, selected tab) shared across the
   widget's components. Module-reactive, no persistence.
 - **Feature state** — declared inside the composable body, not at module level. A fresh
   instance is created on each `setup` call. Do NOT use module-level `reactive` for feature
-  state.
+  state. In the etalon's feature shape, the state isn't a local `ref`/`reactive` at all —
+  it's *derived* via `computed` from an entity action and a shared-lib composable. That's
+  the point of the shape (nothing module-level, nothing to reset between mounts), not an
+  omission.
 
 ## Persistence init (entity stores)
 
-- **Without SSR** — read the stored value directly at module-level declaration time.
-  ```ts
-  const SESSION_AUTHENTICATED_KEY = 'session.authenticated'
-  const { get } = useLocalPersistence()
-  const state = reactive({ authenticated: get(SESSION_AUTHENTICATED_KEY, false) })
-  ```
+- **Without SSR** — read the stored value directly at module-level declaration time; the
+  state's initial value comes straight from storage.
 - **With SSR** — do NOT read storage at declaration time (the server has no `localStorage`).
   Register a hydration callback with `registerHydration` (from the `hydration` skill by name)
-  at module level. The callback runs once on the client after the root `<Suspense>` resolves.
-  ```ts
-  // With SSR: initial value stays at the default; storage is read after mount.
-  const SESSION_AUTHENTICATED_KEY = 'session.authenticated'
-  const { get } = useLocalPersistence()
-  const state = reactive({ authenticated: false })
-  registerHydration('session', () => {
-    state.authenticated = get(SESSION_AUTHENTICATED_KEY, false)
-  })
-  ```
-
-## Module-reactive entity store — annotated sample
-
-```ts
-// {entity} — entity store
-import { computed, reactive } from 'vue'
-import { useLocalPersistence } from '{shared-lib}/local-persistence'
-// import { registerHydration } from '{shared-lib}/hydration'  // ← uncomment for SSR projects
-
-// ── storage keys declared at the call site ────────────────────────────────────
-const SESSION_AUTHENTICATED_KEY = 'session.authenticated'
-const SESSION_TOKEN_KEY = 'session.token'
-
-const { get, set, remove } = useLocalPersistence()
-
-// ── module-level state (one instance per app) ────────────────────────────────
-const state = reactive({
-  authenticated: false,   // SSR: stays false; see registerHydration block below
-  token: null as string | null,
-})
-
-// SSR projects only — defer storage read to the client hydration moment:
-// registerHydration('session', () => {
-//   state.authenticated = get(SESSION_AUTHENTICATED_KEY, false)
-//   state.token         = get(SESSION_TOKEN_KEY)
-// })
-
-// ── setters (exported directly, NOT via useSessionStore) ─────────────────────
-export function setAuthenticated(value: boolean): void {
-  state.authenticated = value
-  set(SESSION_AUTHENTICATED_KEY, value)
-}
-
-export function setToken(token: string): void {
-  state.token = token
-  set(SESSION_TOKEN_KEY, token)
-}
-
-export function clearSession(): void {
-  state.authenticated = false
-  state.token = null
-  remove(SESSION_AUTHENTICATED_KEY)
-  remove(SESSION_TOKEN_KEY)
-}
-
-// ── getter composable (computed / readonly projections only) ──────────────────
-export function useSessionStore() {
-  return {
-    isAuthenticated: computed(() => state.authenticated),
-    token: computed(() => state.token),
-  }
-}
-```
+  at module level; the state stays at its default until the callback runs once on the client
+  after the root `<Suspense>` resolves.
 
 ✅ do:
 - Declare `state` once at module level with `reactive()` or `ref()`.
 - Export setters as plain named functions at the module top level.
 - Return only `computed` refs from `useXStore()`.
-- Declare storage keys as local string constants at the call site (flat dot-namespace).
+- Declare storage keys in a sibling `keys.ts` file as a single `STORAGE_KEYS` object
+  `as const` (flat dot-namespace values, e.g. `'session.authenticated'`), exporting the
+  derived `StorageKey` type alongside it.
 - For SSR projects, use `registerHydration` (the `hydration` skill) instead of reading
   storage at declaration time.
 

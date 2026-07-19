@@ -10,9 +10,16 @@ concerns: **mode-aware build scripts** and **robots.txt by default**. This skill
 runtime = vite-vue — the scaffold commands, build scripts, and `vite-plugin-robots` wiring below
 are Vite-specific. Under Nuxt, entry-file scaffolding is gated off by step 0 (Nuxt owns the app
 bootstrap) and robots.txt delivery is Nuxt/Nitro-owned instead — see core/runtimes/nuxt.md and
-the `robots` skill, which already forbids installing `vite-plugin-robots` there.
+the `robots` skill from knowledge-vue, which already forbids installing `vite-plugin-robots` there.
 
-> **`{runtime, architecture, projectType}` are determined by step 0 of `vue-work`, not here.**
+Two full-file scaffold etalons exist, one per `projectType` (fixed by `vue-work` step 0,
+or asked at greenfield scaffold time — see below): read `references/project-scaffold.md`
+and reproduce it for **SSR**; read `references/project-scaffold.csr.md` and reproduce it
+for **CSR/SPA**. The CSR etalon is the SSR one with every SSR-only script and dependency
+removed (no `express`, no server-bundle/`server-bootstrap` build steps) — pick by
+`projectType`, never mix scripts from both or hand-reduce the SSR file yourself.
+
+> **`<runtime, architecture, projectType>` are determined by step 0 of `vue-work`, not here.**
 > Step 0 detects them on an existing project and ASKS on a greenfield one. `project-init`
 > **realizes** the greenfield arm of that determination — it is where the asking actually
 > happens during scaffolding — but it never re-decides a constant step 0 already fixed.
@@ -55,8 +62,11 @@ the `robots` skill, which already forbids installing `vite-plugin-robots` there.
   the `HelloWorld.vue` / boilerplate `App.vue`, and the default `src/style.css`. A leftover
   `vite.svg` or stray root `style.css` is a defect.
 - [invariant · desired] The real global stylesheet lives in `{assets}/styles/` (e.g.
-  `{assets}/styles/main.css`), imported by the app entry — **not** at the `src/` root. Keep the
-  generated `src/vite-env.d.ts` (Vite ambient types); in FSD it may move to `{app}/types/env.d.ts`.
+  `{assets}/styles/main.css`), imported by `{initial-plugins}/createApp.ts` — **not** at the
+  `src/` root, and not from the app entry. Move the
+  generated Vite ambient types out of the `src/` root into `{app}/types/env.d.ts` — both
+  architectures, not just FSD; see `references/project-scaffold.md` and
+  `references/project-scaffold.csr.md`.
 
 ## Mode-aware build scripts
 
@@ -65,39 +75,22 @@ Expose named, mode-explicit build scripts in `package.json`. A plain `build` wit
 needs the split.
 
 - [invariant · desired] Provide `build:dev` and `build:prod` that pass an explicit `--mode`;
-  never rely on a bare `build`.
-
-  **SPA (default):**
-  ```jsonc
-  // package.json
-  "scripts": {
-    "build:dev":  "vite build --mode development",
-    "build:prod": "vite build --mode production"
-  }
-  ```
+  never rely on a bare `build`. **SPA (default):** `build:dev` runs `vite build --mode
+  development`, `build:prod` runs `vite build --mode production`. See
+  `references/project-scaffold.csr.md` for the full `package.json` to reproduce.
 
 - [preference · desired] **SSR (optional add-on)** — ONLY when the project does server-side
-  rendering. Adds a server bundle + a Node bootstrap on top of the client build:
-  ```jsonc
-  "scripts": {
-    "build:dev":  "run-s build:dev:client  build:dev:server  build:dev:bootstrap",
-    "build:prod": "run-s build:prod:client build:prod:server build:prod:bootstrap",
-
-    "build:dev:client":     "vite build --ssrManifest --mode development",
-    "build:dev:server":     "vite build --ssr {app}/entryServer.ts --mode development",
-    "build:dev:bootstrap":  "tsc -p tsconfig.server.json",
-
-    "build:prod:client":    "vite build --ssrManifest --mode production",
-    "build:prod:server":    "vite build --ssr {app}/entryServer.ts --mode production",
-    "build:prod:bootstrap": "tsc -p tsconfig.server.json"
-  }
-  ```
-  The SSR build runs three steps: client bundle (`--ssrManifest`), server bundle
-  (`--ssr <entryServer>`), and a `tsc` server bootstrap.
-- [invariant · desired] The bootstrap scaffold — the `createApp` factory, the
-  `{initial-plugins}/` layer and its barrel, and which entry files exist — is **owned by the
-  active project-type doc** (`core/project-types/<t>.md`). Scaffold what that doc prescribes;
-  do not restate or invent a bootstrap shape here.
+  rendering. Adds a server bundle + a Node bootstrap on top of the client build: each of
+  `build:dev` / `build:prod` fans out into a mode-specific client build (`--ssrManifest
+  --mode <mode>`), a mode-specific server build (`--ssr {app}/entryServer.ts --mode <mode>`),
+  and a shared `tsc` server-bootstrap step. See `references/project-scaffold.md` for the full
+  script wiring to reproduce (it additionally splits out `type-check`/`lint` and a
+  bundles/bootstrap grouping — reproduce that real shape, not a simplified 3-step version).
+- [invariant · desired] The bootstrap scaffold — the `createApp` factory, the `{initial-plugins}/`
+  layer, and which entry files exist — is **owned by the active project-type doc**
+  (`core/project-types/<t>.md`). Scaffold what that doc prescribes; do not restate or invent a
+  bootstrap shape here. The `{initial-plugins}/index.ts` barrel itself is shipped by
+  `skills/plugin-registration/references/plugin.md`, not by the project-type doc.
 
 ## Robots baseline (installed by default)
 
@@ -107,49 +100,20 @@ scaffolded on init so that development and staging builds are never inadvertentl
 - [invariant · desired] Install `vite-plugin-robots` and configure it in `vite.config.ts`.
   Reference the package by its npm name (`vite-plugin-robots`) — never use a GitHub URL.
 
-- [invariant · desired] Provide two policy files at the project root:
+- [invariant · desired] Both `.robots.development.txt` and `.robots.production.txt` ship
+  the same **closed** baseline (`Disallow: /` plus `Allow: /robots.txt`) at scaffold time —
+  there is no open/production variant by default. The exact file contents live in the
+  `robots` skill's `references/robots.md`; do not restate them here. Deliberately opening
+  the production policy before launch (adding `Sitemap:`, per-bot allow rules, and so on)
+  is a decision the `robots` policy skill from knowledge-seo owns, not project-init.
 
-  `.robots.development.txt` — **closed**: no crawler access on dev/staging builds.
+- [invariant · desired] Wire the plugin so that both `--mode development` and
+  `--mode production` builds pick up their respective `.robots.<mode>.txt` file.
 
-  ```
-  User-agent: *
-  Disallow: /
-  ```
-
-  `.robots.production.txt` — **open with policy + sitemap**:
-
-  ```
-  User-agent: *
-  Disallow: /admin/
-  # add additional Disallow lines per project requirements
-
-  Sitemap: https://<your-domain>/sitemap.xml
-  ```
-
-- [invariant · desired] Wire the plugin so that a `--mode development` build picks up
-  `.robots.development.txt` and a `--mode production` build picks up
-  `.robots.production.txt`. Dev and staging environments are always closed; production is
-  open under the explicit policy.
-
-  ```ts
-  // vite.config.ts (illustrative wiring)
-  import robots from 'vite-plugin-robots'
-
-  export default defineConfig(({ mode }) => ({
-    plugins: [
-      robots({
-        policy: mode === 'production'
-          ? { userAgent: '*', allow: '/', sitemap: 'https://<your-domain>/sitemap.xml' }
-          : { userAgent: '*', disallow: '/' },
-      }),
-    ],
-  }))
-  ```
-
-  ✅ Dev build → `Disallow: /` (crawlers blocked).
-  ✅ Prod build → explicit allow policy with Sitemap line.
-  ❌ A single unconditional `robots.txt` with no mode distinction — staging leaks to
-  indexers if ever deployed to a public URL.
+  The plugin is **file-based, not option-based**: it picks `.robots.<mode>.txt` by the
+  build mode on its own, so it is called as bare `robots()` in the `plugins` array with no
+  configuration object. There is no `policy` option — the policy lives in the txt files.
+  The complete wiring is in the `robots` skill from knowledge-vue, in its `references/robots.md`.
 
 ## Environment configuration
 
@@ -169,9 +133,9 @@ scaffolded on init so that development and staging builds are never inadvertentl
 
 ## Deferred detail
 
-- **Robots principles** (crawl semantics, `noindex`, policy design): see the `robots` skill.
-- **Robots delivery** in Vue (SSR-served `robots.txt`, per-environment switching in detail):
-  see the knowledge-vue `robots` skill.
+- **Robots principles** (crawl semantics, `noindex`, policy design): see the `robots` skill from knowledge-seo.
+- **Robots delivery** in Vue (`vite-plugin-robots` copying `.robots.<mode>.txt` at build time,
+  per-environment file conventions in detail): see the `robots` skill from knowledge-vue.
 - **Bootstrap / entry scaffolding** (createApp, entries, `{initial-plugins}`): see the active
   project-type doc `core/project-types/<t>.md`.
 

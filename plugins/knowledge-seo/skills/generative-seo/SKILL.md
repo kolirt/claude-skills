@@ -24,7 +24,7 @@ build pass.
 
 - **AI-crawler access** — a deliberate per-bot allow/deny matrix (a business and legal
   decision — licensing, scraping terms, brand risk — NOT a blanket allow or blanket deny).
-  Cross-link: `robots` skill handles the `robots.txt` mechanics and lists common AI-crawler
+  Cross-link: the `robots` skill from knowledge-seo handles the `robots.txt` mechanics and lists common AI-crawler
   user-agent tokens.
 
 - **SSR precondition** — many AI fetchers may not execute JavaScript reliably; critical
@@ -54,6 +54,6 @@ a hard technical rule enforced here.
 
 ## Related skills (by name)
 
-- `robots` — `robots.txt` AI-crawler allow/deny matrix and user-agent tokens
+- `robots` from knowledge-seo — `robots.txt` AI-crawler allow/deny matrix and user-agent tokens
 - `javascript-seo` — rendering modes, SSR requirements, agent-friendly markup
 - `structured-data` — entity markup, `sameAs`, schema vocabulary

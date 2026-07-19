@@ -8,7 +8,7 @@
       "name": "agent-companion",
       "source": "./plugins/agent-companion",
       "description": "Claude runs as manager and consults several independent verifier agents in parallel \u2014 each returns its own verdict. Manager mode survives compaction, and the panel is fed the project's own convention skills.",
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     {
       "name": "auditing-prs",
@@ -20,19 +20,19 @@
       "name": "knowledge",
       "source": "./plugins/knowledge",
       "description": "Stack-independent base for the developer's coding-knowledge plugins: capture loop + human-gated codification + notify-only pattern observer.",
-      "version": "0.1.1"
+      "version": "0.2.0"
     },
     {
       "name": "knowledge-vue",
       "source": "./plugins/knowledge-vue",
       "description": "The developer's Vue conventions as intent-triggered skills over shared Vue core rules, with SEO auto-application (baseline SEO by default). Depends on the knowledge base and knowledge-seo plugins.",
-      "version": "0.2.7"
+      "version": "0.3.0"
     },
     {
       "name": "knowledge-seo",
       "source": "./plugins/knowledge-seo",
-      "description": "Stack-independent SEO conventions (meta, structured data, robots, sitemaps, social previews, Core Web Vitals, IndexNow) for baseline-by-default SEO. Policy knowledge only — on-demand project-wide SEO auditing moved to `auditing:seo` (`/plugin install auditing@claude-skills`).",
-      "version": "0.1.2"
+      "description": "Stack-independent SEO conventions (meta, structured data, robots, sitemaps, social previews, Core Web Vitals, IndexNow) for baseline-by-default SEO. Policy knowledge only \u2014 on-demand project-wide SEO auditing moved to `auditing:seo` (`/plugin install auditing@claude-skills`).",
+      "version": "0.1.3"
     },
     {
       "name": "planning",
@@ -43,7 +43,7 @@
     {
       "name": "auditing",
       "source": "./plugins/auditing",
-      "description": "On-demand audits of a WHOLE application from a chosen perspective: business-analysis (product integrity, flows, monetization) and seo (SEO baseline). Read-only — reports findings, never fixes them. Audits of PR diffs and changes belong to the auditing-prs plugin. The seo skill requires the knowledge-seo plugin to be installed separately.",
+      "description": "On-demand audits of a WHOLE application from a chosen perspective: business-analysis (product integrity, flows, monetization) and seo (SEO baseline). Read-only \u2014 reports findings, never fixes them. Audits of PR diffs and changes belong to the auditing-prs plugin. The seo skill requires the knowledge-seo plugin to be installed separately.",
       "version": "0.1.0"
     }
   ]

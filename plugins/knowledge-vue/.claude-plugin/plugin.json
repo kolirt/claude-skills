@@ -1,7 +1,7 @@
 {
   "name": "knowledge-vue",
-  "version": "0.2.7",
-  "description": "The developer's Vue conventions as intent-triggered skills placed via location tokens. Work starts by establishing the project model — first the runtime (vite-vue or Nuxt); under vite-vue also the architecture (FSD or flat src/) and project type (SSR or CSR), which Nuxt owns itself — with path resolution and bootstrap process living in shared core docs. Covers components, modals, routing, stores, persistence, data fetching, auth, forms, plugin registration, project init, plus seo and robots delivery. Depends on the knowledge base plugin (capture) and knowledge-seo (SEO principles, delivered into Vue without being asked).",
+  "version": "0.3.0",
+  "description": "The developer's Vue conventions as intent-triggered skills placed via location tokens. Work starts by establishing the project model \u2014 first the runtime (vite-vue or Nuxt); under vite-vue also the architecture (FSD or flat src/) and project type (SSR or CSR), which Nuxt owns itself \u2014 with path resolution and bootstrap process living in shared core docs. Covers components, modals, routing, stores, persistence, data fetching, auth, forms, plugin registration, project init, plus seo and robots delivery. Depends on the knowledge base plugin (capture) and knowledge-seo (SEO principles, delivered into Vue without being asked).",
   "author": {
     "name": "kolirt"
   },

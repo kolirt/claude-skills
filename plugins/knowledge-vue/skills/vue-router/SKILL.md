@@ -11,11 +11,14 @@ One-time router setup: install, register, and wire the middleware runner. Defer 
 the `pages` skill.
 
 Read `../../core/disciplines/routing-discipline.md` first (route-by-name + the shared
-`fallbackRoute`).
+`FALLBACK_ROUTE`).
 - [invariant · desired] This skill applies under runtime = vite-vue; under Nuxt, routing/pages/layouts/middleware are Nuxt-owned (file-based) — see core/runtimes/nuxt.md.
 
 Read `../../core/placement.md` first for the `{plugins}` / `{pages-config}` /
 `{global-middlewares}` tokens; paths resolve in the active architecture doc.
+
+Read `references/router.md` and reproduce it — it holds the complete router factory,
+the middleware runner and the `FALLBACK_ROUTE` constant.
 
 ## 1. Install + register
 - `yarn add vue-router`.
@@ -28,40 +31,14 @@ Read `../../core/placement.md` first for the `{plugins}` / `{pages-config}` /
 - [invariant · desired] Augment `RouteMeta` via `declare module 'vue-router'`,
   colocated in the router plugin file.
 
-```ts
-// {plugins}/router.ts
-import { createRouter as createRouterMaster, createMemoryHistory, createWebHistory } from 'vue-router'
-import { routes } from '{routes}'
-import { GlobalMiddlewares, fallbackRoute } from '{pages-config}'  // array + fallbackRoute (routing-discipline); middleware impls live in {global-middlewares}
-
-export function createRouter(options: { ssr?: boolean }) {
-  const router = createRouterMaster({
-    history: options.ssr ? createMemoryHistory() : createWebHistory(import.meta.env.BASE_URL),
-    routes
-  })
-  wireMiddlewares(router)
-  return router
-}
-```
-
 ## 2. Middleware wiring (one runner, ordered chain)
 - [invariant · desired] Wire middlewares with **one** `router.beforeEach` that runs an
-  ordered async chain `[...GlobalMiddlewares, ...(to.meta.middleware ?? [])]`. (Authoring
-  a middleware is `page-middlewares`; this is only the runner.)
-```ts
-function wireMiddlewares(router: Router) {
-  router.beforeEach(async (to, from, next) => {
-    for (const middleware of [...GlobalMiddlewares, ...(to.meta.middleware ?? [])]) {
-      const result = await middleware(to, from)
-      if (typeof result === 'object') return next(result)   // redirect (by name)
-      if (result === false) return next(fallbackRoute)       // shared fallback
-    }
-    return next()
-  })
-}
-```
+  ordered async chain `[...GLOBAL_MIDDLEWARES, ...(to.meta.middleware ?? [])]`. (Authoring
+  a middleware is `page-middlewares`; this is only the runner.) Each middleware in the
+  chain returns a route object to redirect, `false` to bounce via `FALLBACK_ROUTE`, or
+  nothing to continue.
 - [invariant · desired] **Global middlewares** are a static, ordered array
-  (`GlobalMiddlewares`) in `{pages-config}` (impl files in `{global-middlewares}`). **Order
+  (`GLOBAL_MIDDLEWARES`) in `{pages-config}` (impl files in `{global-middlewares}`). **Order
   matters**: `handle404` runs **first** (it fills empty meta for unmatched URLs — see the
   implicit-404 mechanism in `layouts`), THEN the layout-resolver middleware (§3), then
   always-on guards (e.g. the modal-close middleware) — e.g.
@@ -74,7 +51,7 @@ function wireMiddlewares(router: Router) {
 - [invariant · desired] Layout creation, the `Layouts` enum, the resolver middleware,
   and the default `DefaultLayout` / `ErrorLayout` scaffold are the **`layouts` skill**'s
   concern (defer by name). Router setup registers the layout resolver in
-  `GlobalMiddlewares` and triggers the default-layout scaffold.
+  `GLOBAL_MIDDLEWARES` and triggers the default-layout scaffold.
 
 ## History mode and crawlability
 
@@ -86,6 +63,6 @@ function wireMiddlewares(router: Router) {
 
 ## Placement (tokens)
 - [invariant · desired] Router factory → `{plugins}/router.ts`.
-- [invariant · desired] `GlobalMiddlewares` array → `{pages-config}`.
+- [invariant · desired] `GLOBAL_MIDDLEWARES` array → `{pages-config}`.
 - [invariant · desired] Global middleware impl files (incl. the layout middleware) →
   `{global-middlewares}/<name>.middleware.ts`.

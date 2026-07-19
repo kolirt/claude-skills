@@ -12,6 +12,21 @@ never restate these steps.
 Read `../../core/placement.md` first for the `{plugins}` and `{initial-plugins}`
 tokens; paths resolve in the active architecture doc.
 
+Read `references/plugin.md` and reproduce it — it holds the complete files for a
+representative plugin factory and both barrels: the `{plugins}` barrel and the
+`{initial-plugins}` barrel. The etalon shows the trivial, shareable factory shape
+(`validationKit.ts`, no options); it does not duplicate the modal/router/query module
+internals owned by their own skills. `{initial-plugins}/httpRequest.ts` — the imperative
+bootstrap initialiser the `{initial-plugins}` barrel re-exports — is **not** reproduced
+here either; it is owned by the `http-request` skill's `http-request-module.md` etalon.
+The project-type-specific, SSR-aware factory (`head.ts`, taking `{ ssr }` and returning
+a fresh per-request instance) is **not** reproduced here — it lives in the active
+project type's own bootstrap etalon instead: `core/references/bootstrap-csr.md` or
+`core/references/bootstrap-ssr.md` (see the `csr` / `ssr` docs under
+`core/project-types/`). The `createApp` composition point and every bootstrap/entry
+file are likewise owned by those etalons, not this one — they differ between CSR and
+SSR (sync vs async, `createApp` vs `createSSRApp`, one entry file vs two).
+
 ## The principle
 
 Four invariants govern every plugin registration, regardless of which package or how
@@ -44,13 +59,17 @@ many plugins the project has:
   sharing is safe.
 
 - [invariant · desired] **One composition point.** `createApp({ ssr })` (CSR-only
-  projects: `createApp()`), living in `{initial-plugins}`, calls each factory and
-  `app.use`s them in order, then returns the app plus any instances the caller needs
-  (e.g. a router or head client used outside of `app.use`).
+  projects: `createApp()`, sync, no options), living in `{initial-plugins}`, calls
+  each factory and `app.use`s them in order, then returns the app plus any instances
+  the caller needs (e.g. a router or head client used outside of `app.use`). Its
+  concrete shape is owned by the active project type's etalon (`core/references/
+  bootstrap-csr.md` / `bootstrap-ssr.md`), not restated here — see `## Files` above.
 
 - [invariant · desired] **Bootstrap roots are dumb.** A bootstrap root calls only
-  `createApp(...)` — it never builds, configures, or `app.use`s anything itself.
-  `{plugins}/index.ts` is a pure barrel (re-exports only, no logic).
+  `createApp(...)` plus the imperative bootstrap initialisers exported from
+  `{initial-plugins}` (e.g. wiring the http-request client to the query client) and the
+  mount call — it never builds, configures, or `app.use`s anything itself. `{plugins}/index.ts`
+  is a pure barrel (re-exports only, no logic).
   - [anti-pattern · desired] There is NO `installPlugins(app, …)` aggregator function
     and no duplicated build/registration logic between entry points. If more than one
     bootstrap root needs the same app, they both call the same `createApp` — the
@@ -64,23 +83,13 @@ many plugins the project has:
 
 ## Head/unhead — canonical illustration
 
-The head/unhead integration is the clearest example of "fresh-vs-shared" in practice:
-it needs a different build per environment (server vs client) and, under SSR, a fresh
-instance per request.
-
-```ts
-// {plugins}/head.ts
-import type { VueHeadClient } from '@unhead/vue'
-export async function createHead(options: { ssr?: boolean }): Promise<VueHeadClient> {
-  const { createHead: createUnhead } = options.ssr
-    ? await import('@unhead/vue/server')
-    : await import('@unhead/vue/client')
-  return createUnhead() as VueHeadClient
-}
-```
-
-The app factory registers it exactly like any other plugin: `app.use(await createHead({ ssr }))`.
-Do NOT export a bare config blob and create the instance ad-hoc inside a bootstrap root.
+The head/unhead integration is the clearest example of "fresh-vs-shared" in practice.
+On SSR, `createHead` takes `{ ssr }`, picks the server or client build of `@unhead/vue`
+accordingly, and returns a fresh instance per call; the app factory registers it exactly
+like any other plugin (`app.use(await createHead({ ssr }))`) and never builds a bare
+config blob ad-hoc inside a bootstrap root. On CSR there is no server build to pick
+between, so `createHead()` takes no options and resolves synchronously — see
+`core/project-types/csr.md`.
 
 ## Related skills (by name)
 

@@ -11,6 +11,12 @@ skill (the 401 hook) — defer to them by name.
 
 Read `../../core/placement.md` first for the `{entity}` / `{plugins}` tokens; paths resolve in the active architecture doc.
 
+Read `references/auth.md` and reproduce it — it holds the complete files for the
+session entity's auth slice (api calls, query gating/eviction, login/logout actions).
+The session store lives in the `stores` skill's etalon and the unauthorized-handler
+wiring lives in the `http-request` skill's etalon; both are token-imported here, not
+reproduced.
+
 ## Session store
 - [invariant · desired] Auth state lives in a **session store** — the `{entity}` module's
   **entity store** (the entity is `session`); the active architecture doc resolves where
@@ -26,12 +32,8 @@ Read `../../core/placement.md` first for the `{entity}` / `{plugins}` tokens; pa
   `meta: { requiresAuth: true }` (the meta type is declared in the `tanstack-query` setup)
   so it can be **evicted** on logout/401. The predicate lives in the session `{entity}`
   module alongside its **entity query** — the active architecture doc resolves where
-  inside the module it goes:
-  ```ts
-  export function isAuthQuery(query: Query): boolean {
-    return query.meta?.requiresAuth === true
-  }
-  ```
+  inside the module it goes. The predicate itself is a one-line check that a query's
+  `meta.requiresAuth` is `true`.
 
 ## Login
 - [invariant · desired] Login is a `use*Action` mutation (see `tanstack-query`). On
@@ -49,15 +51,9 @@ Read `../../core/placement.md` first for the `{entity}` / `{plugins}` tokens; pa
 - [invariant · desired] The 401 hook lives in `http-request` (it calls the registered
   unauthorized handler — see that skill). The `auth` setup **registers** that handler
   once at app boot, given the `QueryClient`, and it does **exactly what manual logout
-  does**:
-  ```ts
-  // at app boot, where the QueryClient is available (see tanstack-query setup):
-  setUnauthorizedHandler(() => {
-    clearAuthenticated()
-    queryClient.removeQueries({ predicate: isAuthQuery })
-  })
-  ```
-  So intentional logout and session expiry leave the store + cache in the same state.
+  does** — clear the authenticated flag and evict `requiresAuth` queries by the same
+  predicate — so intentional logout and session expiry leave the store + cache in the
+  same state.
 
 ## When the developer says "add authorization"
 1. Create/ensure the session store (`isAuthenticated`, `mark`/`clearAuthenticated`).
