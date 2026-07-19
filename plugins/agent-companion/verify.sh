@@ -6,7 +6,7 @@ SELF="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 ROOT="${CLAUDE_PLUGIN_ROOT:-$SELF}"
 DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
 . "$ROOT/lib/verdict.sh"
-. "$ROOT/lib/spec.sh"
+. "$ROOT/lib/panel.sh"
 # Per-verifier hard cap, seconds. A generous SAFETY NET, not a pacing tool: it wraps BOTH
 # retry attempts of an adapter, and honest reviews run 4-12 min (codex 169-688s observed,
 # grok ~290s) — anything still alive past 30 min is hung, not slow.
@@ -50,6 +50,14 @@ sq() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
 
 manifest_get()  { awk -F'\t' -v k="$2" '$1==k{print $2; exit}' "$1/manifest" 2>/dev/null; }
 manifest_list() { awk -F'\t' -v k="$2" '$1==k{print $2}'       "$1/manifest" 2>/dev/null; }
+# A runnable record is `runnable<TAB>label<TAB>adapter<TAB>model<TAB>effort`: the label is the
+# entry's identity, the rest is data. This is what replaces re-parsing a spec string.
+manifest_entry() { # <run> <label> -> adapter<TAB>model<TAB>effort
+  awk -F'\t' -v l="$2" '$1=="runnable" && $2==l{print $3"\t"$4"\t"$5; exit}' "$1/manifest" 2>/dev/null
+}
+manifest_synth() { # <run> -> adapter<TAB>model<TAB>effort
+  awk -F'\t' '$1=="synthesizer"{print $2"\t"$3"\t"$4; exit}' "$1/manifest" 2>/dev/null
+}
 manifest_valid() {
   local m="$1/manifest" k
   [ -f "$m" ] || return 1
@@ -65,13 +73,19 @@ validate_invocation() { # <mode> <request-file>
   [ -f "$2" ] || { echo "request file not found: $2" >&2; exit 64; }
 }
 
-read_verifiers() { # -> active verifier names, one per line
-  local conf="$DATA/verifiers.conf"; [ -f "$conf" ] || conf="$ROOT/verifiers.conf"
-  local line
-  while IFS= read -r line; do
-    case "$line" in ''|'#'*) continue;; esac
-    printf '%s\n' "$line"
-  done < <(cat "$conf" 2>/dev/null)
+# -> one record per active verifier: index<TAB>adapter<TAB>model<TAB>effort<TAB>label
+# (panel.sh owns the JSON; everything below this line is TAB records as before.)
+read_verifiers() { panel_verifiers; }
+
+# available_adapters -> comma-separated basenames discovered on disk. Used in the
+# removed-adapter warning: never hardcode the adapter list, it drifts.
+available_adapters() {
+  local a out=""
+  for a in "$ROOT"/adapters/*.sh; do
+    [ -f "$a" ] || continue
+    out="$out, $(basename "$a" .sh)"
+  done
+  printf '%s' "${out#, }"
 }
 
 build_diff() { # <repo> <out>
@@ -193,24 +207,25 @@ warn_no_timeout() {
   fi
 }
 
+# synth_available <adapter> <model> -> 0 if that synthesizer can actually run right now.
 synth_available() {
-  local a m
-  case "$1" in
-    claude) command -v claude >/dev/null 2>&1 ;;
-    *) a="$(spec_adapter "$1")"; m="$(spec_model "$1")"
-       spec_valid "$1" && [ -f "$ROOT/adapters/$a.sh" ] \
+  local a="$1" m="${2:-}"
+  case "$a" in
+    none|'') return 1 ;;
+    claude)  command -v claude >/dev/null 2>&1 ;;
+    *) panel_valid_adapter "$a" && [ -f "$ROOT/adapters/$a.sh" ] \
          && probe_adapter "$ROOT/adapters/$a.sh" "$m" ;;
   esac
 }
-run_synth() { # <name> <prompt-file> <out-file> <run>
-  local n="$1" p="$2" o="$3" run="$4" eff a m seff
+run_synth() { # <prompt-file> <out-file> <run>
+  local p="$1" o="$2" run="$3" eff a m seff
   eff="$(manifest_get "$run" effort)"; [ -n "$eff" ] || eff=medium  # frozen effort; medium fallback
-  if [ "$n" = claude ]; then
+  IFS=$'\037' read -r a m seff < <(manifest_synth "$run" | panel_us)
+  [ -n "${seff:-}" ] || seff="$eff"          # a per-entry effort overrides the frozen dispatch one
+  if [ "$a" = claude ]; then
     _with_timeout "$T" claude -p "$(cat "$p")" --allowedTools "Read Grep Glob" > "$o" 2>"$run/synth.stderr.log"
   else
-    a="$(spec_adapter "$n")"; m="$(spec_model "$n")"
-    seff="$(spec_effort "$n")"; [ -n "$seff" ] || seff="$eff"   # per-entry @effort overrides frozen
-    run_adapter "$T" "$ROOT/adapters/$a.sh" "$p" "$seff" "$o" "$m" "$run/synth.stderr.log"
+    run_adapter "$T" "$ROOT/adapters/$a.sh" "$p" "$seff" "$o" "${m:-}" "$run/synth.stderr.log"
   fi
 }
 
@@ -230,7 +245,9 @@ EOF
 $4
 EOF
   while IFS= read -r v; do [ -n "$v" ] || continue
-    printf '[%s] SKIP (unavailable)\n' "${v%%	*}"
+    # print the REAL reason: `removed-adapter` must not masquerade as `unavailable`,
+    # they call for different user action.
+    printf '[%s] SKIP (%s)\n' "${v%%	*}" "${v#*	}"
   done <<EOF
 $3
 EOF
@@ -250,7 +267,9 @@ EOF
 $4
 EOF
 
-  if [ "$nsynth" -ge 2 ] && [ -n "$synth" ] && [ "$synth" != none ] && synth_available "$synth"; then
+  local sa sm se
+  IFS=$'\037' read -r sa sm se < <(manifest_synth "$run" | panel_us)
+  if [ "$nsynth" -ge 2 ] && [ -n "$synth" ] && [ "$synth" != none ] && synth_available "$sa" "${sm:-}"; then
     local sp="$run/synth-prompt.txt"
     { printf 'You are consolidating independent %s reports from several agents into ONE report.\n' "$mode"
       printf '%s\n' \
@@ -266,7 +285,7 @@ EOF
         cat "$run/$v/verdict" 2>/dev/null; printf '\n'
       done
     } > "$sp"
-    if run_synth "$synth" "$sp" "$run/consolidated.txt" "$run" && [ -s "$run/consolidated.txt" ]; then
+    if run_synth "$sp" "$run/consolidated.txt" "$run" && [ -s "$run/consolidated.txt" ]; then
       printf '\n=== consolidated report (by %s · %s agents) ===\n' "$synth" "$nsynth"
       cat "$run/consolidated.txt"
       printf '\n(raw per-verifier verdicts for drill-down: %s/<verifier>/verdict)\n' "$run"
@@ -346,35 +365,56 @@ cmd_prepare() {
   freeze_skills "$req" "$run"
   build_prompt "$mode" "$req" "$reqid" "$repo" "$run"
 
-  # probe/partition (newline-delimited; entries may carry a TAB+reason)
-  local v ad prc runnable="" skip="" fail=""
-  while IFS= read -r v; do [ -n "$v" ] || continue
-    if ! spec_valid "$v"; then
-      # a rejected entry is arbitrary text — neutralise any TAB before it enters the
-      # TAB-delimited fail record, so the manifest/stdout contract stays intact.
-      vsafe="$(printf '%s' "$v" | tr '\t' ' ')"
-      fail="$fail$vsafe	bad-spec
+  panel_warn_legacy   # obsolete .conf files present -> loud notice, then bundled default
+
+  # Read the panel BEFORE the probe loop and fail loudly if it cannot be read. Feeding the
+  # loop straight from a process substitution would swallow the error: a malformed panel (or
+  # a missing jq/python3) would look exactly like "no verifiers configured", and the run
+  # would degrade to NO_VERIFIER — which the manager protocol treats as a benign environment
+  # condition and proceeds WITHOUT verification. A broken config must never silently
+  # disable the gate.
+  local vrecs
+  if ! vrecs="$(read_verifiers)"; then
+    echo "agent-companion: cannot read the panel config — refusing to run unverified." >&2
+    echo "agent-companion: check $(panel_file) (or run '/agent-companion:verifiers list')." >&2
+    exit 64
+  fi
+
+  # probe/partition. Entries arrive as panel records (index/adapter/model/effort/label);
+  # runnable carries the full record, skip/fail carry `label<TAB>reason`. Identity is the
+  # LABEL everywhere — the model text is data and never becomes a path or a key.
+  local idx a m e label ad prc runnable="" skip="" fail=""
+  while IFS=$'\037' read -r idx a m e label; do
+    [ -n "$label" ] || continue
+    if [ -z "$a" ]; then
+      # panel.sh emits an empty adapter for an entry that failed validation.
+      fail="$fail$label	invalid-entry
 "; continue
     fi
-    ad="$ROOT/adapters/$(spec_adapter "$v").sh"
-    if [ ! -f "$ad" ]; then fail="$fail$v	no-adapter
-"; continue; fi
-    probe_adapter "$ad" "$(spec_model "$v")"; prc=$?
-    if   [ "$prc" -eq 0 ];  then runnable="$runnable$v
+    ad="$ROOT/adapters/$a.sh"
+    if [ ! -f "$ad" ]; then
+      # A configured verifier whose adapter file is gone (renamed/removed between releases)
+      # is a CONFIG problem, not a review failure: SKIP it so review gates keep working,
+      # and tell the user exactly how to clean it up.
+      skip="$skip$label	removed-adapter
 "
-    elif [ "$prc" -eq 64 ]; then skip="$skip$v	unavailable
+      echo "agent-companion: verifier #$idx ($label) refers to adapter \"$a\", which no longer exists — SKIPPED." >&2
+      echo "agent-companion: remove it with '/agent-companion:verifiers remove $idx'." >&2
+      echo "agent-companion: adapters currently available: $(available_adapters)" >&2
+      continue
+    fi
+    probe_adapter "$ad" "$m"; prc=$?
+    if   [ "$prc" -eq 0 ];  then runnable="$runnable$idx	$a	$m	$e	$label
 "
-    else fail="$fail$v	probe-rc-$prc
+    elif [ "$prc" -eq 64 ]; then skip="$skip$label	unavailable
+"
+    else fail="$fail$label	probe-rc-$prc
 "; fi
-  done < <(read_verifiers)
+  done < <(printf '%s\n' "$vrecs" | panel_us)
 
-  local synth=none sconf="$DATA/synthesizer.conf"
-  # trim only surrounding whitespace — stripping INNER spaces would silently "repair" a
-  # malformed value (e.g. `codex:bad model` -> `codex:badmodel`) into something runnable.
-  [ -f "$sconf" ] && synth="$(head -n1 "$sconf" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"; [ -n "$synth" ] || synth=none
-  # a hand-edited synthesizer.conf is untrusted: anything that is not claude/none and not a
-  # well-formed spec is disabled (never serialized into the TAB manifest, never run blindly).
-  case "$synth" in none|claude) ;; *) spec_valid "$synth" || synth=none ;; esac
+  local synth sm se
+  IFS=$'\037' read -r synth sm se < <(panel_synth | panel_us)
+  [ -n "${synth:-}" ] || synth=none
 
   # atomic manifest
   local m="$run/manifest.tmp"
@@ -386,18 +426,21 @@ cmd_prepare() {
     printf 'prompt\t%s\n' "$run/prompt.txt"
     [ -f "$run/diff.patch" ] && printf 'diff\t%s\n' "$run/diff.patch"
     printf 'timeout\t%s\n' "$T"
-    printf 'synthesizer\t%s\n' "$synth"
-    printf '%s' "$runnable" | while IFS= read -r v; do [ -n "$v" ] && printf 'runnable\t%s\n' "$v"; done
+    printf 'synthesizer\t%s\t%s\t%s\n' "$synth" "${sm:-}" "${se:-}"
+    # runnable record: label<TAB>adapter<TAB>model<TAB>effort (label first — it is the key
+    # every other reader addresses the entry by; the rest is data carried along).
+    printf '%s' "$runnable" | panel_us | while IFS=$'\037' read -r idx a m e label; do
+      [ -n "$label" ] && printf 'runnable\t%s\t%s\t%s\t%s\n' "$label" "$a" "$m" "$e"; done
     printf '%s' "$skip"     | while IFS= read -r v; do [ -n "$v" ] && printf 'skip\t%s\n' "$v"; done
     printf '%s' "$fail"     | while IFS= read -r v; do [ -n "$v" ] && printf 'fail\t%s\n' "$v"; done
   } > "$m"
   mv "$m" "$run/manifest"
 
-  # contract stdout (ordered: runnable, skip, fail)
+  # contract stdout (ordered: runnable, skip, fail) — addressed by label
   printf 'RUN_DIR\t%s\n' "$run"
-  printf '%s' "$runnable" | while IFS= read -r v; do [ -n "$v" ] || continue
-    printf 'RUNNABLE\t%s\n' "$v"
-    printf 'SPAWN\t%s\tbash %s run-one %s %s\n' "$v" "$(sq "$ROOT/verify.sh")" "$(sq "$run")" "$(sq "$v")"
+  printf '%s' "$runnable" | panel_us | while IFS=$'\037' read -r idx a m e label; do [ -n "$label" ] || continue
+    printf 'RUNNABLE\t%s\n' "$label"
+    printf 'SPAWN\t%s\tbash %s run-one %s %s\n' "$label" "$(sq "$ROOT/verify.sh")" "$(sq "$run")" "$(sq "$label")"
   done
   printf '%s' "$skip" | while IFS= read -r v; do [ -n "$v" ] && printf 'SKIP\t%s\n' "$v"; done
   printf '%s' "$fail" | while IFS= read -r v; do [ -n "$v" ] && printf 'FAIL\t%s\n' "$v"; done
@@ -411,10 +454,11 @@ cmd_run_one() {
   effort="$(manifest_get "$run" effort)"
   prompt="$(manifest_get "$run" prompt)"
   to="$(manifest_get "$run" timeout)"; [ -n "$to" ] || to="$T"
-  # $v is the full spec (cli[:model][@effort]) — resolve the adapter/model and let a
-  # per-entry @effort override the frozen dispatch effort.
-  adapter="$(spec_adapter "$v")"; model="$(spec_model "$v")"
-  eff="$(spec_effort "$v")"; [ -n "$eff" ] || eff="$effort"
+  # $v is the entry's LABEL — a generated, path-safe identity. Adapter/model/effort come
+  # from the manifest as data; nothing is re-derived by parsing the name.
+  IFS=$'\037' read -r adapter model eff < <(manifest_entry "$run" "$v" | panel_us)
+  [ -n "${adapter:-}" ] || { echo "verifier not found in manifest: $v" >&2; exit 64; }
+  [ -n "${eff:-}" ] || eff="$effort"           # a per-entry effort overrides the frozen one
   local vdir="$run/$v"; mkdir -p "$vdir"
   rm -f "$vdir/finished" "$vdir/rc"
   : > "$vdir/started"
@@ -431,6 +475,17 @@ cmd_collect() {
   manifest_valid "$run" || { echo "invalid run-dir/manifest: $run" >&2; exit 64; }
   local mode reqid synth
   mode="$(manifest_get "$run" mode)"; reqid="$(manifest_get "$run" reqid)"; synth="$(manifest_get "$run" synthesizer)"
+
+  # Validate the serialized synthesizer UNCONDITIONALLY — not only on the path that would
+  # actually use it. A synthesizer pinned to an adapter that has since been removed used to
+  # be rejected in silence, and the run fell back to listing raw reports with no explanation.
+  local _sa _sm _se
+  IFS=$'\037' read -r _sa _sm _se < <(manifest_synth "$run" | panel_us)
+  if [ -n "${_sa:-}" ] && [ "$_sa" != none ] && ! synth_available "$_sa" "${_sm:-}"; then
+    echo "agent-companion: synthesizer \"$_sa\" is configured but not usable" \
+         "(adapter missing, or its CLI is not installed/authenticated) — reports will be listed directly." >&2
+    echo "agent-companion: pick another with '/agent-companion:synthesizer set <claude|adapter|none>'." >&2
+  fi
 
   # rebuild partitions from manifest (newline-delimited; skip/fail carry TAB+reason)
   local runnable skip fail v

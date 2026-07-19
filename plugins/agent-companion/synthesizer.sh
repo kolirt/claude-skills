@@ -1,51 +1,104 @@
 #!/usr/bin/env bash
-# Manage the report synthesizer — the agent that consolidates N verifier verdicts
-# into ONE report so the main session isn't flooded. Stored in $DATA/synthesizer.conf
-# (single line: an adapter name, the special value "claude", or "none").
-# Usage: synthesizer.sh show | set <claude|adapter|none> | off
+# Manage the report synthesizer — the agent that consolidates N verifier verdicts into ONE
+# report so the main session isn't flooded. Stored in the panel document
+# ($CLAUDE_PLUGIN_DATA/panel.json) alongside the verifiers, under "synthesizer".
+#
+# Usage:
+#   synthesizer.sh show
+#   synthesizer.sh set <claude|<adapter>|none> [--model <name>] [--effort <tier>]
+#   synthesizer.sh off
 set -uo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 ROOT="${CLAUDE_PLUGIN_ROOT:-$SELF}"
-# Same stable persistent location as verify.sh / verifiers.sh.
 DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
-CONF="$DATA/synthesizer.conf"
-. "$ROOT/lib/spec.sh"
+. "$ROOT/lib/panel.sh"
 
-# trim only surrounding whitespace (NOT inner) so a malformed value isn't silently repaired.
-current() { [ -f "$CONF" ] && head -n1 "$CONF" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' || true; }
+panel_warn_legacy
 
-valid() { # <name>  — may be a full spec cli[:model][@effort]
-  case "$1" in
-    none|off) return 0 ;;
-    claude)   return 0 ;;                 # headless `claude -p` (uses Claude limits)
-    *)        spec_valid "$1" && [ -f "$ROOT/adapters/$(spec_adapter "$1").sh" ] ;;
-  esac
+# write_synth <adapter> <model> <effort> — replaces the S record, verifiers untouched.
+# Reads first and aborts on failure: an unreadable panel must not be silently replaced by
+# one holding only this synthesizer, losing every configured verifier.
+write_synth() {
+  local recs
+  recs="$(panel_records)" || {
+    echo "cannot read the current panel — refusing to edit it (fix or remove $(panel_file))" >&2
+    return 1; }
+  { printf '%s\n' "$recs" | awk -F'\t' '$1=="V"'
+    printf 'S\t%s\t%s\t%s\n' "$1" "$2" "$3"
+  } | panel_save
 }
 
 cmd="${1:-show}"; shift || true
 case "$cmd" in
   show)
-    c="$(current)"
-    echo "synthesizer: ${c:-unset}"
+    if ! synthline="$(panel_synth)"; then
+      echo "synthesizer: UNKNOWN — the panel config could not be read"
+      echo "  fix or remove $(panel_file), then re-run"
+      exit 1
+    fi
+    IFS=$'\037' read -r a m e < <(printf '%s\n' "$synthline" | panel_us)
+    # "unset" (never chosen) is NOT "none" (chosen: disabled) — commands/on.md keys the
+    # first-run "which agent should consolidate?" question off exactly this word.
+    printf 'synthesizer: %s' "${a:-unset}"
+    [ -n "${m:-}" ] && printf '  model: %s' "$m"
+    [ -n "${e:-}" ] && printf '  effort: %s' "$e"
+    printf '\n'
+    # show must never fail on a stale value — it is the command a user runs precisely to
+    # find out WHY consolidation stopped happening. Flag it instead.
+    if [ -n "${a:-}" ] && [ "$a" != none ] && [ "$a" != claude ] && [ ! -f "$ROOT/adapters/$a.sh" ]; then
+      echo "  ^ STALE: adapter '$a' no longer exists — reports are being listed directly."
+      echo "    fix with: synthesizer.sh set <claude|adapter|none>"
+    fi
     printf 'candidates: claude'
-    for a in "$ROOT"/adapters/*.sh; do [ -f "$a" ] && printf ', %s' "$(basename "$a" .sh)"; done
+    for f in "$ROOT"/adapters/*.sh; do [ -f "$f" ] && printf ', %s' "$(basename "$f" .sh)"; done
     printf ', none\n'
-    echo "format: claude | none | cli[:model][@effort]  e.g. codex:gpt-5.6-sol@high"
-    echo "config: $CONF"
+    echo "set: synthesizer.sh set <claude|adapter|none> [--model <name>] [--effort <tier>]"
+    echo "config: $(panel_file)"
     ;;
   set)
-    name="${1:?usage: synthesizer.sh set <claude|cli[:model][@effort]|none>}"
+    name="${1:?usage: synthesizer.sh set <claude|adapter|none> [--model <name>] [--effort <tier>]}"; shift || true
+    model=""; effort=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --model)  model="${2:?--model needs a value}"; shift 2;;
+        --effort) effort="${2:?--effort needs a value}"; shift 2;;
+        *) echo "unknown flag: $1 (use --model <name> / --effort <tier>)" >&2; exit 64;;
+      esac
+    done
     [ "$name" = off ] && name=none   # normalize: `set off` is an alias for `none`
-    if ! valid "$name"; then
-      echo "invalid synthesizer: $name (use 'claude', 'none', or cli[:model][@effort] with an existing adapter)" >&2; exit 1
+
+    case "$name" in
+      none)   write_synth none "" "" || exit 1
+              echo "synthesizer disabled (none)"; exit 0;;
+      claude) : ;;                   # headless `claude -p` (uses Claude limits)
+      *) panel_valid_adapter "$name" && [ -f "$ROOT/adapters/$name.sh" ] || {
+           echo "invalid synthesizer: $name (use 'claude', 'none', or an existing adapter)" >&2; exit 1; };;
+    esac
+    panel_valid_effort "$effort" || {
+      echo "invalid effort: $effort (use low|medium|high|xhigh|max)" >&2; exit 1; }
+
+    # Same add-time resolution as verifiers.sh add — one implementation, in panel.sh.
+    if [ -n "$model" ] && [ "$name" != claude ]; then
+      resolved="$(panel_resolve_model "$name" "$model")"; rc=$?
+      case "$rc" in
+        0) [ "$resolved" = "$model" ] || echo "resolved model \"$model\" -> \"$resolved\""
+           model="$resolved";;
+        1) : ;;
+        *) { echo "unknown or ambiguous model for $name: \"$model\". Available:"
+             panel_models "$name" | sed 's/^/  - /'
+           } >&2
+           exit 1;;
+      esac
     fi
-    mkdir -p "$DATA"; printf '%s\n' "$name" > "$CONF"
-    echo "synthesizer set to: $name"
+    panel_valid_model "$model" || { echo "invalid model name (contains a control character, or is longer than 200 chars)" >&2; exit 1; }
+
+    write_synth "$name" "$model" "$effort" || exit 1
+    echo "synthesizer set to: $name${model:+ (model: $model)}"
     ;;
   off)
-    mkdir -p "$DATA"; printf 'none\n' > "$CONF"
+    write_synth none "" "" || exit 1
     echo "synthesizer disabled (none) — reports will be listed compactly instead"
     ;;
-  *) echo "usage: synthesizer.sh show | set <name> | off" >&2; exit 64 ;;
+  *) echo "usage: synthesizer.sh show | set <name> [--model <n>] [--effort <t>] | off" >&2; exit 64 ;;
 esac

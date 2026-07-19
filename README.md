@@ -23,20 +23,31 @@ each entry) — install the dependency too, the plugin does not do it for you.
   method that CLI supports — browser/OAuth login, config file, or API key; an
   unauthenticated CLI is skipped, not required to use a specific key):
   - `codex` — OpenAI Codex CLI
-  - `gemini` — Google Gemini CLI
+  - `agy` — Google Antigravity CLI · requires a prior interactive (OAuth browser) login;
+    it exposes no on-disk "logged in" marker, so an unauthenticated `agy` passes the probe
+    and fails at run time. No effort knob — the reasoning tier is baked into its model
+    names (`Gemini 3.5 Flash (Medium)`).
   - `grok` — Grok CLI · xAI's frontier model (whatever xAI ships today)
 
-  An entry is `cli[:model][@effort]`: pin a specific model and/or reasoning effort
-  per verifier — e.g. `codex:gpt-5.6-sol@high` or `grok@high`. Omit `:model` for the
-  CLI's own frontier default; omit `@effort` for the dispatch effort. Effort is one of
-  low|medium|high|xhigh|max and is honored by codex and grok (gemini has no effort knob).
-  Entries match **exactly**, so `codex` and `codex:gpt-5.5@high` can coexist.
+  Add a verifier with flags: `/agent-companion:verifiers add codex --model gpt-5.6-sol
+  --effort high`. Both flags are optional — omit `--model` for the CLI's own frontier
+  default, `--effort` for the dispatch effort (one of low|medium|high|xhigh|max, honored by
+  codex and grok). Model names are stored verbatim, so names with spaces and parentheses
+  work. Entries are addressed by their list index, so several entries may share an adapter.
 
   Add a new agent by dropping an adapter in `plugins/agent-companion/adapters/`
   and listing it. See `.claude/skills/creating-plugins`.
 
   When 2+ verifiers run, a **synthesizer** can consolidate their reports into one (so the
-  session isn't flooded): `/agent-companion:synthesizer set <claude|cli[:model][@effort]|none>`.
+  session isn't flooded): `/agent-companion:synthesizer set <claude|adapter|none>`.
+
+  **Upgrading to 0.3.0 — two breaking changes.** (1) The `gemini` adapter was removed and
+  replaced by `agy` (Google Antigravity CLI); a verifier still pinned to `gemini` is skipped
+  with a warning instead of blocking reviews. (2) The panel config moved from
+  `verifiers.conf`/`synthesizer.conf` to a single `panel.json`; the old files are **not read
+  and not migrated**. If they are still present the plugin warns on stderr and runs on the
+  bundled default — rebuild the panel with `/agent-companion:verifiers add …`, then delete
+  them. Reading the config now needs `jq` or `python3` on PATH.
 
   **Durable manager mode.** Plugin hooks persist the on/off state per session, so the
   protocol survives compaction and is re-injected on resume, with a throttled reminder

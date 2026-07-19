@@ -8,7 +8,7 @@
       "name": "agent-companion",
       "source": "./plugins/agent-companion",
       "description": "Claude runs as manager and consults several independent verifier agents in parallel \u2014 each returns its own verdict. Manager mode survives compaction, and the panel is fed the project's own convention skills.",
-      "version": "0.2.1"
+      "version": "0.3.0"
     },
     {
       "name": "auditing-prs",

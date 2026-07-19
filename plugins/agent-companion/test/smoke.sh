@@ -38,32 +38,62 @@ chmod +x "$ROOT"/adapters/*.sh
 
 run() { CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$DATA" bash "$ROOT/verify.sh" "$@"; }
 
+# ---- panel config helpers (panel.json; the old .conf files are gone) ----
+# Entries are POSITIONAL, so a test can predict an entry's label: the Nth argument becomes
+# entry N, whose identity is "<N>-<slug of 'adapter model effort'>" (see panel_label).
+# Argument syntax here is a TEST convenience only: adapter[|model[|effort]] — '|' is not
+# IFS whitespace, so empty middle fields survive.
+panel_lib() { env ROOT="$ROOT" DATA="$DATA" bash -c '. "$ROOT/lib/panel.sh"; '"$1"; }
+panel_write() { env ROOT="$ROOT" DATA="$DATA" bash -c '. "$ROOT/lib/panel.sh"; panel_save'; }
+SYNTH=none; SYNTH_MODEL=""
+set_verifiers() {
+  local spec a m e
+  { for spec in "$@"; do
+      IFS='|' read -r a m e <<<"$spec"
+      printf 'V\t%s\t%s\t%s\n' "$a" "${m:-}" "${e:-}"
+    done
+    printf 'S\t%s\t%s\t\n' "$SYNTH" "$SYNTH_MODEL"
+  } | panel_write
+}
+# set_synth <adapter|claude|none> [model] — rewrites only the S record.
+set_synth() {
+  SYNTH="$1"; SYNTH_MODEL="${2:-}"
+  { panel_lib panel_records | awk -F'\t' '$1=="V"'
+    printf 'S\t%s\t%s\t\n' "$SYNTH" "$SYNTH_MODEL"
+  } | panel_write
+}
+
 # review, all pass -> exit 0
-printf 'mpass\n' > "$DATA/verifiers.conf"
+set_verifiers mpass
 echo "MODE: review" > "$TMP/req.md"
 ( cd "$TMP" && git init -q )   # a repo for git diff
+# Keep the harness's OWN files out of the repo under review. build_diff diffs every
+# untracked file, so without this each prepare would diff the previous runs' diff.patch
+# files — and since every patch then embeds all earlier ones, the suite blows up
+# exponentially (it does not finish). The plugin copy is just noise in the same way.
+printf 'data/\nplugin/\npaneltest/\n' > "$TMP/.gitignore"
 ( cd "$TMP" && run review medium "$TMP/req.md" ); rc=$?
 [ "$rc" = 0 ] && echo "OK pass-only" || { echo "FAIL expected 0 got $rc"; exit 1; }
 
 # review, one changes -> exit 10 (any-blocks)
-printf 'mpass\nmchg\n' > "$DATA/verifiers.conf"
+set_verifiers mpass mchg
 ( cd "$TMP" && run review medium "$TMP/req.md" ); rc=$?
 [ "$rc" = 10 ] && echo "OK any-blocks" || { echo "FAIL expected 10 got $rc"; exit 1; }
 
 # missing verifier skipped, remaining pass -> exit 0, summary lists skip
-printf 'mpass\nmgone\n' > "$DATA/verifiers.conf"
+set_verifiers mpass mgone
 out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
 [ "$rc" = 0 ] && echo "$out" | grep -qi 'skip' && echo "OK skip-listed" || { echo "FAIL skip handling: $rc"; exit 1; }
 
 # adapter run fails (rc!=0) -> classified FAIL -> review blocks (exit 10)
-printf 'mpass\nmfail\n' > "$DATA/verifiers.conf"
+set_verifiers mpass mfail
 out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
-[ "$rc" = 10 ] && echo "$out" | grep -q '\[mfail\] FAIL' && echo "OK run-fail blocks" || { echo "FAIL run-fail handling: $rc"; exit 1; }
+[ "$rc" = 10 ] && echo "$out" | grep -q '\[2-mfail\] FAIL' && echo "OK run-fail blocks" || { echo "FAIL run-fail handling: $rc"; exit 1; }
 
 # probe returns unknown code (not 0/64) -> fail-closed FAIL -> review blocks
-printf 'mpass\nmprobe\n' > "$DATA/verifiers.conf"
+set_verifiers mpass mprobe
 out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
-[ "$rc" = 10 ] && echo "$out" | grep -q '\[mprobe\] FAIL' && echo "OK probe-unknown blocks" || { echo "FAIL probe-unknown handling: $rc"; exit 1; }
+[ "$rc" = 10 ] && echo "$out" | grep -q '\[2-mprobe\] FAIL' && echo "OK probe-unknown blocks" || { echo "FAIL probe-unknown handling: $rc"; exit 1; }
 
 # --- synthesizer ---
 cat > "$ROOT/adapters/msynth.sh" <<'A'
@@ -74,25 +104,25 @@ A
 chmod +x "$ROOT/adapters/msynth.sh"
 
 # 2 reports + synthesizer -> consolidated output; gate still deterministic (mchg => exit 10)
-printf 'mpass\nmchg\n' > "$DATA/verifiers.conf"
-printf 'msynth\n' > "$DATA/synthesizer.conf"
+set_verifiers mpass mchg
+set_synth msynth
 out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
 echo "$out" | grep -q 'consolidated report (by msynth' && echo "$out" | grep -q 'CONSOLIDATED_OK' && [ "$rc" = 10 ] \
   && echo "OK synth-2reports" || { echo "FAIL synth-2reports rc=$rc"; echo "$out"; exit 1; }
 
 # 1 report + synthesizer set -> NO synthesis (single report returned as-is)
-printf 'mpass\n' > "$DATA/verifiers.conf"
+set_verifiers mpass
 out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
 ! echo "$out" | grep -q 'consolidated report' && [ "$rc" = 0 ] \
   && echo "OK synth-skip-1report" || { echo "FAIL synth-1report rc=$rc"; echo "$out"; exit 1; }
 
 # synthesizer=none + 2 reports -> compact listing, no consolidation
-printf 'mpass\nmchg\n' > "$DATA/verifiers.conf"
-printf 'none\n' > "$DATA/synthesizer.conf"
+set_verifiers mpass mchg
+set_synth none
 out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
 ! echo "$out" | grep -q 'consolidated report' && [ "$rc" = 10 ] \
   && echo "OK synth-none" || { echo "FAIL synth-none rc=$rc"; echo "$out"; exit 1; }
-rm -f "$DATA/synthesizer.conf"
+set_synth none
 
 # --- markdown-wrapped verdict (e.g. Grok Build emits **STATUS:**/**REQUEST_ID:**) ---
 # classify_verdict must tolerate emphasis decoration, else a valid PASS reads as FAIL.
@@ -102,7 +132,7 @@ cat > "$ROOT/adapters/mmd.sh" <<'A'
 printf '**STATUS: PASS**\n**REQUEST_ID: %s**\n' "$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')" > "$4"
 A
 chmod +x "$ROOT/adapters/mmd.sh"
-printf 'mmd\n' > "$DATA/verifiers.conf"
+set_verifiers mmd
 ( cd "$TMP" && run review medium "$TMP/req.md" ); rc=$?
 [ "$rc" = 0 ] && echo "OK markdown-wrapped-pass" || { echo "FAIL markdown-wrapped expected 0 got $rc"; exit 1; }
 
@@ -113,19 +143,19 @@ cat > "$ROOT/adapters/mmd2.sh" <<'A'
 printf '**STATUS**: PASS\n**REQUEST_ID**: %s\n' "$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')" > "$4"
 A
 chmod +x "$ROOT/adapters/mmd2.sh"
-printf 'mmd2\n' > "$DATA/verifiers.conf"
+set_verifiers mmd2
 ( cd "$TMP" && run review medium "$TMP/req.md" ); rc=$?
 [ "$rc" = 0 ] && echo "OK markdown-key-only-pass" || { echo "FAIL markdown-key-only expected 0 got $rc"; exit 1; }
 
 # --- synthesizer excludes FAIL verdicts (M3) ---
 # 2 valid reports (mpass + mchg) get consolidated; mfail is excluded yet surfaced.
-printf 'mpass\nmchg\nmfail\n' > "$DATA/verifiers.conf"
-printf 'msynth\n' > "$DATA/synthesizer.conf"
+set_verifiers mpass mchg mfail
+set_synth msynth
 out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
 echo "$out" | grep -q 'consolidated report (by msynth · 2 agents' \
   && echo "$out" | grep -q 'FAIL — excluded from consolidation' && [ "$rc" = 10 ] \
   && echo "OK synth-excludes-fail" || { echo "FAIL synth-excludes-fail rc=$rc"; echo "$out"; exit 1; }
-rm -f "$DATA/synthesizer.conf"
+set_synth none
 
 # --- echoed-prompt hijack: a valid verdict that ALSO echoes the prompt (carrying a
 # bare nonce with no STATUS above it) must still classify from the real STATUS anchor ---
@@ -138,7 +168,7 @@ n="$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')"
   printf 'REQUEST_ID: %s\n' "$n"; } > "$4"
 A
 chmod +x "$ROOT/adapters/mhijack.sh"
-printf 'mhijack\n' > "$DATA/verifiers.conf"
+set_verifiers mhijack
 ( cd "$TMP" && run review medium "$TMP/req.md" ); rc=$?
 [ "$rc" = 0 ] && echo "OK echoed-prompt-not-hijacked" || { echo "FAIL echoed-prompt expected 0 got $rc"; exit 1; }
 
@@ -147,12 +177,12 @@ printf 'mhijack\n' > "$DATA/verifiers.conf"
 [ "$rc" = 64 ] && echo "OK bad-args-64" || { echo "FAIL bad-args expected 64 got $rc"; exit 1; }
 
 # --- missing request file -> exit 64 ---
-printf 'mpass\n' > "$DATA/verifiers.conf"
+set_verifiers mpass
 ( cd "$TMP" && run review medium "$TMP/does-not-exist.md" ) >/dev/null 2>&1; rc=$?
 [ "$rc" = 64 ] && echo "OK missing-reqfile-64" || { echo "FAIL missing-reqfile expected 64 got $rc"; exit 1; }
 
 # --- unknown mode (typo) -> exit 64, NOT a silent non-gating exit 0 ---
-printf 'mpass\n' > "$DATA/verifiers.conf"
+set_verifiers mpass
 ( cd "$TMP" && run reveiw medium "$TMP/req.md" ) >/dev/null 2>&1; rc=$?
 [ "$rc" = 64 ] && echo "OK unknown-mode-64" || { echo "FAIL unknown-mode expected 64 got $rc"; exit 1; }
 
@@ -171,17 +201,17 @@ printf 'mpass\n' > "$DATA/verifiers.conf"
 echo "OK classify-matrix"
 
 # ---- prepare: contract + manifest + markers ----
-printf 'mpass\nmgone\n' > "$DATA/verifiers.conf"
+set_verifiers mpass mgone
 out="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"; rc=$?
 RUNP="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
 [ "$rc" = 0 ] \
-  && printf '%s\n' "$out" | grep -q "^RUNNABLE	mpass$" \
-  && printf '%s\n' "$out" | grep -q "^SPAWN	mpass	bash " \
-  && printf '%s\n' "$out" | grep -q "^SKIP	mgone	unavailable$" \
+  && printf '%s\n' "$out" | grep -q "^RUNNABLE	1-mpass$" \
+  && printf '%s\n' "$out" | grep -q "^SPAWN	1-mpass	bash " \
+  && printf '%s\n' "$out" | grep -q "^SKIP	2-mgone	unavailable$" \
   && [ -f "$RUNP/manifest" ] && [ -f "$RUNP/.inflight" ] && [ -f "$RUNP/prompt.txt" ] \
   && grep -q "^mode	review$" "$RUNP/manifest" \
-  && grep -q "^runnable	mpass$" "$RUNP/manifest" \
-  && grep -q "^skip	mgone	unavailable$" "$RUNP/manifest" \
+  && grep -q "^runnable	1-mpass	mpass		$" "$RUNP/manifest" \
+  && grep -q "^skip	2-mgone	unavailable$" "$RUNP/manifest" \
   && echo "OK prepare-contract" || { echo "FAIL prepare-contract rc=$rc"; echo "$out"; exit 1; }
 
 # prepare for audit must NOT produce a diff key (scope-centric)
@@ -197,26 +227,26 @@ H="$DATA/handoff/fakekey"; mkdir -p "$H/run-old-complete" "$H/run-old-orphan" "$
 : > "$H/run-old-inflight/.inflight"
 printf 'mode\treview\neffort\thigh\nreqid\tX\nrepo\t/r\nroot\t/p\n' > "$H/run-old-inflight/manifest"
 touch -t 200001010000 "$H"/run-old-* 2>/dev/null     # force "old" (> 1 day)
-printf 'mpass\n' > "$DATA/verifiers.conf"
+set_verifiers mpass
 ( cd "$TMP" && run prepare review high "$TMP/req.md" ) >/dev/null 2>&1   # prepare runs cleanup_old
 [ ! -d "$H/run-old-complete" ] && [ ! -d "$H/run-old-orphan" ] && [ -d "$H/run-old-inflight" ] \
   && echo "OK prepare-cleanup" || { echo "FAIL prepare-cleanup (complete=$([ -d "$H/run-old-complete" ]&&echo y) orphan=$([ -d "$H/run-old-orphan" ]&&echo y) inflight=$([ -d "$H/run-old-inflight" ]&&echo y))"; exit 1; }
 
 # ---- run-one: writes rc+verdict on a prepared dir ----
-printf 'mpass\n' > "$DATA/verifiers.conf"
+set_verifiers mpass
 out="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"
 RUNO="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
-( cd "$TMP" && run run-one "$RUNO" mpass ); rc=$?
-[ "$rc" = 0 ] && [ "$(cat "$RUNO/mpass/rc")" = 0 ] \
-  && [ -f "$RUNO/mpass/verdict" ] && [ -f "$RUNO/mpass/finished" ] \
+( cd "$TMP" && run run-one "$RUNO" 1-mpass ); rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RUNO/1-mpass/rc")" = 0 ] \
+  && [ -f "$RUNO/1-mpass/verdict" ] && [ -f "$RUNO/1-mpass/finished" ] \
   && echo "OK run-one-writes" || { echo "FAIL run-one-writes rc=$rc"; exit 1; }
 
 # adapter failure (rc!=0) is recorded in rc, run-one itself still exits 0
-printf 'mfail\n' > "$DATA/verifiers.conf"
+set_verifiers mfail
 out="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"
 RUNF="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
-( cd "$TMP" && run run-one "$RUNF" mfail ); rc=$?
-[ "$rc" = 0 ] && [ "$(cat "$RUNF/mfail/rc")" = 3 ] \
+( cd "$TMP" && run run-one "$RUNF" 1-mfail ); rc=$?
+[ "$rc" = 0 ] && [ "$(cat "$RUNF/1-mfail/rc")" = 3 ] \
   && echo "OK run-one-records-rc" || { echo "FAIL run-one-records-rc rc=$rc"; exit 1; }
 
 # verifier not in runnable -> exit 64
@@ -224,33 +254,33 @@ RUNF="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
 [ "$rc" = 64 ] && echo "OK run-one-bad-verifier" || { echo "FAIL run-one-bad-verifier rc=$rc"; exit 1; }
 
 # ---- collect: happy path (status + table + exit) ----
-printf 'mpass\nmchg\n' > "$DATA/verifiers.conf"
+set_verifiers mpass mchg
 O="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"
 RUNC="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
 printf '%s\n' "$O" | awk -F'\t' '$1=="RUNNABLE"{print $2}' | while IFS= read -r vv; do ( cd "$TMP" && run run-one "$RUNC" "$vv" ) >/dev/null 2>&1; done
 out="$( cd "$TMP" && run collect "$RUNC" 2>/dev/null )"; rc=$?
 [ "$rc" = 10 ] \
-  && echo "$out" | grep -q '\[mpass\] PASS' \
-  && echo "$out" | grep -q '\[mchg\] CHANGES' \
+  && echo "$out" | grep -q '\[1-mpass\] PASS' \
+  && echo "$out" | grep -q '\[2-mchg\] CHANGES' \
   && echo "$out" | grep -q '=== verdicts ===' \
-  && echo "$out" | grep -q "mpass	PASS	$RUNC/mpass/verdict" \
+  && echo "$out" | grep -q "1-mpass	PASS	$RUNC/1-mpass/verdict" \
   && [ -f "$RUNC/complete" ] && [ ! -f "$RUNC/.inflight" ] \
   && echo "OK collect-happy" || { echo "FAIL collect-happy rc=$rc"; echo "$out"; exit 1; }
 
 # ---- collect: incomplete (runnable without rc) -> 64, MISSING, markers untouched ----
-printf 'mpass\n' > "$DATA/verifiers.conf"
+set_verifiers mpass
 O="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"
 RUNI="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
 # deliberately do NOT run run-one
 out="$( cd "$TMP" && run collect "$RUNI" 2>/dev/null )"; rc=$?
 err="$( cd "$TMP" && run collect "$RUNI" 2>&1 >/dev/null )"
-[ "$rc" = 64 ] && echo "$out" | grep -q "^MISSING	mpass$" \
+[ "$rc" = 64 ] && echo "$out" | grep -q "^MISSING	1-mpass$" \
   && echo "$err" | grep -q 'INCOMPLETE' \
   && [ -f "$RUNI/.inflight" ] && [ ! -f "$RUNI/complete" ] \
   && echo "OK collect-incomplete" || { echo "FAIL collect-incomplete rc=$rc"; echo "$out"; exit 1; }
 
 # ---- collect: terminal NO_VERIFIER (all skip) -> 64, markers finalized ----
-printf 'mgone\n' > "$DATA/verifiers.conf"
+set_verifiers mgone
 O="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>/dev/null )"
 RUNN="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
 err="$( cd "$TMP" && run collect "$RUNN" 2>&1 >/dev/null )"; rc=$?
@@ -258,26 +288,221 @@ err="$( cd "$TMP" && run collect "$RUNN" 2>&1 >/dev/null )"; rc=$?
   && [ -f "$RUNN/complete" ] && [ ! -f "$RUNN/.inflight" ] \
   && echo "OK collect-no-verifier" || { echo "FAIL collect-no-verifier rc=$rc"; echo "$err"; exit 1; }
 
-# ---- spec.sh parser unit matrix (cli[:model][@effort]) ----
-( . "$ROOT/lib/spec.sh"
-  t() { # <spec> <adapter> <model> <effort>
-    [ "$(spec_adapter "$1")" = "$2" ] && [ "$(spec_model "$1")" = "$3" ] && [ "$(spec_effort "$1")" = "$4" ] \
-      || { echo "FAIL spec-parse [$1]: a=$(spec_adapter "$1") m=$(spec_model "$1") e=$(spec_effort "$1")"; exit 1; }; }
-  t codex                  codex ''          ''
-  t codex@high             codex ''          high
-  t codex:gpt-5.6-sol      codex gpt-5.6-sol ''
-  t codex:gpt-5.6-sol@high codex gpt-5.6-sol high
-  t codex:                 codex ''          ''
-  t codex@                 codex ''          ''
-  t codex:@high            codex ''          high
-  t codex:m@               codex m           ''
-  ok() { spec_valid "$1" || { echo "FAIL spec_valid rejected valid [$1]"; exit 1; }; }
-  no() { spec_valid "$1" && { echo "FAIL spec_valid accepted invalid [$1]"; exit 1; }; return 0; }
-  for s in codex codex@high codex:m codex:m@high codex:@high codex:m@; do ok "$s"; done
-  for s in ':x' '@high' 'codex/x' 'codex:a b' 'codex:m@bogus' 'codex:m@a@b' '' 'co dex' '-n' '-x:y@high'; do no "$s"; done
-  no "codex:$(printf 'x%.0s' $(seq 200))"   # over the 128-char component cap
+# ---- lib/panel.sh unit matrix (JSON round-trip, identity, validation) ----
+( ROOT="$ROOT"; DATA="$TMP/paneltest"; mkdir -p "$DATA"; . "$ROOT/lib/panel.sh"
+
+  # a model name with spaces AND parentheses — the whole point of the JSON format — must
+  # survive config -> records -> config byte-for-byte.
+  printf 'V\tagy\tGemini 3.5 Flash (Medium)\t\nV\tcodex\t\thigh\nS\tclaude\t\t\n' | panel_save \
+    || { echo "FAIL panel-save"; exit 1; }
+  got="$(panel_verifiers | sed -n '1p' | cut -f3)"
+  [ "$got" = "Gemini 3.5 Flash (Medium)" ] \
+    || { echo "FAIL panel verbatim model: got [$got]"; exit 1; }
+
+  # an empty model must NOT shift the effort field (TAB is IFS whitespace — the reason
+  # every record read here goes through panel_us).
+  [ "$(panel_verifiers | sed -n '2p' | cut -f3)" = "" ] && [ "$(panel_verifiers | sed -n '2p' | cut -f4)" = high ] \
+    || { echo "FAIL panel empty-model shifted the record"; exit 1; }
+
+  # identity: generated <index>-<slug>, never the raw model text
+  [ "$(panel_verifiers | sed -n '1p' | cut -f5)" = "1-agy-gemini-3-5-flash-medium" ] \
+    || { echo "FAIL panel label: $(panel_verifiers | sed -n '1p' | cut -f5)"; exit 1; }
+
+  # two IDENTICAL entries still get distinct identities (the index guarantees it)
+  printf 'V\tcodex\tm\t\nV\tcodex\tm\t\nS\tnone\t\t\n' | panel_save
+  [ "$(panel_verifiers | cut -f5 | sort -u | wc -l | tr -d ' ')" = 2 ] \
+    || { echo "FAIL panel label uniqueness"; exit 1; }
+
+  # synthesizer round-trip
+  printf 'V\tcodex\t\t\nS\tmsynth\tsome model\t\n' | panel_save
+  [ "$(panel_synth | cut -f1)" = msynth ] && [ "$(panel_synth | cut -f2)" = "some model" ] \
+    || { echo "FAIL panel synth round-trip"; exit 1; }
+
+  # validation: value rules (adapter charset, effort tier, TAB/newline in a model)
+  panel_valid_adapter codex   || { echo "FAIL adapter rejected"; exit 1; }
+  for bad in '' 'co dex' 'codex/x' '-n'; do
+    panel_valid_adapter "$bad" && { echo "FAIL adapter accepted [$bad]"; exit 1; }; done
+  for good in '' low medium high xhigh max; do
+    panel_valid_effort "$good" || { echo "FAIL effort rejected [$good]"; exit 1; }; done
+  panel_valid_effort bogus && { echo "FAIL effort accepted [bogus]"; exit 1; }
+  panel_valid_model 'Gemini 3.5 Flash (Medium)' || { echo "FAIL model rejected"; exit 1; }
+  panel_valid_model "$(printf 'a\tb')" && { echo "FAIL model accepted a TAB"; exit 1; }
+  panel_valid_model "$(printf 'a\nb')" && { echo "FAIL model accepted a newline"; exit 1; }
+  panel_valid_model "$(printf 'x%.0s' $(seq 300))" && { echo "FAIL model accepted 300 chars"; exit 1; }
+
+  # Invalid documents are rejected, not half-read. The falsey wrong-type cases below are the
+  # ENGINE-PARITY set: `d.get("verifiers") or []` in python3 used to coerce every one of them
+  # to an empty list and accept the document, while jq rejected it — a fail-open gap that let
+  # a malformed panel look like "no verifiers configured". This block runs under whichever
+  # engine is active, and the suite is run once per engine, so it pins both.
+  for bad in '[]' '{"verifiers":{"a":1}}' '{"verifiers":[1,2]}' 'not json at all' \
+             '{"verifiers":false,"synthesizer":{"adapter":"claude"}}' \
+             '{"verifiers":0,"synthesizer":{"adapter":"claude"}}' \
+             '{"verifiers":"","synthesizer":{"adapter":"claude"}}' \
+             '{"verifiers":{},"synthesizer":{"adapter":"claude"}}' \
+             '{"verifiers":[],"synthesizer":false}' \
+             '{"verifiers":[],"synthesizer":[]}' \
+             '{"verifiers":[],"synthesizer":0}'; do
+    printf '%s' "$bad" > "$DATA/panel.json"
+    panel_verifiers >/dev/null 2>&1 && { echo "FAIL panel accepted invalid doc: $bad"; exit 1; }
+  done
+  # NO FALSE POSITIVES: the hardening must not start rejecting legitimate model names. The
+  # shell-metacharacter cases double as proof that nothing on this path is expanded or eval'd.
+  for probe_model in 'He said "hi"' 'a\b\c' 'Модель «Кирилиця» — тире' 'Gemini 3.5 🚀 Flash' \
+                     '--model-looking-value' 'Gemini 3.5 Flash (Medium)' '$HOME `whoami` $(id)' \
+                     'a; rm -rf /; b'; do
+    python3 -c 'import json,sys; json.dump({"version":1,
+      "verifiers":[{"adapter":"codex","model":sys.argv[2],"effort":""}],
+      "synthesizer":{"adapter":"none","model":"","effort":""}}, open(sys.argv[1],"w"))' \
+      "$DATA/panel.json" "$probe_model"
+    got="$(panel_verifiers 2>/dev/null | cut -f3)"
+    [ "$got" = "$probe_model" ] \
+      || { echo "FAIL legitimate model rejected/mangled: [$probe_model] -> [$got]"; exit 1; }
+  done
+
+  # an entry failing VALUE validation is surfaced (empty adapter), not silently dropped
+  printf '{"verifiers":[{"adapter":"co dex"}],"synthesizer":{"adapter":"none"}}' > "$DATA/panel.json"
+  [ "$(panel_verifiers | cut -f2)" = "" ] && [ "$(panel_verifiers | grep -c .)" = 1 ] \
+    || { echo "FAIL panel invalid entry not surfaced"; exit 1; }
+
+  # RECORD-PROTOCOL INTEGRITY (found by the verifier panel, 2026-07-19).
+  # A newline inside a JSON value used to SPLIT into extra records, letting a hand-edited
+  # model forge an S record and hijack the synthesizer. Must be rejected at the engine.
+  python3 -c 'import json,sys; json.dump({"version":1,
+    "verifiers":[{"adapter":"codex","model":"x\nS\tgrok\thijacked\t","effort":""}],
+    "synthesizer":{"adapter":"claude","model":"","effort":""}}, open(sys.argv[1],"w"))' "$DATA/panel.json"
+  panel_verifiers >/dev/null 2>&1 && { echo "FAIL newline injection accepted"; exit 1; }
+  [ "$(panel_synth | cut -f1)" = "grok" ] && { echo "FAIL synthesizer hijacked by injection"; exit 1; }
+  # a TAB inside a value would shift fields the same way
+  python3 -c 'import json,sys; json.dump({"version":1,
+    "verifiers":[{"adapter":"codex","model":"a\tb"}],"synthesizer":{"adapter":"none"}},
+    open(sys.argv[1],"w"))' "$DATA/panel.json"
+  panel_verifiers >/dev/null 2>&1 && { echo "FAIL TAB in value accepted"; exit 1; }
+  # The payload above is caught by the RECORD-SHAPE check alone (its first line has 3 fields),
+  # so it does NOT exercise the per-field TAB/newline rule. This one does: it carries BOTH a
+  # TAB and a newline, arranged so every produced line still has exactly 4 fields and there is
+  # still exactly one S record — it sails through _panel_records_sane and, without the
+  # engine-level fld()/f() check, injects a SECOND VERIFIER the user never configured.
+  # (Verified by mutation: disabling fld() makes this yield entry 2 = grok/INJECTED.)
+  python3 -c 'import json,sys; json.dump({"version":1,
+    "verifiers":[{"adapter":"codex","model":"a\tb\nV\tgrok\tINJECTED","effort":""}],
+    "synthesizer":{"adapter":"claude","model":"","effort":""}}, open(sys.argv[1],"w"))' "$DATA/panel.json"
+  panel_verifiers >/dev/null 2>&1 && { echo "FAIL shape-passing record injection accepted"; exit 1; }
+  [ "$(panel_verifiers 2>/dev/null | grep -c .)" = 0 ] \
+    || { echo "FAIL injected verifier reached the panel"; exit 1; }
+  # U+001F forges FIELDS rather than records: it is the separator panel_us feeds to `read`
+  # as IFS, so an adapter value "grok<US>INJECTED" would split into adapter=grok,
+  # model=INJECTED. The engine bans the whole C0 range, so this must be rejected outright.
+  python3 -c 'import json,sys; json.dump({"version":1,"verifiers":[],
+    "synthesizer":{"adapter":"grok"+chr(31)+"INJECTED","model":"","effort":""}}, open(sys.argv[1],"w"))' \
+    "$DATA/panel.json"
+  [ "$(panel_synth 2>/dev/null | cut -f1)" = "grok" ] \
+    && { echo "FAIL unit-separator field injection accepted"; exit 1; }
+  python3 -c 'import json,sys; json.dump({"version":1,
+    "verifiers":[{"adapter":"codex","model":"a"+chr(7)+"b"}],"synthesizer":{"adapter":"none"}},
+    open(sys.argv[1],"w"))' "$DATA/panel.json"
+  panel_verifiers >/dev/null 2>&1 && { echo "FAIL control character in a model accepted"; exit 1; }
+
+  # ENGINE PARITY: jq accepts concatenated top-level documents, python3 does not; both must
+  # reject here (it shows up as more than one S record).
+  printf '{"verifiers":[],"synthesizer":{"adapter":"claude"}}{"verifiers":[],"synthesizer":{"adapter":"grok"}}' > "$DATA/panel.json"
+  panel_verifiers >/dev/null 2>&1 && { echo "FAIL concatenated documents accepted"; exit 1; }
+  # a non-string field: jq's `//` would coerce false to "", python3 errors — force agreement
+  printf '{"verifiers":[{"adapter":"codex","model":false}],"synthesizer":{"adapter":"none"}}' > "$DATA/panel.json"
+  panel_verifiers >/dev/null 2>&1 && { echo "FAIL non-string field accepted"; exit 1; }
+
+  # TRAILING GARBAGE after a valid document. Apple's jq emits the first document's records,
+  # writes a parse error to stderr, and exits 0 — so neither the exit code nor the record
+  # shape catches it, while python3 rejects it. Caught by treating non-empty engine stderr as
+  # a parse failure. (Found in review round 4 by codex:gpt-5.5.)
+  printf '%s' '{"verifiers":[],"synthesizer":{"adapter":"claude"}} trailing' > "$DATA/panel.json"
+  panel_verifiers >/dev/null 2>&1 && { echo "FAIL trailing garbage accepted"; exit 1; }
+  # ...but the stderr rule is jq-ONLY. python3 writes warnings to stderr on a HEALTHY run when
+  # PYTHONWARNINGS/PYTHONDEVMODE are set, so applying it there would reject VALID panels.
+  printf '%s' '{"verifiers":[{"adapter":"codex","model":"m","effort":"high"}],"synthesizer":{"adapter":"claude"}}' \
+    > "$DATA/panel.json"
+  for warnenv in PYTHONWARNINGS=always PYTHONDEVMODE=1; do
+    env "$warnenv" ROOT="$ROOT" DATA="$DATA" \
+      bash -c '. "$ROOT/lib/panel.sh"; panel_verifiers >/dev/null 2>&1' \
+      || { echo "FAIL valid panel rejected under $warnenv"; exit 1; }
+  done
+  # The jq side has the same trap: a malformed JQ_COLORS makes jq print "Failed to set
+  # $JQ_COLORS" and exit 0. Treating any stderr as corruption would reject a valid panel, so
+  # only PARSE-ERROR text counts (and JQ_COLORS is unset for the call).
+  env JQ_COLORS=bogus ROOT="$ROOT" DATA="$DATA" \
+    bash -c '. "$ROOT/lib/panel.sh"; panel_verifiers >/dev/null 2>&1' \
+    || { echo "FAIL valid panel rejected under JQ_COLORS=bogus"; exit 1; }
+
+  # A user panel.json that EXISTS but is unusable must fail closed, not silently fall back to
+  # the bundled empty default (which would run the panel with no verifiers at all).
+  rm -f "$DATA/panel.json"; mkdir -p "$DATA/panel.json"
+  panel_verifiers >/dev/null 2>&1 && { echo "FAIL directory panel.json fell back silently"; exit 1; }
+  rmdir "$DATA/panel.json"
+  ln -sf /nonexistent/nope "$DATA/panel.json"
+  panel_verifiers >/dev/null 2>&1 && { echo "FAIL dangling symlink panel.json fell back silently"; exit 1; }
+  panel_synth >/dev/null 2>&1 && { echo "FAIL dangling symlink read as unset synthesizer"; exit 1; }
+  rm -f "$DATA/panel.json"
+
+  # panel_save must NEVER turn a failed read into data loss
+  printf '{"verifiers":[{"adapter":"codex","model":"","effort":"high"}],"synthesizer":{"adapter":"claude"}}' > "$DATA/panel.json"
+  before="$(cat "$DATA/panel.json")"
+  printf '' | panel_save 2>/dev/null && { echo "FAIL panel_save accepted an empty stream"; exit 1; }
+  printf 'V\tcodex\t\thigh\n' | panel_save 2>/dev/null && { echo "FAIL panel_save accepted a stream with no S record"; exit 1; }
+  printf 'garbage\n' | panel_save 2>/dev/null && { echo "FAIL panel_save accepted junk"; exit 1; }
+  [ "$(cat "$DATA/panel.json")" = "$before" ] \
+    || { echo "FAIL panel_save clobbered the config on a rejected write"; exit 1; }
+  true
 ) || exit 1
-echo "OK spec-parser-matrix"
+echo "OK panel-unit-matrix"
+
+# a panel that cannot be READ must abort the run loudly — NOT degrade to NO_VERIFIER, which
+# the manager protocol treats as benign and proceeds without verification.
+printf 'this is not json' > "$DATA/panel.json"
+err="$( cd "$TMP" && run prepare review high "$TMP/req.md" 2>&1 >/dev/null )"; rc=$?
+[ "$rc" = 64 ] && echo "$err" | grep -q 'refusing to run unverified' \
+  && echo "OK unreadable-panel-fails-loudly" || { echo "FAIL unreadable-panel rc=$rc"; echo "$err"; exit 1; }
+
+# ...and `synthesizer show` must not describe an unreadable panel as "unset" (that would read
+# as "you never chose one" when the truth is "your config is broken").
+out="$(CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$DATA" bash "$ROOT/synthesizer.sh" show 2>&1)"; rc=$?
+[ "$rc" != 0 ] && echo "$out" | grep -q 'UNKNOWN' && ! echo "$out" | grep -q 'synthesizer: unset' \
+  && echo "OK synth-show-unreadable-panel" || { echo "FAIL synth-show unreadable rc=$rc"; echo "$out"; exit 1; }
+
+# `verifiers list` must not report a broken panel as an empty one, and must exit non-zero.
+out="$(CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$DATA" bash "$ROOT/verifiers.sh" list 2>&1)"; rc=$?
+[ "$rc" != 0 ] && echo "$out" | grep -q 'UNKNOWN' && ! echo "$out" | grep -q '(none active)' \
+  && echo "OK list-unreadable-panel" || { echo "FAIL list unreadable rc=$rc"; echo "$out"; exit 1; }
+
+# `verifiers remove` must blame the config, not the user's index ("panel has 0").
+out="$(CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$DATA" bash "$ROOT/verifiers.sh" remove 1 2>&1)"; rc=$?
+[ "$rc" != 0 ] && echo "$out" | grep -q 'cannot read the current panel' && ! echo "$out" | grep -q 'panel has 0' \
+  && echo "OK remove-unreadable-panel" || { echo "FAIL remove unreadable rc=$rc"; echo "$out"; exit 1; }
+
+# A NON-REGULAR user panel must fail closed on the WRITE path too. Before this was fixed,
+# `add` printed "added codex" against a directory and actually CLOBBERED a dangling symlink
+# by writing a fresh panel over it.
+mkdir -p "$DATA/nonreg"; NR="$DATA/nonreg"
+mkdir -p "$NR/panel.json"
+CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$NR" bash "$ROOT/verifiers.sh" add mpass >/dev/null 2>&1 \
+  && { echo "FAIL add succeeded against a directory panel.json"; exit 1; }
+[ -d "$NR/panel.json" ] || { echo "FAIL directory panel.json was replaced"; exit 1; }
+rmdir "$NR/panel.json"
+ln -sf /nonexistent/nope "$NR/panel.json"
+CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$NR" bash "$ROOT/verifiers.sh" add mpass >/dev/null 2>&1 \
+  && { echo "FAIL add succeeded against a dangling symlink"; exit 1; }
+CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$NR" bash "$ROOT/synthesizer.sh" set claude >/dev/null 2>&1 \
+  && { echo "FAIL synthesizer set succeeded against a dangling symlink"; exit 1; }
+{ [ -L "$NR/panel.json" ] && [ ! -e "$NR/panel.json" ]; } \
+  || { echo "FAIL dangling symlink panel.json was clobbered"; exit 1; }
+rm -f "$NR/panel.json"; rmdir "$NR" 2>/dev/null
+echo "OK nonregular-panel-write-fails-closed"
+
+# ...and an edit against an unreadable panel must refuse, leaving the file untouched.
+before="$(cat "$DATA/panel.json")"
+out="$(CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$DATA" bash "$ROOT/verifiers.sh" add mpass 2>&1)"; rc=$?
+[ "$rc" != 0 ] && echo "$out" | grep -q 'refusing to edit' && [ "$(cat "$DATA/panel.json")" = "$before" ] \
+  && echo "OK unreadable-panel-edit-refused" || { echo "FAIL unreadable-panel edit rc=$rc"; echo "$out"; exit 1; }
+rm -f "$DATA/panel.json"
 
 # mecho: echoes the effort ($3) and model ($5) it was invoked with into its verdict.
 # NOTE arg positions — adapters are NOT shifted: $1=run $2=prompt $3=effort $4=out $5=model.
@@ -289,45 +514,143 @@ printf 'STATUS: PASS\nREQUEST_ID: %s\nEFFORT=%s MODEL=%s\n' "$n" "$3" "${5:-}" >
 A
 chmod +x "$ROOT/adapters/mecho.sh"
 
-# spec routing: cli:model@effort must reach the adapter as model + (overriding) effort.
-# Dispatch effort is medium; the @high entry must win.
-printf 'mecho:some-model@high\n' > "$DATA/verifiers.conf"
+# routing: a model with SPACES AND PARENTHESES reaches the adapter verbatim, and a
+# per-entry effort overrides the dispatch effort (medium). The run dir is the generated
+# label — the model text never becomes a path component.
+set_verifiers 'mecho|Gemini 3.5 Flash (Medium)|high'
 O="$( cd "$TMP" && run prepare review medium "$TMP/req.md" 2>/dev/null )"
 RUNX="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
-printf '%s\n' "$O" | grep -q "^RUNNABLE	mecho:some-model@high$" || { echo "FAIL spec-routing: RUNNABLE line"; echo "$O"; exit 1; }
-( cd "$TMP" && run run-one "$RUNX" "mecho:some-model@high" ) >/dev/null 2>&1
-VX="$RUNX/mecho:some-model@high/verdict"
-grep -q 'MODEL=some-model' "$VX" && grep -q 'EFFORT=high' "$VX" \
-  && echo "OK spec-model-effort-routing" || { echo "FAIL spec-routing verdict"; cat "$VX" 2>/dev/null; exit 1; }
+LX="1-mecho-gemini-3-5-flash-medium-high"
+printf '%s\n' "$O" | grep -q "^RUNNABLE	$LX$" || { echo "FAIL routing: RUNNABLE line"; echo "$O"; exit 1; }
+grep -q "^runnable	$LX	mecho	Gemini 3.5 Flash (Medium)	high$" "$RUNX/manifest" \
+  || { echo "FAIL routing: manifest record"; grep '^runnable' "$RUNX/manifest"; exit 1; }
+( cd "$TMP" && run run-one "$RUNX" "$LX" ) >/dev/null 2>&1
+VX="$RUNX/$LX/verdict"
+grep -q 'MODEL=Gemini 3.5 Flash (Medium)' "$VX" && grep -q 'EFFORT=high' "$VX" \
+  && echo "OK verbatim-model-effort-routing" || { echo "FAIL routing verdict"; cat "$VX" 2>/dev/null; exit 1; }
 
-# effort fallback: a bare entry uses the dispatch effort and passes NO model.
-printf 'mecho\n' > "$DATA/verifiers.conf"
+# effort fallback: an entry with no model/effort uses the dispatch effort and passes NO model.
+set_verifiers mecho
 O="$( cd "$TMP" && run prepare review medium "$TMP/req.md" 2>/dev/null )"
 RUNY="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
-( cd "$TMP" && run run-one "$RUNY" mecho ) >/dev/null 2>&1
-VY="$RUNY/mecho/verdict"
+( cd "$TMP" && run run-one "$RUNY" 1-mecho ) >/dev/null 2>&1
+VY="$RUNY/1-mecho/verdict"
 grep -q 'EFFORT=medium' "$VY" && grep -q 'MODEL=$' "$VY" \
-  && echo "OK spec-effort-fallback" || { echo "FAIL spec-effort-fallback"; cat "$VY" 2>/dev/null; exit 1; }
+  && echo "OK effort-fallback" || { echo "FAIL effort-fallback"; cat "$VY" 2>/dev/null; exit 1; }
 
-# malformed entry -> FAIL partition (bad-spec), never run blindly.
-printf 'mecho:bad model\n' > "$DATA/verifiers.conf"
+# an entry failing validation -> FAIL partition (invalid-entry), never run blindly.
+printf '{"verifiers":[{"adapter":"me cho"}],"synthesizer":{"adapter":"none"}}' > "$DATA/panel.json"
 O="$( cd "$TMP" && run prepare review medium "$TMP/req.md" 2>/dev/null )"
-printf '%s\n' "$O" | grep -q "^FAIL	mecho:bad model	bad-spec$" \
-  && echo "OK spec-bad-spec-fails" || { echo "FAIL spec-bad-spec"; echo "$O"; exit 1; }
+printf '%s\n' "$O" | grep -q "^FAIL	1-invalid	invalid-entry$" \
+  && echo "OK invalid-entry-fails" || { echo "FAIL invalid-entry"; echo "$O"; exit 1; }
 
-# a TAB inside a malformed entry must not corrupt the TAB-delimited FAIL record.
-printf 'mecho\tbad\n' > "$DATA/verifiers.conf"
+# a configured verifier whose adapter FILE is gone degrades to SKIP(removed-adapter) with an
+# actionable warning — it must NOT FAIL and block the review gate.
+set_verifiers mpass mvanished
+O="$( cd "$TMP" && run prepare review medium "$TMP/req.md" 2>"$TMP/prep.err" )"
+RUNV="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+printf '%s\n' "$O" | grep -q "^SKIP	2-mvanished	removed-adapter$" \
+  && grep -q 'no longer exists' "$TMP/prep.err" \
+  && grep -q 'verifiers remove 2' "$TMP/prep.err" \
+  && grep -q 'adapters currently available' "$TMP/prep.err" \
+  || { echo "FAIL removed-adapter partition/warning"; echo "$O"; cat "$TMP/prep.err"; exit 1; }
+( cd "$TMP" && run run-one "$RUNV" 1-mpass ) >/dev/null 2>&1
+out="$( cd "$TMP" && run collect "$RUNV" 2>/dev/null )"; rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -q '\[2-mvanished\] SKIP (removed-adapter)' \
+  && echo "OK removed-adapter-skips" || { echo "FAIL removed-adapter collect rc=$rc"; echo "$out"; exit 1; }
+
+# ALL verifiers referring to missing adapters -> still terminal NO_VERIFIER (exit 64).
+set_verifiers mvanished
 O="$( cd "$TMP" && run prepare review medium "$TMP/req.md" 2>/dev/null )"
-printf '%s\n' "$O" | grep -q "^FAIL	mecho bad	bad-spec$" \
-  && echo "OK spec-bad-spec-tab-safe" || { echo "FAIL spec-bad-spec-tab-safe"; echo "$O"; exit 1; }
+RUNW="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+err="$( cd "$TMP" && run collect "$RUNW" 2>&1 >/dev/null )"; rc=$?
+[ "$rc" = 64 ] && echo "$err" | grep -q 'NO_VERIFIER' \
+  && echo "OK removed-adapter-no-verifier" || { echo "FAIL removed-adapter NO_VERIFIER rc=$rc"; echo "$err"; exit 1; }
 
-# a malformed hand-edited synthesizer must be neutralized (disabled), never run/serialized.
-printf 'mpass\nmchg\n' > "$DATA/verifiers.conf"
-printf 'msynth:bad model\n' > "$DATA/synthesizer.conf"
-out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 )"; rc=$?
-! echo "$out" | grep -q 'consolidated report' && [ "$rc" = 10 ] \
-  && echo "OK synth-malformed-neutralized" || { echo "FAIL synth-malformed rc=$rc"; echo "$out"; exit 1; }
-rm -f "$DATA/synthesizer.conf"
+# a STALE synthesizer (adapter gone) must warn on stderr and leave the gate code unchanged.
+set_verifiers mpass mchg
+set_synth mvanished
+out="$( cd "$TMP" && run review medium "$TMP/req.md" 2>"$TMP/synth.err" )"; rc=$?
+[ "$rc" = 10 ] && ! echo "$out" | grep -q 'consolidated report' \
+  && grep -q 'synthesizer "mvanished" is configured but not usable' "$TMP/synth.err" \
+  && grep -q 'synthesizer set' "$TMP/synth.err" \
+  && echo "OK synth-stale-warns" || { echo "FAIL synth-stale rc=$rc"; echo "$out"; cat "$TMP/synth.err"; exit 1; }
+set_synth none
+
+# leftover old-format .conf files are IGNORED but reported loudly — and the warning must say
+# which panel is ACTUALLY in effect, since claiming "you are on the bundled default" to
+# someone who already rebuilt their panel would be plain false.
+: > "$DATA/verifiers.conf"; : > "$DATA/synthesizer.conf"
+set_verifiers mpass          # this writes $DATA/panel.json -> the rebuilt-panel branch
+err="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 >/dev/null )"; rc=$?
+[ "$rc" = 0 ] && echo "$err" | grep -q 'IGNORING obsolete panel config' \
+  && echo "$err" | grep -q 'just leftovers' \
+  && ! echo "$err" | grep -q 'BUNDLED DEFAULT' \
+  && echo "OK legacy-conf-warned-rebuilt" || { echo "FAIL legacy-conf rebuilt rc=$rc"; echo "$err"; exit 1; }
+# no panel.json -> the bundled-default branch, with the rebuild instructions
+rm -f "$DATA/panel.json"
+err="$( cd "$TMP" && run review medium "$TMP/req.md" 2>&1 >/dev/null )"; rc=$?
+[ "$rc" = 64 ] && echo "$err" | grep -q 'BUNDLED DEFAULT' \
+  && echo "$err" | grep -q 'verifiers add' \
+  && echo "OK legacy-conf-warned-default" || { echo "FAIL legacy-conf default rc=$rc"; echo "$err"; exit 1; }
+rm -f "$DATA/verifiers.conf" "$DATA/synthesizer.conf"
+
+# ---- verifiers.sh / synthesizer.sh management commands ----
+vsh() { CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$DATA" bash "$ROOT/verifiers.sh" "$@"; }
+ssh_() { CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$DATA" bash "$ROOT/synthesizer.sh" "$@"; }
+# an adapter that CAN enumerate its models -> loose input resolves to the canonical name
+cat > "$ROOT/adapters/mmodels.sh" <<'A'
+#!/usr/bin/env bash
+case "$1" in
+  probe)  exit 0;;
+  models) printf 'Gemini 3.5 Flash (Medium)\nGemini 3.5 Flash (High)\n'; exit 0;;
+esac
+n="$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')"
+printf 'STATUS: PASS\nREQUEST_ID: %s\n' "$n" > "$4"
+A
+chmod +x "$ROOT/adapters/mmodels.sh"
+set_verifiers   # reset to an empty panel
+vsh add mmodels --model 'gemini 3.5 flash medium' >/dev/null 2>&1 \
+  && [ "$(panel_lib panel_verifiers | cut -f3)" = "Gemini 3.5 Flash (Medium)" ] \
+  && echo "OK add-resolves-canonical" || { echo "FAIL add-resolves-canonical: $(panel_lib panel_verifiers)"; exit 1; }
+# ambiguous input is REJECTED with the candidate list, never silently stored
+out="$(vsh add mmodels --model 'gemini 3.5 flash' 2>&1)"; rc=$?
+[ "$rc" != 0 ] && echo "$out" | grep -q 'unknown or ambiguous' && echo "$out" | grep -q 'Gemini 3.5 Flash (High)' \
+  && echo "OK add-rejects-ambiguous" || { echo "FAIL add-rejects-ambiguous rc=$rc"; echo "$out"; exit 1; }
+# an adapter with NO models subcommand stores the value verbatim
+vsh add mpass --model 'whatever-i-typed' >/dev/null 2>&1 \
+  && [ "$(panel_lib panel_verifiers | sed -n '2p' | cut -f3)" = 'whatever-i-typed' ] \
+  && echo "OK add-verbatim-when-no-models" || { echo "FAIL add-verbatim: $(panel_lib panel_verifiers)"; exit 1; }
+# remove is by INDEX and keeps the synthesizer intact
+ssh_ set claude >/dev/null 2>&1
+vsh remove 1 >/dev/null 2>&1 \
+  && [ "$(panel_lib panel_verifiers | grep -c .)" = 1 ] \
+  && [ "$(panel_lib panel_verifiers | cut -f2)" = mpass ] \
+  && [ "$(panel_lib panel_synth | cut -f1)" = claude ] \
+  && echo "OK remove-by-index" || { echo "FAIL remove-by-index"; exit 1; }
+# unset (never chosen) must NOT read as none (chosen: disabled) — commands/on.md asks the
+# user to pick a synthesizer only while it is unset, and must not re-ask after they said none.
+# NOTE: capture into a variable first — `cmd | grep -q` under `set -o pipefail` fails the
+# pipeline, because grep -q exits on the first match and SIGPIPEs the producer.
+printf '{"verifiers":[],"synthesizer":{"adapter":""}}' > "$DATA/panel.json"
+out="$(ssh_ show 2>&1)"
+echo "$out" | grep -q 'synthesizer: unset' \
+  || { echo "FAIL synth-unset not reported as unset"; echo "$out"; exit 1; }
+ssh_ off >/dev/null 2>&1
+out="$(ssh_ show 2>&1)"
+echo "$out" | grep -q 'synthesizer: none' \
+  && echo "OK synth-unset-vs-none" || { echo "FAIL synth-none after off"; echo "$out"; exit 1; }
+# the BUNDLED default must ship as unset, so a fresh install still prompts
+[ "$(panel_lib 'panel_synth "$ROOT/panel.json"' | cut -f1)" = "" ] \
+  && echo "OK bundled-synth-unset" || { echo "FAIL bundled panel.json is not unset"; exit 1; }
+
+# `show` must not error on a stale synthesizer — it must FLAG it
+ssh_ set mmodels >/dev/null 2>&1
+rm -f "$ROOT/adapters/mmodels.sh"
+out="$(ssh_ show 2>&1)"; rc=$?
+[ "$rc" = 0 ] && echo "$out" | grep -q 'STALE' \
+  && echo "OK synth-show-flags-stale" || { echo "FAIL synth-show-stale rc=$rc"; echo "$out"; exit 1; }
+ssh_ off >/dev/null 2>&1
 
 # a bare entry must invoke `probe` with NO extra arg (custom strict adapters rely on this).
 cat > "$ROOT/adapters/mstrict.sh" <<'A'
@@ -337,7 +660,7 @@ n="$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')"
 printf 'STATUS: PASS\nREQUEST_ID: %s\n' "$n" > "$4"
 A
 chmod +x "$ROOT/adapters/mstrict.sh"
-printf 'mstrict\n' > "$DATA/verifiers.conf"
+set_verifiers mstrict
 ( cd "$TMP" && run review medium "$TMP/req.md" ) >/dev/null; rc=$?
 [ "$rc" = 0 ] && echo "OK bare-probe-no-extra-arg" || { echo "FAIL bare-probe-no-extra-arg rc=$rc"; exit 1; }
 
@@ -628,7 +951,7 @@ Do the thing.
 SKILL_FILES:
   - $TMP/skills/one.md
 EOF
-printf 'mpass\n' > "$DATA/verifiers.conf"
+set_verifiers mpass
 O="$( cd "$TMP" && run prepare review high "$TMP/req-skill1.md" 2>/dev/null )"
 RUNSK1="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
 # NOTE: the slug in `=== SKILL: <slug> ===` is the frozen file's basename (minus .md), which
@@ -660,12 +983,12 @@ Do the thing.
 SKILL_FILES:
   - $TMP/skills/tricky.md
 EOF
-printf 'mpass\n' > "$DATA/verifiers.conf"
+set_verifiers mpass
 O="$( cd "$TMP" && run prepare review high "$TMP/req-skill2.md" 2>/dev/null )"
 RUNSK2="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
-( cd "$TMP" && run run-one "$RUNSK2" mpass ) >/dev/null 2>&1
+( cd "$TMP" && run run-one "$RUNSK2" 1-mpass ) >/dev/null 2>&1
 out="$( cd "$TMP" && run collect "$RUNSK2" 2>/dev/null )"; rc=$?
-[ "$rc" = 0 ] && echo "$out" | grep -q '\[mpass\] PASS' \
+[ "$rc" = 0 ] && echo "$out" | grep -q '\[1-mpass\] PASS' \
   && echo "OK skillfiles-tricky-status-doesnt-break-classification" \
   || { echo "FAIL skillfiles-tricky-status-doesnt-break-classification rc=$rc"; echo "$out"; exit 1; }
 

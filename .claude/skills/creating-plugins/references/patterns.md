@@ -67,8 +67,17 @@ backend an **adapter**, not a separate plugin/skill:
   ```
 - each adapter has its own timeout and degrades gracefully (a missing backend is
   skipped with a notice; the others still run).
+- keep the REQUIRED surface minimal (e.g. `probe` + `run`) and make anything else
+  **optional**: the dispatcher tries the subcommand, and an adapter that does not
+  implement it just exits non-zero and gets the fallback path. agent-companion's
+  `models` (list the backend's selectable models) works this way — adapters that can
+  enumerate get input validated against the real list, adapters that cannot are
+  unchanged and store what the user typed.
+- resolve anything that needs the backend itself (model names, capabilities) **once,
+  at configure time**, not on every dispatch — otherwise every run inherits that
+  call's latency and its output-format stability.
 
-Adding a backend = a new adapter file + one config line. No dispatcher change.
+Adding a backend = a new adapter file + one config entry. No dispatcher change.
 
 ## 7. Writable-state hygiene
 

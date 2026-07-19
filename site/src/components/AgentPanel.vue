@@ -4,7 +4,7 @@ import { t } from '../i18n'
 // several verifier agents in parallel, aggregated any-blocks.
 const verifiers = [
   { id: 'codex', state: 'pass' },
-  { id: 'gemini', state: 'pass' },
+  { id: 'agy', state: 'pass' },
   { id: 'grok', state: 'pass' },
 ] as const
 </script>
