@@ -12,7 +12,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/synthesizer.sh" $ARGUMENTS
 
 When 2+ verifiers run, their full reports can flood the session. A **synthesizer** agent
 consolidates them into ONE report off-context, so only the merged result returns. Candidates:
-`claude` (headless, uses Claude limits), any verifier adapter (`agy`, `codex`, `grok`), or
+`claude` (headless, uses Claude limits), any verifier adapter (`agy`, `codex`, `grok`, `kimi`), or
 `none` (just list reports compactly). Consolidation is a deep-reasoning task, so pinning a
 strong model + high effort here is often worthwhile.
 

@@ -22,12 +22,14 @@ Examples:
 
 `add <adapter> [--model <name>] [--effort <tier>]`
 
-- `<adapter>` — the adapter basename (`agy`, `codex`, `grok`); requires a matching
+- `<adapter>` — the adapter basename (`agy`, `codex`, `grok`, `kimi`); requires a matching
   `adapters/<adapter>.sh` to exist (see the creating-plugins skill).
 - `--model` — optional. Omitted → the CLI's own default. The name is stored **verbatim**,
   so names containing spaces and parentheses are fine (just quote them in the shell).
 - `--effort` — optional, one of `low|medium|high|xhigh|max`. Omitted → the dispatch effort.
-  `agy` has no effort knob (the tier is baked into its model names) and ignores it.
+  `agy` has no effort knob (the tier is baked into its model names) and ignores it. `kimi` has
+  no CLI flag either, but honors the tier through its sandboxed config; since a kimi model
+  supports only some of the tiers, the request is mapped to the nearest one it accepts.
 
 When the user names a model loosely ("gemini 3.5 flash medium"), pass it as-is to `--model`:
 adapters that can enumerate their models resolve it to the canonical spelling once, at add

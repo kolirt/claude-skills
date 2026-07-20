@@ -6,6 +6,7 @@ const verifiers = [
   { id: 'codex', state: 'pass' },
   { id: 'agy', state: 'pass' },
   { id: 'grok', state: 'pass' },
+  { id: 'kimi', state: 'pass' },
 ] as const
 </script>
 
@@ -20,9 +21,10 @@ const verifiers = [
     <div class="panel__bus">
       <svg class="bus" viewBox="0 0 120 120" preserveAspectRatio="none">
         <path d="M0 60 H50" />
-        <path d="M50 60 V12 H120" />
-        <path d="M50 60 H120" />
-        <path d="M50 60 V108 H120" />
+        <path d="M50 60 V15 H120" />
+        <path d="M50 60 V45 H120" />
+        <path d="M50 60 V75 H120" />
+        <path d="M50 60 V105 H120" />
       </svg>
     </div>
 

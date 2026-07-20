@@ -28,11 +28,15 @@ each entry) — install the dependency too, the plugin does not do it for you.
     and fails at run time. No effort knob — the reasoning tier is baked into its model
     names (`Gemini 3.5 Flash (Medium)`).
   - `grok` — Grok CLI · xAI's frontier model (whatever xAI ships today)
+  - `kimi` — Kimi Code CLI · has no read-only mode of its own (its non-interactive mode
+    approves writes silently), so the adapter runs it against a disposable `KIMI_CODE_HOME`
+    whose config denies the write tools. Effort is honored through that same config, mapped
+    to the nearest tier the chosen model accepts.
 
   Add a verifier with flags: `/agent-companion:verifiers add codex --model gpt-5.6-sol
   --effort high`. Both flags are optional — omit `--model` for the CLI's own frontier
   default, `--effort` for the dispatch effort (one of low|medium|high|xhigh|max, honored by
-  codex and grok). Model names are stored verbatim, so names with spaces and parentheses
+  codex, grok and kimi). Model names are stored verbatim, so names with spaces and parentheses
   work. Entries are addressed by their list index, so several entries may share an adapter.
 
   Add a new agent by dropping an adapter in `plugins/agent-companion/adapters/`
