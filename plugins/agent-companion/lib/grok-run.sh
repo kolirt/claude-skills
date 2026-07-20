@@ -26,7 +26,13 @@ grok_extract_text() {
 # markdown emphasis grok-build wraps it in (`**STATUS: PASS**`), exactly as the
 # dispatcher's classifier does — this must not reject a verdict the dispatcher accepts.
 grok_has_status() {
-  sed -E 's/[*`]//g; s/^[[:space:]_]+//' "$1" 2>/dev/null | grep -q '^STATUS:'
+  # Normalised first, matched second: with `sed | grep -q`, a STATUS line early in a long
+  # verdict lets grep exit while sed is still writing, sed dies of SIGPIPE, and under the
+  # caller's `pipefail` this function would report "no STATUS" for a verdict that has one —
+  # costing a pointless retry of a completed run.
+  local norm
+  norm="$(sed -E 's/[*`]//g; s/^[[:space:]_]+//' "$1" 2>/dev/null)" || true
+  grep -q '^STATUS:' <<<"$norm"
 }
 
 # grok_run <model> <prompt-file> <out-file> [effort]  -> exit code of grok itself

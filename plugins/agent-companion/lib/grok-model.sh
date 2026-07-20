@@ -16,7 +16,7 @@ resolve_frontier() {
     [ -n "$id" ] || continue
     case "$id" in *composer*) continue ;; esac          # exclude the composer family
     ids="$ids$id"$'\n'
-    printf '%s' "$line" | grep -qi 'default' && def="$id"
+    grep -qi 'default' <<<"$line" && def="$id"   # herestring: no producer to SIGPIPE
   done <<< "$list"
 
   [ -n "$ids" ] || return 0

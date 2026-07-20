@@ -29,8 +29,13 @@ case "$cmd" in
       # pass on `(default)`.
       list="$(grok models 2>/dev/null)" || true
       [ -n "$list" ] || exit 64
-      printf '%s\n' "$list" | tr -s ' \t,|"[]{}:()' '\n' \
-        | grep -iE '^grok-[a-z0-9._-]+$' | grep -qxF -- "$model" || exit 64
+      # The tokenising pipeline's own status is captured and discarded; only the final exact
+      # match decides. Ending a status-significant pipeline in `grep -q` would let the early
+      # exit SIGPIPE `tr`/`grep -iE`, and `pipefail` would report 141 — skipping this verifier
+      # although the pinned model IS present. The match therefore runs off a herestring.
+      toks="$(printf '%s\n' "$list" | tr -s ' \t,|"[]{}:()' '\n' \
+        | grep -iE '^grok-[a-z0-9._-]+$')" || true
+      grep -qxF -- "$model" <<<"$toks" || exit 64
       exit 0
     fi
     # Bare probe: resolve_frontier already runs `grok models` once — don't fetch it twice.

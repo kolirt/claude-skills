@@ -93,7 +93,18 @@ clickable path) in your own message every time, so the user can open any agent's
 
 ## Passing skill context to the panel
 Before EVERY panel invocation, semantically select the skills relevant to this request: skills active in the current session plus any that match the task's domain (Vue code → `knowledge-vue:...`, SEO → `knowledge-seo:...`, UI work → `frontend-design`/`ui-ux-pro-max`, etc.). This is a judgment call each time — there is no autodetector.
-Resolve each selected skill to its `SKILL.md` path in the plugin cache: `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md`. You may add relevant `references/*.md` files from the same skill alongside it. List every resolved path, one per line, under a `SKILL_FILES:` field in the request (`.md` files only — `verify.sh` freezes and splices their content into each verifier's prompt itself).
+Resolve each selected skill to its `SKILL.md` path in the plugin cache: `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md`. You may add relevant `references/*.md` files from the same skill alongside it. List every resolved path under a `SKILL_FILES:` field in the request, **one per line, each prefixed with `- `** (`.md` files only — `verify.sh` freezes and splices their content into each verifier's prompt itself):
+
+```
+SKILL_FILES:
+- /Users/you/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md
+- /Users/you/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/<name>/references/<topic>.md
+```
+
+The `- ` is REQUIRED, not decoration: the parser consumes only dash-prefixed lines and stops at
+the first line that is not one. Bare paths parse as zero files, so the panel silently reviews
+without the project's conventions — `prepare` prints `N file(s) frozen` on success, so check
+that line rather than assuming.
 Do NOT read the content of these files yourself before listing them — that is the entire point: their content must never enter the main session's context, only the verifier's.
 
 ## Reminders (durable manager mode)

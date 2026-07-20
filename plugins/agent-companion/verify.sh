@@ -170,8 +170,17 @@ freeze_skills() {
     total=$((total + size))
     echo "agent-companion: SKILL_FILES: accepted $resolved -> $(basename "$dest") (${size} bytes)" >&2
   done < "$req"
-  [ "$idx" -gt 0 ] && \
+  if [ "$idx" -gt 0 ]; then
     echo "agent-companion: SKILL_FILES: $idx file(s) frozen, ${total} bytes total" >&2
+  elif grep -q '^SKILL_FILES:[[:space:]]*$' "$req"; then
+    # A block that yields NOTHING used to pass in silence, and the panel then reviewed with no
+    # project conventions at all — indistinguishable from a request that supplied none. The
+    # usual cause is bare paths: the grammar consumes only `- <path>` lines and stops at the
+    # first line that is not one, so a whole block is dropped without any per-path skip message.
+    echo "agent-companion: SKILL_FILES: block present but NO files were accepted — the panel" \
+         "will run WITHOUT project conventions. Each path must be its own '- <absolute path>'" \
+         "line directly under 'SKILL_FILES:'." >&2
+  fi
 }
 
 build_prompt() { # <mode> <req> <reqid> <repo> <run>
@@ -449,7 +458,11 @@ cmd_run_one() {
   [ "$#" -ge 2 ] || { echo "usage: verify.sh run-one <run-dir> <verifier>" >&2; exit 64; }
   local run="$1" v="$2"
   manifest_valid "$run" || { echo "invalid run-dir/manifest: $run" >&2; exit 64; }
-  manifest_list "$run" runnable | grep -qxF -- "$v" || { echo "verifier not in runnable: $v" >&2; exit 64; }
+  # Herestring, not a pipe: `grep -q` exits on the first match and SIGPIPEs `manifest_list`,
+  # which `pipefail` (set at the top of this file) would surface as 141 — rejecting a verifier
+  # that IS runnable. This runs on every single spawn, so the race must not exist here at all.
+  local runnable_list; runnable_list="$(manifest_list "$run" runnable)" || true
+  grep -qxF -- "$v" <<<"$runnable_list" || { echo "verifier not in runnable: $v" >&2; exit 64; }
   local effort prompt to adapter model eff
   effort="$(manifest_get "$run" effort)"
   prompt="$(manifest_get "$run" prompt)"
@@ -521,7 +534,10 @@ cmd_collect() {
   grep -q CHANGES "$run/.flags.tmp" && overall_changes=1
   grep -q FAIL    "$run/.flags.tmp" && overall_fail=1
   rm -f "$run/.flags.tmp"
-  printf '%s' "$fail" | grep -q . && overall_fail=1   # probe-fail/no-adapter block (monolith parity)
+  # Herestring rather than `printf | grep -q` (SIGPIPE + pipefail would drop a real failure
+  # block). Kept as `grep -q .` rather than `[ -n "$fail" ]`: they disagree on whitespace-only
+  # input, and this decides whether a probe failure escalates to an overall FAIL.
+  grep -q . <<<"$fail" && overall_fail=1   # probe-fail/no-adapter block (monolith parity)
 
   # legacy status lines ALWAYS emit first (incl. the all-skip case, for parity).
   emit_status_lines "$run" "$runnable" "$skip" "$fail"
