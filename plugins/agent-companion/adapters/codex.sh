@@ -4,6 +4,14 @@ cmd="${1:-}"; shift || true
 case "$cmd" in
   probe)
     command -v codex >/dev/null 2>&1 || exit 64
+    # Version floor: `run` now depends on --ignore-user-config and --add-dir to build its read
+    # barrier. A build without them would previously have passed probe and then run with NO
+    # confinement at all — worse than being skipped, because the barrier would look present.
+    # Captured into a variable rather than piped into `grep -q`: grep exits on the first match,
+    # the producer dies of SIGPIPE (141) and `pipefail` turns a PRESENT flag into "absent".
+    help="$(codex exec --help 2>&1 || :)"
+    grep -qE -- '(^|[[:space:]])--ignore-user-config([[:space:]]|=|$)' <<<"$help" || exit 64
+    grep -qE -- '(^|[[:space:]])--add-dir([[:space:]]|=|$)' <<<"$help" || exit 64
     exit 0;;
   run)
     prompt="${1:?}"; effort="${2:?}"; out="${3:?}"; model="${4:-}"
@@ -15,8 +23,18 @@ case "$cmd" in
     # $out is "<run>/<verifier>/verdict" for a verifier but "<run>/consolidated.txt" when
     # codex runs as the SYNTHESIZER, so anchor on the file that marks a run dir rather than
     # counting path levels (going up two would expose every SIBLING run in the synth case).
+    # FAIL CLOSED — see the identical guard in agy.sh. Falling back unconditionally would, for
+    # an $out with no `manifest` beside or above it, resolve to the PARENT handoff dir and hand
+    # the verifier read access to every sibling run.
     run_dir="$(dirname "$out")"
-    [ -f "$run_dir/manifest" ] || run_dir="$(dirname "$run_dir")"
+    if [ ! -f "$run_dir/manifest" ]; then
+      run_dir="$(dirname "$run_dir")"
+      [ -f "$run_dir/manifest" ] || {
+        echo "codex: cannot locate the run dir (no manifest beside or above \"$out\") —" \
+             "refusing to run rather than widen the workspace." >&2
+        exit 1
+      }
+    fi
 
     # --- read confinement (R2) --------------------------------------------------------
     # DO NOT pass --sandbox here. `--sandbox` switches codex to its sandbox model, which

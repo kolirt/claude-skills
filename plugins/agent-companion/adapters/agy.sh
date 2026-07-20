@@ -66,9 +66,21 @@ case "$cmd" in
     # .txt" when this adapter runs as the SYNTHESIZER. Blindly going up two levels would, in
     # the synth case, land on the parent handoff dir and hand over read access to every
     # SIBLING run. So anchor on the file that marks a run dir instead of counting levels.
-    # This is agy-specific: kimi/codex/grok reach absolute paths outside their workspace.
+    # codex.sh derives run_dir the same way, for the same reason, once it too became confined.
+    # kimi and grok still reach absolute paths outside their workspace and so do not need it.
+    # FAIL CLOSED. An earlier version fell back to `dirname` unconditionally, so an $out whose
+    # run dir carried no `manifest` silently resolved to the PARENT handoff dir — granting read
+    # access to every sibling run. Never widen the workspace on a failed lookup: if neither
+    # candidate is a run dir, refuse to run at all.
     run_dir="$(dirname "$out")"
-    [ -f "$run_dir/manifest" ] || run_dir="$(dirname "$run_dir")"
+    if [ ! -f "$run_dir/manifest" ]; then
+      run_dir="$(dirname "$run_dir")"
+      [ -f "$run_dir/manifest" ] || {
+        echo "agy: cannot locate the run dir (no manifest beside or above \"$out\") —" \
+             "refusing to run rather than widen the workspace." >&2
+        exit 1
+      }
+    fi
     #
     # --mode plan is NOT a write barrier (verified: in a scratch project it happily creates
     # files). What actually stops writes here is headless permission handling: inside the
