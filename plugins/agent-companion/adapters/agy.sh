@@ -119,10 +119,34 @@ case "$cmd" in
     # `SKILL_FILES:` line pointed at ~/.claude/plugins/marketplaces/..., outside both
     # --add-dir roots. (Skill CONTENT is spliced into the prompt, so nothing needs to be read
     # from there — the bare path in the text was enough to kill the run.)
+    # SHELL IS THE OTHER WAY TO TRIP THE SAME WIRE. A terminal call needs the `command`
+    # permission, which headless mode cannot prompt for and therefore auto-DENIES — and by the
+    # rule above one denial ends the run. This is NOT caused by --sandbox (A/B'd: with and
+    # without the flag, a prompt asking for `cat` died identically); --sandbox only confines the
+    # terminal to the --add-dir set, it does not create the permission gate. Nor is it a
+    # regression from adding read-only confinement: agy could never run shell here. It stayed
+    # invisible only while the model happened to answer via its file tools, and surfaced the
+    # moment one reached for `git diff`.
+    # Costs nothing to forbid: verified that agy solves the same task with list_dir +
+    # view_file + grep_search, which are auto-allowed inside the workspace. The diff is
+    # already materialised as a file ($run/diff.patch, named by the request's DIFF_PATCH:
+    # line), so nothing here ever needs git.
+    # Stated with its REASON rather than as a bare ban, so the model does not "try anyway".
+    # Prepended by the adapter instead of living in VERIFIER.md: the other CLIs run shell
+    # fine, and only agy dies for it.
+    guard='TOOL CONSTRAINT (agy, headless print mode): shell/terminal tool calls require a
+`command` permission that cannot be prompted for here and are therefore auto-denied — and a
+single denied call aborts this entire run with no output. Do not run shell commands (git, ls,
+grep, cat, find, rg). Use your file tools (list_dir, view_file, grep_search) inside the
+--add-dir workspace, where reads are auto-allowed.'
     if [ -n "$model" ]; then
-      agy --mode plan --sandbox --add-dir "$PWD" --add-dir "$run_dir" --print-timeout 25m --model "$model" -p "$(cat "$prompt")" > "$out"
+      agy --mode plan --sandbox --add-dir "$PWD" --add-dir "$run_dir" --print-timeout 25m --model "$model" -p "$guard
+
+$(cat "$prompt")" > "$out"
     else
-      agy --mode plan --sandbox --add-dir "$PWD" --add-dir "$run_dir" --print-timeout 25m -p "$(cat "$prompt")" > "$out"
+      agy --mode plan --sandbox --add-dir "$PWD" --add-dir "$run_dir" --print-timeout 25m -p "$guard
+
+$(cat "$prompt")" > "$out"
     fi
     rc=$?
     # An auto-denied tool call makes agy exit 0 having printed NOTHING. Left alone that empty
