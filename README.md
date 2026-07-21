@@ -11,7 +11,7 @@ Native Claude Code plugin marketplace.
 
 Every plugin below installs the same way — swap in its name:
 `agent-companion`, `knowledge`, `knowledge-seo`, `knowledge-vue`, `planning`,
-`auditing`, `auditing-prs`. Some plugins declare dependencies on others (see
+`auditing`, `auditing-prs`, `terse`. Some plugins declare dependencies on others (see
 each entry) — install the dependency too, the plugin does not do it for you.
 
 ## Plugins
@@ -158,6 +158,12 @@ each entry) — install the dependency too, the plugin does not do it for you.
   `agent-companion` is enabled, the PR is independently verified by its panel
   before drafting.
 
+- **terse** — Output-style plugin: a `SessionStart` hook injects terse-mode
+  rules into every session — answer first, no walls of text, no preamble or
+  closers, questions strictly one at a time, one concrete next step, no
+  tool-call narration or log dumps. Hook-only: no skills, no state, no
+  on/off commands; active from the next session after install.
+
 ## Structure
 
 - [`.claude-plugin/marketplace.json`](.claude-plugin/marketplace.json) — marketplace manifest; lists every plugin and its version (source of truth)
@@ -177,6 +183,8 @@ each entry) — install the dependency too, the plugin does not do it for you.
   ([`skills/business-analysis/`](plugins/auditing/skills/business-analysis) · [`skills/seo/`](plugins/auditing/skills/seo) · shared [`core/`](plugins/auditing/core))
 - [`plugins/auditing-prs/`](plugins/auditing-prs) — GitHub PR review plugin
   ([`skills/audit-pr/`](plugins/auditing-prs/skills/audit-pr) · [`skills/prepush-audit/`](plugins/auditing-prs/skills/prepush-audit) · shared [`core/`](plugins/auditing-prs/core))
+- [`plugins/terse/`](plugins/terse) — terse output-style plugin
+  ([`hooks/`](plugins/terse/hooks) — `SessionStart` hook, no skills)
 - [`.claude/skills/`](.claude/skills) — repo-local maintainer skills (auto-discovered in this repo): [`creating-plugins/`](.claude/skills/creating-plugins) (scaffold/validate new plugins) · [`authoring-knowledge-skills/`](.claude/skills/authoring-knowledge-skills) (checklist for knowledge-* skills)
 - [`site/`](site) — Vite + Vue web catalog, data-driven from `marketplace.json`; the catalog page also lists each plugin's skills
 - [`build-site.sh`](build-site.sh) — generates `site/public/data.json` from the manifests (version-validated; the generated file is gitignored, not checked into the repo)

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# SessionStart hook for terse. Injects the full output-style rule set directly as
+# additionalContext — the rules are short, so there is no skill to load on demand.
+set -euo pipefail
+
+python3 - <<'PY'
+import json
+
+rules = (
+    "<output_style>\n"
+    "Terse mode - applies to EVERY response in this session.\n"
+    "\n"
+    "1. Answer first. The first line is the answer, command, path, or fix. Context after, "
+    "only if needed.\n"
+    "2. Brevity. Short sentences, no walls of text. Prefer a 3-line answer over a 30-line "
+    "one; expand only when asked.\n"
+    "3. No preamble, no recap, no closers. Never \"Great question\", \"Hope this helps\", "
+    "no restating what was just done.\n"
+    "4. Questions strictly one at a time. Ask ONE question, wait for the answer, then "
+    "decide whether the next question is still relevant. Never batch questions - an "
+    "AskUserQuestion call carries a single question.\n"
+    "5. One concrete next step. If anything is left open, end with exactly one doable "
+    "action, not a menu of options.\n"
+    "6. Suppress tangents. Finish the task at hand; side findings get one line at the end "
+    "(\"Separately: X - handle it next?\").\n"
+    "7. No tool-call narration, no log dumps. Do not announce tool steps. From errors "
+    "quote only the decisive line, never the full log.\n"
+    "8. Multi-step status in one line: \"Step 3/5 done: X. Next: Y.\"\n"
+    "\n"
+    "Code, commands, identifiers, and exact error strings stay verbatim. Reply in the "
+    "user's language.\n"
+    "</output_style>"
+)
+
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": rules,
+    }
+}))
+PY
