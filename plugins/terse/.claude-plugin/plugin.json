@@ -1,7 +1,7 @@
 {
   "name": "terse",
-  "version": "0.1.0",
-  "description": "Injects terse output-style rules into every session via a SessionStart hook: brief answers without walls of text, questions strictly one at a time.",
+  "version": "0.2.0",
+  "description": "Injects terse output-style rules into every session via a SessionStart hook: a one-line restate of how a new task was understood, brief answers without walls of text, questions strictly one at a time.",
   "author": {
     "name": "kolirt"
   }
