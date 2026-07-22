@@ -183,9 +183,32 @@ freeze_skills() {
   fi
 }
 
+# strip_skill_files <request-file>
+# Emits the request WITHOUT its `SKILL_FILES:` block, using the SAME grammar freeze_skills
+# parses with (header line, then `^[[:space:]]*-[[:space:]]+<path>` lines, stopping at the
+# first line that is not one). Everything else passes through byte-identical.
+#
+# WHY the paths must not survive into the prompt: their CONTENT is already spliced in below
+# as `=== SKILL: ... ===` blocks, so nothing needs to be read from disk — but a verifier that
+# SEES a path reaches for it anyway. Those paths live in the plugin cache, outside both dirs
+# an adapter puts in the CLI's workspace (the repo and the run dir), so the read needs a
+# permission decision that headless mode cannot prompt for and therefore auto-denies.
+# For agy that is fatal: one denied read ends the run, it exits 0 having printed nothing, and
+# the empty verdict is reported as FAIL. It presented as FLAKY because the block only kills a
+# run when the model happens to reach for it — same prompt, same panel, different outcome.
+# Fixed here rather than in agy.sh: no adapter benefits from these paths, and every CLI that
+# followed them was doing a pointless disk read.
+strip_skill_files() {
+  awk '
+    /^SKILL_FILES:[[:space:]]*$/ { skip = 1; next }
+    skip && /^[[:space:]]*-[[:space:]]+/ { next }
+    { skip = 0; print }
+  ' "$1"
+}
+
 build_prompt() { # <mode> <req> <reqid> <repo> <run>
   { cat "$ROOT/VERIFIER.md" 2>/dev/null || true
-    cat "$2"
+    strip_skill_files "$2"
     if [ -d "$5/skills" ]; then
       local f slug
       for f in "$5"/skills/*.md; do

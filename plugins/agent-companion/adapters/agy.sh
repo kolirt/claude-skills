@@ -115,10 +115,13 @@ case "$cmd" in
     # prompt: with an out-of-workspace path in it -> empty verdict; with that path removed and
     # everything else identical -> correct answer.
     # So a request handed to agy must not name paths outside the workspace. This is not
-    # hypothetical: it is why agy returned empty verdicts all session — the request's
-    # `SKILL_FILES:` line pointed at ~/.claude/plugins/marketplaces/..., outside both
-    # --add-dir roots. (Skill CONTENT is spliced into the prompt, so nothing needs to be read
-    # from there — the bare path in the text was enough to kill the run.)
+    # hypothetical: it is why agy returned empty verdicts — the request's `SKILL_FILES:` lines
+    # pointed at ~/.claude/plugins/cache/..., outside both --add-dir roots. (Skill CONTENT is
+    # spliced into the prompt, so nothing needs to be read from there — the bare path in the
+    # text was enough to kill the run, and it presented as FLAKY because it only fires when the
+    # model happens to reach for one.) Closed upstream in verify.sh's strip_skill_files, which
+    # drops the whole block from prompt.txt for every adapter; keep this note as the reason
+    # that stripping must stay.
     # SHELL IS THE OTHER WAY TO TRIP THE SAME WIRE. A terminal call needs the `command`
     # permission, which headless mode cannot prompt for and therefore auto-DENIES — and by the
     # rule above one denial ends the run. This is NOT caused by --sandbox (A/B'd: with and

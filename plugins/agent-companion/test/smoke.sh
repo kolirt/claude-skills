@@ -967,6 +967,16 @@ skill_line="$(grep -n '=== SKILL: 01-one ===' "$RUNSK1/prompt.txt" | head -1 | c
 [ -n "$skill_line" ] && [ -n "$lastreqid_line" ] && [ "$skill_line" -lt "$lastreqid_line" ] \
   && echo "OK skillfiles-before-last-request-id" || { echo "FAIL skillfiles-before-last-request-id"; exit 1; }
 
+# ---- the SKILL_FILES: block itself is STRIPPED from prompt.txt (content stays) ----
+# A verifier that sees a skill PATH reaches for it, and those paths sit outside the dirs an
+# adapter puts in the CLI workspace, so the read is auto-denied in headless mode — fatal for
+# agy (exits 0 with no output -> empty verdict -> FAIL). The content is already spliced in as
+# a `=== SKILL: ... ===` section, so nothing is lost by dropping the paths.
+! grep -q '^SKILL_FILES:' "$RUNSK1/prompt.txt" && ! grep -q "$TMP/skills/one.md" "$RUNSK1/prompt.txt" \
+  && grep -q 'Some content line.' "$RUNSK1/prompt.txt" \
+  && echo "OK skillfiles-block-stripped-from-prompt" \
+  || { echo "FAIL skillfiles-block-stripped-from-prompt"; grep -n 'SKILL_FILES\|one.md' "$RUNSK1/prompt.txt"; exit 1; }
+
 # ---- a skill file containing STATUS:/REQUEST_ID: lines must not break verdict classification ----
 # (this is the one SKILL_FILES case that genuinely needs collect — via prepare+run-one+collect,
 # never the synchronous panel-wait `run` form.)
