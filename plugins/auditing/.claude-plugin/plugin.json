@@ -1,7 +1,7 @@
 {
   "name": "auditing",
-  "version": "0.1.0",
-  "description": "On-demand audits of a WHOLE application from a chosen perspective: business-analysis (product integrity, flows, monetization) and seo (SEO baseline). Read-only — reports findings, never fixes them. Audits of PR diffs and changes belong to the auditing-prs plugin. The seo skill requires the knowledge-seo plugin to be installed separately.",
+  "version": "0.2.0",
+  "description": "On-demand audits of a WHOLE application, one domain per perspective plus a dispatcher that runs several at once: audit (dispatcher), security, performance, accessibility, reliability, code-quality, data, api-contracts, business-analysis, seo, and remediate (turns a report into a plan). An audit never changes code \u2014 it writes reports under docs/audit/ and nothing else (the repository's CLAUDE.md included in what it never touches). Every domain runs on three knowledge tiers and no domain hard-requires a knowledge plugin: a missing tier degrades the run and is disclosed in the report's coverage section. Optional agent-companion verifier panel, dispatcher-only. Audits of PR diffs and changes belong to the auditing-prs plugin.",
   "author": {
     "name": "kolirt"
   }

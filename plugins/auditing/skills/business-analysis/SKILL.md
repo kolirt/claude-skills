@@ -3,109 +3,177 @@ name: business-analysis
 description: Use on demand to audit a WHOLE application through business-analyst / product-owner eyes — 'business audit', 'бізнес-аудит', 'product holes', 'бізнес-діри', 'монетизація', 'product integrity', 'audit the product', 'what is missing in the product'. Reconstructs the product model from code and reports broken flows, entities without lifecycle, monetization leaks, and intent-vs-implementation contradictions. Read-only — reports findings, never fixes them. Not a code-bug hunt, not a security or performance review. Audits of a PR diff or a set of changes belong to the auditing-prs plugin.
 ---
 
-# business-analysis — whole-application product audit
+# Business-analysis audit
 
-Look at the application the way a business analyst or product owner would: not "is this code
-correct" but **"is this a coherent product, and where are the holes"**.
+Judges whether the application is a **coherent product**, not whether its code is correct: broken
+or dead-end journeys, entities without a lifecycle, monetization that leaks or is absent where the
+product evidently intends it, and places where the implementation contradicts the stated intent.
 
-The deliverable is a reconstruction of the product as it actually exists in code, plus the places
-where that product is incomplete, self-contradictory, or leaking value.
+The separating sentence: this domain owns **whether the product is whole** — not whether a given
+path crashes, is slow, or is exploitable; those are a neighbour's finding on the same code.
 
-## What this is and is not
+## 0. Preflight — stack facts this domain needs
 
-**Is:** a product-integrity audit. Broken and dead-end user journeys, entities that can be created
-but never closed out, monetization that leaks or is absent where the product evidently intends it,
-and implementations that contradict the stated intent.
+Read `../../core/stack-detection.md`. Under the dispatcher the **snapshot** arrives as an input:
+detection is not repeated, and this domain does not disagree with the facts it was handed. Invoked
+directly, this domain runs detection itself first.
 
-**Is not:** a bug hunt, a code-quality review, a security audit, or a performance review. A crash is
-somebody else's finding. "Users can subscribe but there is no path to cancel" is this skill's
-finding.
+This domain reconstructs a product model from whatever code exists, so it has almost no hard stack
+dependency. It is applicable to nearly any repository that has an entry point at all, and it rarely
+reports `skipped: not applicable` — say that plainly rather than inventing a stack dependency this
+domain does not have.
 
-**Read-only.** See `../../core/report-model.md` — the audit changes nothing in the repository.
+| Fact needed | Used for | When absent |
+|---|---|---|
+| Entry points / routing / command surfaces (any detected framework) | Locating where a feature or flow begins, for the feature map | Reconstruct entry points by reading the module layout directly; coverage notes that no framework marker guided this |
+| Data layer (Laravel / Prisma / Drizzle / raw SQL) | Locating entity definitions for the lifecycle check | Entities reconstructed from whatever persistence code exists; if none exists at all, that absence is part of the model, not a skip |
+| Convention plugins | Whether knowledge tier 3 exists this run | Tiers 1 and 2 run; a coverage line names the missing tier |
 
-## Impact dimensions (how severity is graded here)
+The closest this domain comes to `not applicable` is a repository with no discernible product
+surface at all — a library, a build tool, infrastructure-only code. Report that finding plainly and
+scope the audit down; do not skip the domain outright without saying why.
 
-Grade every finding by business impact, never by code shape:
+## 1. What this domain judges
 
-- **Money loss** — revenue that the product intends to collect and does not, or spends and should not.
-- **User lockout** — a user cannot reach or complete something the product evidently offers them.
-- **Monetization leakage** — value delivered without the corresponding paid gate, or a paid gate
-  that does not actually gate.
-- **Frequency and reach** — how many users hit it, how often, and whether it is on a core path or an
-  edge case.
+### Product model reconstruction
 
-Map onto the shared `blocker | major | minor` scale in the report model accordingly.
+Build this before hunting for holes — findings are differences against the model, so it has to
+exist first. State it briefly in the report; it is what makes the findings auditable by the reader.
 
-## Method
-
-### 1. Gather evidence
-
-Work **stack-neutrally** — do not assume a framework. Establish how this particular project is
-organized before drawing conclusions from it.
-
-- Find the entry points and the project's own conventions: build/run configuration, routing or
-  command surfaces, the module layout, and any convention documents the repo carries.
-- Collect repository documentation as a truth source: README, `docs/`, specs, ADRs, changelogs.
-- **Ask the user once, at the start**, for an optional product/strategy description: what the
-  product is meant to be, who pays, what the important flows are. Make clear it is optional and
-  proceed either way — do not block the audit on an answer, and do not ask again later.
-
-Record which of the three sources you actually had; the report must disclose it.
-
-### 2. Reconstruct the product model
-
-Build the model before hunting for holes — findings are differences against this model, so it has
-to exist first.
-
-- **Feature map** — what the application lets someone do, expressed in product terms, not module
-  names.
+- **Feature map** — what the application lets someone do, in product terms, not module names.
 - **Entities and their lifecycles** — the things the product manages, and for each: how it comes
   into existence, how it changes state, how it ends (closed, cancelled, archived, deleted, expired).
 - **Interactions** — which features touch which entities, and where features depend on each other.
 - **Monetization points** — where money is supposed to enter or leave: paid gates, plans, limits,
-  quotas, trials, billing events. If none exist at all, that is a finding in itself, not an
-  omission in the model.
+  quotas, trials, billing events. If none exist at all, that is a finding in itself, not an omission
+  in the model.
 
-State the model briefly in the report. It is what makes the findings auditable by the reader.
+### Broken or dead-end flows
 
-### 3. Detection passes
+A journey that starts and cannot be completed, or completes into nothing: a state with no exit, a
+success path with no confirmation, a step referencing a surface that does not exist.
 
-Run each pass over the reconstructed model:
+### Entities without a complete lifecycle
 
-- **Broken or dead-end flows** — a journey that starts and cannot be completed, or completes into
-  nothing: a state with no exit, a success path with no confirmation, a step referencing a surface
-  that does not exist.
-- **Entities without a complete lifecycle** — created but never deletable, activated but never
-  deactivatable, states that can be entered but not left, no owner for terminal transitions.
-- **Monetization leaks or absences** — a paid capability reachable without payment, a limit that is
-  displayed but not enforced, a trial that never terminates, a plan whose difference is not actually
-  implemented, or a product that evidently intends revenue and has no mechanism for it.
-- **Intent-vs-implementation contradictions** — documentation or user-visible copy promising
-  behaviour the code does not implement, or implementing the opposite. This is where the source
-  priority in the report model pays off.
-- **Implemented but unreachable** — a feature that exists in full and has no path to it from any
-  entry point. Either the product lost it, or it is dead weight; both are worth reporting.
+Created but never deletable, activated but never deactivatable, a state that can be entered but not
+left, no owner for a terminal transition.
+
+### Monetization leaks or absences
+
+A paid capability reachable without payment, a limit that is displayed but not enforced, a trial
+that never terminates, a plan whose difference is not actually implemented, or a product that
+evidently intends revenue and has no mechanism for it.
+
+### Intent-vs-implementation contradictions
+
+Documentation or user-visible copy promising behaviour the code does not implement, or implementing
+the opposite. This is where the evidence-source priority in the report model pays off.
+
+### Implemented but unreachable
+
+A feature that exists in full and has no path to it from any entry point. Either the product lost
+it, or it is dead weight; both are worth reporting.
 
 For each candidate finding, establish the **mechanism** — the causal chain from this code (or this
-absence) to the business impact. A finding whose mechanism you cannot state is an observation, and
+absence) to the business impact. A finding whose mechanism cannot be stated is an observation, and
 belongs in Opportunities or nowhere.
 
-### 4. Opportunities
+## 2. Impact dimensions
 
-Separate section, per the report model: proactive product ideas, explicitly marked as judgment
-rather than fact, carrying no severity. Say what they assume about goals nobody stated.
+Severity is graded by business impact, never by code shape. The scale itself lives in
+`../../core/report-model.md`; these are its meanings here.
 
-### 5. Report
+- **Money loss** — revenue that the product intends to collect and does not, or spends and should not.
+- **User lockout** — a user cannot reach or complete something the product evidently offers them.
+- **Monetization leakage** — value delivered without the corresponding paid gate, or a paid gate that
+  does not actually gate.
+- **Frequency and reach** — how many users hit it, how often, and whether it is on a core path or an
+  edge case.
 
-Produce the report per `../../core/report-model.md` — scope and evidence-source declaration,
-findings with evidence locators, opportunities, and the mandatory coverage/blind-spots section.
+## 3. What this domain does NOT cover
 
-Confidence follows the truth-source priority: a finding confirmed by the user's own description of
-the product is `high`; one visible in code with no external confirmation is `medium`; one resting on
-a reconstruction of what the product *probably* intends is `low`. Do not raise confidence because a
-finding feels obvious.
+- **Bugs and crashes** — a broken code path that fails regardless of business meaning is
+  `auditing:code-quality`'s finding; this domain's finding is the broken *user journey*, not the
+  exception behind it.
+- **Availability** — whether the system stays up, degrades gracefully, or recovers is
+  `auditing:reliability`'s domain entirely.
+- **Security enforcement** — whether a gate actually restricts access is `auditing:security`'s
+  finding; this domain owns whether the gate should exist at all and whether it reflects the
+  intended plan difference. Where a paid feature is reachable without payment, `auditing:security`
+  owns the fact that access control failed and this domain owns the fact that a monetization
+  boundary was intended there in the first place.
+- **Performance** — response times, query cost, and resource use are `auditing:performance`'s
+  domain; a slow flow is this domain's finding only when it is slow enough to be a dead end nobody
+  completes.
+- **Storage invariants** — `auditing:data` owns whether the schema enforces what it claims
+  (nullability, uniqueness, cascade behaviour); this domain owns whether the entity's *business*
+  lifecycle exists at all, independent of how well the schema enforces it.
+- **API contract correctness** — request/response shape, versioning, and schema conformance are
+  `auditing:api-contracts`'s domain; this domain treats an endpoint only as a step in a user-facing
+  flow.
+- **SEO and accessibility** — owned entirely by `auditing:seo` and `auditing:accessibility`; not
+  touched here even when a discoverability gap has business consequences.
 
-Blind spots deserve real specificity here: a single repository is usually one part of a larger
-system, so an entity's lifecycle may be closed by a service you cannot see, and a monetization path
-may live in a payment provider's configuration rather than in this code. Say so, and say which
-findings would be invalidated if that turned out to be the case.
+## 4. How to audit
+
+Work **stack-neutrally** — do not assume a framework. Establish how this particular project is
+organized before drawing conclusions from it.
+
+1. Find the entry points and the project's own conventions: build/run configuration, routing or
+   command surfaces, module layout, and any convention documents the repo carries.
+2. Collect repository documentation as a truth source: README, `docs/`, specs, ADRs, changelogs.
+3. Obtain the product/strategy description — what the product is meant to be, who pays, what the
+   important flows are. Two paths, never mixed:
+   - **Standalone run** — ask the user once, at the start. Make clear it is optional and proceed
+     either way; do not block on an answer and do not ask again later.
+   - **Orchestrated run (under `audit`)** — a parallel subagent cannot prompt the user. The
+     dispatcher collects this description in preflight and hands it down as an **input**; this
+     domain never asks for it and never re-asks.
+   - If it arrives empty under either path, that is a recorded coverage fact, not a reason to stop:
+     evidence priority falls to repository documentation and code reconstruction.
+4. Record which of the three evidence sources were actually available — the report must disclose it.
+5. Build the product model (section 1) before running any detection pass over it.
+6. For each candidate finding, state the mechanism from code (or absence) to business impact before
+   filing it.
+
+**Establishing absence.** A missing lifecycle exit, gate, or confirmation has no `file:line`; use
+the `expected surface absent` locator from `../../core/report-model.md`, state where it was
+expected, and state how its absence was established — a shared base flow, a generic handler, or a
+different module all count as "elsewhere" and must be checked before absence is asserted.
+
+**A note on what a single repository can prove.** An entity's lifecycle may be closed by a service
+that is not in this codebase, and a monetization path may live in a payment provider's configuration
+rather than in the code. Where a finding's mechanism depends on nothing existing elsewhere, say so
+explicitly and let it temper confidence (section 6) rather than asserting the gap as certain.
+
+## 5. Knowledge tiers
+
+- **Tier 1 — universal product-integrity invariants.** Every entity has a path to closure, every
+  flow that begins has a completion or an explicit dead end by design, every paid gate that exists
+  actually gates. Always applied.
+- **Tier 2 — ecosystem general practice.** The model's own knowledge of how products of the detected
+  kind (subscription SaaS, marketplace, content platform, …) normally shape lifecycles and
+  monetization — trials terminate, cancellation exists next to subscription, a quota that is shown
+  is enforced.
+- **Tier 3 — codified project conventions.** No `knowledge-*` plugin in this marketplace codifies a
+  project's own product or domain conventions today — say so plainly and record it as a coverage
+  line rather than implying the check ran. Should such a plugin exist in a session, the dependency is
+  **soft**: its absence never blocks tiers 1 and 2.
+
+## 6. Report
+
+Read `../../core/report-model.md` and follow it exactly — output location, finding fields, evidence
+locators, severity and confidence, opportunities, run comparison, and the mandatory coverage section.
+Nothing from it is restated here.
+
+- **Finding-id prefix: `BA`** — `BA-1`, `BA-2`, … stable within the report.
+- Confidence follows the evidence priority the report model already fixes: the product/strategy
+  description outranks repository documentation, which outranks reconstruction from code alone.
+- **Remediating skill.** A business-integrity finding is usually a bespoke product decision with no
+  owning convention skill in this marketplace; leave the field empty in that case rather than
+  forcing a match. Name a fully-qualified `knowledge-*` skill only when the fix is genuinely a
+  delivery-layer convention (for example, wiring a missing cancellation action through an existing
+  form pattern).
+- Opportunities here are typically proactive monetization or flow ideas the product does not yet
+  pursue — mark them per the report model, never mixed into findings.
+- The bridge to fixing is `auditing:remediate`. This audit names findings and stops.

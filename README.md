@@ -10,9 +10,10 @@ Native Claude Code plugin marketplace.
 ```
 
 Every plugin below installs the same way — swap in its name:
-`agent-companion`, `knowledge`, `knowledge-seo`, `knowledge-vue`, `planning`,
-`auditing`, `auditing-prs`, `terse`. Some plugins declare dependencies on others (see
-each entry) — install the dependency too, the plugin does not do it for you.
+`agent-companion`, `knowledge`, `knowledge-seo`, `knowledge-principles`,
+`knowledge-vue`, `planning`, `auditing`, `auditing-prs`, `terse`. Some plugins declare
+dependencies on others (see each entry) — install the dependency too, the plugin does
+not do it for you.
 
 ## Plugins
 
@@ -77,8 +78,9 @@ each entry) — install the dependency too, the plugin does not do it for you.
 - **knowledge-seo** — Stack-independent SEO policy knowledge: what "correct"
   looks like for meta tags, structured data, sitemaps, robots, and the rest —
   independent of any framework. Depends on `knowledge`. Consumed by
-  `knowledge-vue`'s delivery skills (`seo`, `robots`) and required by
-  `auditing:seo`.
+  `knowledge-vue`'s delivery skills (`seo`, `robots`) and used by `auditing:seo`
+  as its policy tier when present — that audit degrades instead of stopping when
+  it is not installed.
   - `meta-tags` — title/description/canonical/robots meta, favicon, head validity
   - `structured-data` — schema.org JSON-LD type selection + required fields
   - `social-preview` — Open Graph + Twitter/X Cards, per-platform quirks
@@ -95,6 +97,35 @@ each entry) — install the dependency too, the plugin does not do it for you.
   - `indexnow` — instant URL-change notification for Bing/Yandex/Seznam/Naver/Yep
   - `generative-seo` — AI answer engines (AI Overviews, ChatGPT Search,
     Perplexity): llms.txt, AI-crawler access, entity authority
+
+- **knowledge-principles** — Ten always-on programming rules as intent-triggered
+  skills, stack-independent. Depends on `knowledge`. Ships a `SessionStart` hook
+  that injects the precedence line, the ten one-line rules and the
+  proportionality-level question — the rules themselves are read on demand.
+  All ten are **hard** rules: a violation is a defect, not a preference. Two
+  shared core docs decide how they apply: `core/precedence.md` (a codified project
+  convention always beats a universal principle — a mandated wrapper is compliance,
+  not excess) and `core/proportionality.md` (which rules are active for a throwaway
+  script, for application code, and for a new public surface; rule 9 is a floor and
+  is never silent). Every rule skill carries a `What this rule does not claim`
+  section, so what the consolidation drops is recorded rather than hidden, plus
+  `references/vue.md` and `references/laravel.md` illustrations.
+  - `principles` — the umbrella: the index of the ten rules and the
+    principle-versus-principle conflict table. Self-activating.
+  - `clarity` — clarity over cleverness
+  - `abstraction` — I/O boundaries abstract immediately, domain on the third real
+    case (consolidates YAGNI, DRY/DIP/OCP timing, speculative generality)
+  - `boy-scout` — clean up touched lines only (Broken Windows, narrowed)
+  - `module-boundaries` — depend on the contract, not the structure (SoC, cohesion,
+    coupling, encapsulation, SRP, ISP, Law of Demeter)
+  - `errors` — strict at input, fail fast inside, degrade at output
+  - `state` — single source of truth, never mutate what you do not own, illegal
+    states unrepresentable
+  - `naming` — name the intent, make effects and dependencies explicit
+  - `performance` — known slow patterns are defects; optimisation requires measurement
+  - `security` — security by default (least privilege); the security floor
+  - `change-safety` — do not touch what you do not understand; observable behaviour
+    is someone's dependency (Chesterton's Fence, Hyrum's Law)
 
 - **knowledge-vue** — One developer's Vue conventions as intent-triggered
   skills, with baseline SEO applied by default. Depends on `knowledge`
@@ -131,6 +162,9 @@ each entry) — install the dependency too, the plugin does not do it for you.
     `knowledge-seo`'s `robots` skill
   - `plugin-registration` — the developer's Vue-plugin registration discipline,
     reused by name from other capability skills
+  - `architecture` — module-graph integrity: import cycles, god-modules, dead
+    modules, layer/boundary leakage. Placement itself stays with
+    `core/architectures/<a>.md` and `core/placement.md`.
 
 - **planning** — Plan-then-build workflow, container for the two workflow skills.
   - `brainstorm` — interviews the user one question at a time about a task,
@@ -138,16 +172,48 @@ each entry) — install the dependency too, the plugin does not do it for you.
   - `implement` — takes an existing plan (usually from `brainstorm`, often in
     a fresh session) and executes it, either inline or via subagent orchestration
 
-- **auditing** — On-demand audits of a **whole application** from a chosen
-  perspective. Strictly read-only: every skill reports findings with evidence and
-  names the skill that owns the fix, but never changes the repository itself.
+- **auditing** — On-demand audits of a **whole application**, one domain per
+  perspective, plus a dispatcher that runs several at once. An audit never changes
+  code: it writes its report and nothing else. The write carve-out is a closed
+  list — `docs/audit/**` only (the per-run directory and `docs/audit/INDEX.md`);
+  source, config, tests, branches, commits and the repository's `CLAUDE.md` stay
+  untouched. Each finding carries evidence, severity, confidence and the
+  fully-qualified skill that owns the fix.
+
+  Every domain runs on three knowledge tiers: universal invariants, general
+  ecosystem practice, and — only when the matching `knowledge-*` plugin is
+  installed — the project's codified conventions. **No domain hard-requires a
+  knowledge plugin**: a missing tier degrades the run and is named in the report's
+  coverage section instead of aborting it.
+  - `audit` — the dispatcher: one stack-detection preflight, an annotated domain
+    table with a `recommended` / `your call` / `not applicable` verdict per domain,
+    then parallel domain subagents. Only the dispatcher writes files; a domain that
+    fails is recorded as `not run` and never aborts the others. Optionally feeds the
+    run through `agent-companion`'s verifier panel.
+  - `security` — trust boundaries, authentication, authorisation, secrets and
+    disclosure, injection, dangerous defaults
+  - `performance` — known-slow patterns, data-access shape, client-side cost,
+    needless waiting
+  - `accessibility` — semantics, keyboard operability, names and state, text
+    alternatives, dynamic content
+  - `reliability` — failure handling, idempotency, cross-step consistency,
+    observability, degradation
+  - `data` — storage invariants: uniqueness, referential integrity, migration
+    safety, money, time, soft deletes, enums, indexes backing real filters
+  - `api-contracts` — response shapes, error format, status codes, pagination,
+    versioning, client-server agreement
+  - `code-quality` — structural harm, never style: god-modules, duplicated
+    knowledge, dead code, hidden coupling, and the accumulated mess that
+    `knowledge-principles`' boy-scout rule deliberately leaves out of a diff
   - `business-analysis` — reconstructs the product model from code and reports
     broken flows, entities without a lifecycle, monetization leaks, and
-    contradictions between stated intent and implementation.
-  - `seo` — static SEO baseline check across the project. **Requires the
-    `knowledge-seo` plugin** (`/plugin install knowledge-seo@claude-skills`),
-    which owns all SEO policy knowledge; without it the skill stops instead of
-    auditing.
+    contradictions between stated intent and implementation
+  - `seo` — static SEO baseline check across the project. SEO policy lives in
+    `knowledge-seo`; the audit uses it as its convention tier when installed and
+    runs on universal invariants plus general practice when it is not.
+  - `remediate` — the bridge to fixing: reads a report, lets you pick findings, and
+    writes a plan under `docs/plans/` following the `planning` plugin's conventions.
+    It never edits a report and never changes code.
 
   For audits of a **PR diff** rather than the whole application, use `auditing-prs`.
 
@@ -173,14 +239,19 @@ each entry) — install the dependency too, the plugin does not do it for you.
   ([`skills/capture/`](plugins/knowledge/skills/capture) · shared [`core/`](plugins/knowledge/core))
 - [`plugins/knowledge-seo/`](plugins/knowledge-seo) — stack-independent SEO policy knowledge
   ([`skills/`](plugins/knowledge-seo/skills) — 13 skills, one per SEO concern · [`hooks/`](plugins/knowledge-seo/hooks))
+- [`plugins/knowledge-principles/`](plugins/knowledge-principles) — ten universal programming rules
+  ([`skills/principles/`](plugins/knowledge-principles/skills/principles) umbrella · [`skills/`](plugins/knowledge-principles/skills) — 11 skills total, each rule with `references/vue.md` + `references/laravel.md` ·
+  [`core/precedence.md`](plugins/knowledge-principles/core/precedence.md) · [`core/proportionality.md`](plugins/knowledge-principles/core/proportionality.md) ·
+  [`hooks/`](plugins/knowledge-principles/hooks) — `SessionStart` hook)
 - [`plugins/knowledge-vue/`](plugins/knowledge-vue) — one developer's Vue conventions
-  ([`skills/vue-work/`](plugins/knowledge-vue/skills/vue-work) router · [`skills/`](plugins/knowledge-vue/skills) — 19 skills total ·
+  ([`skills/vue-work/`](plugins/knowledge-vue/skills/vue-work) router · [`skills/`](plugins/knowledge-vue/skills) — 20 skills total ·
   [`core/`](plugins/knowledge-vue/core) shared docs: [`runtimes/`](plugins/knowledge-vue/core/runtimes) · [`architectures/`](plugins/knowledge-vue/core/architectures) · [`project-types/`](plugins/knowledge-vue/core/project-types) · [`placement.md`](plugins/knowledge-vue/core/placement.md) · [`disciplines/`](plugins/knowledge-vue/core/disciplines) ·
   [`hooks/`](plugins/knowledge-vue/hooks) — `SessionStart` hook)
 - [`plugins/planning/`](plugins/planning) — plan-then-build workflow
   ([`skills/brainstorm/`](plugins/planning/skills/brainstorm) · [`skills/implement/`](plugins/planning/skills/implement))
 - [`plugins/auditing/`](plugins/auditing) — whole-application audit plugin
-  ([`skills/business-analysis/`](plugins/auditing/skills/business-analysis) · [`skills/seo/`](plugins/auditing/skills/seo) · shared [`core/`](plugins/auditing/core))
+  ([`skills/audit/`](plugins/auditing/skills/audit) dispatcher · [`skills/`](plugins/auditing/skills) — 7 audit domains + `business-analysis` + `seo` + [`skills/remediate/`](plugins/auditing/skills/remediate) ·
+  shared [`core/`](plugins/auditing/core): [`report-model.md`](plugins/auditing/core/report-model.md) · [`stack-detection.md`](plugins/auditing/core/stack-detection.md) · [`panel-integration.md`](plugins/auditing/core/panel-integration.md))
 - [`plugins/auditing-prs/`](plugins/auditing-prs) — GitHub PR review plugin
   ([`skills/audit-pr/`](plugins/auditing-prs/skills/audit-pr) · [`skills/prepush-audit/`](plugins/auditing-prs/skills/prepush-audit) · shared [`core/`](plugins/auditing-prs/core))
 - [`plugins/terse/`](plugins/terse) — terse output-style plugin

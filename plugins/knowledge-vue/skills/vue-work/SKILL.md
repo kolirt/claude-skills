@@ -93,6 +93,7 @@ surface, so follow `core/runtimes/nuxt.md` instead.
 | Pattern | When | Where it lives |
 |---|---|---|
 | architecture / placement | what-goes-where, resolving placement tokens to paths | `core/architectures/<architecture>.md` (vocabulary: `core/placement.md`) |
+| architecture integrity | import cycle, god-module, dead module, layer/boundary leak | `../architecture/SKILL.md` |
 | SSR/CSR bootstrap | createApp + bootstrap process for the active project type | `core/project-types/<projectType>.md` |
 | modals | "add a modal" / dialog work | `../modals/SKILL.md` |
 | vue-router | set up / configure the router `[runtime: vite-vue only]` | `../vue-router/SKILL.md` |

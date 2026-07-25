@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# SessionStart hook for knowledge-principles. Runs on every session start (Claude Code
+# lifecycle) and injects the ten rules as ONE-LINE POINTERS plus the gate that decides
+# which of them are active. It does NOT dump the rule skills: each rule carries its
+# obligations, its violation symptoms and — critically — its "does not claim" limits in
+# its own skill, which the model loads on demand via the Skill tool.
+set -euo pipefail
+
+python3 - <<'PY'
+import json
+
+reminder = (
+    "<EXTREMELY_IMPORTANT>\n"
+    "This environment ships the **knowledge-principles** rules: ten hard programming rules. "
+    "A violation is a defect, not a preference.\n\n"
+    "PRECEDENCE, before any rule: a codified project convention (a `knowledge-*` convention "
+    "or the project's own CLAUDE.md) beats a framework idiom, which beats a universal "
+    "principle. A mandated wrapper, factory or registry is compliance, not excess — never "
+    "report one as a principle violation.\n\n"
+    "PROPORTIONALITY, decide this FIRST, first match wins:\n"
+    "  (a) does the change add or alter an endpoint, route, migration, schema, auth/session "
+    "path, money path, or a package's public export? -> LEVEL 3\n"
+    "  (b) does it live inside an existing application's source tree? -> LEVEL 2\n"
+    "  (c) otherwise (scratch script, spike, throwaway helper) -> LEVEL 1\n"
+    "Level is decided by WHAT KIND OF CODE, never by diff size. At level 1 only rules 1, 7, "
+    "9 and 10 are active; at level 2 all ten; at level 3 all ten with 5 and 9 applied "
+    "strictly. Rule 9 is a floor: active at every level, never overridden by any convention "
+    "or idiom.\n\n"
+    "THE TEN RULES (pointers, not the rules themselves):\n"
+    "  1 clarity           — clarity over cleverness\n"
+    "  2 abstraction       — I/O boundaries abstract immediately; domain abstracts on the "
+    "third real case\n"
+    "  3 boy-scout         — clean up touched lines only\n"
+    "  4 module-boundaries — depend on the contract, not the structure\n"
+    "  5 errors            — strict at input, fail fast inside, degrade at output\n"
+    "  6 state             — single source of truth; never mutate what you do not own; "
+    "illegal states unrepresentable\n"
+    "  7 naming            — name the intent; make effects and dependencies explicit\n"
+    "  8 performance       — known slow patterns are defects; optimisation requires "
+    "measurement\n"
+    "  9 security          — security by default\n"
+    " 10 change-safety     — do not touch what you do not understand; observable behaviour "
+    "is someone's dependency\n\n"
+    "For anything beyond a trivial edit, invoke the `knowledge-principles:principles` skill "
+    "(via the Skill tool) and read the rule that owns the question. These one-liners are "
+    "pointers: a rule quoted without its \"does not claim\" limits is routinely applied "
+    "where it does not reach. Where two rules genuinely collide, the umbrella skill's "
+    "conflict table decides; where nothing decides, name the conflict and let the user "
+    "choose — never resolve it silently.\n"
+    "</EXTREMELY_IMPORTANT>"
+)
+
+print(json.dumps({
+    "hookSpecificOutput": {
+        "hookEventName": "SessionStart",
+        "additionalContext": reminder,
+    }
+}))
+PY

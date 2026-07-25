@@ -25,14 +25,20 @@
     {
       "name": "knowledge-vue",
       "source": "./plugins/knowledge-vue",
-      "description": "The developer's Vue conventions as intent-triggered skills over shared Vue core rules, with SEO auto-application (baseline SEO by default). Depends on the knowledge base and knowledge-seo plugins.",
-      "version": "0.3.0"
+      "description": "The developer's Vue conventions as intent-triggered skills over shared Vue core rules, with SEO auto-application (baseline SEO by default) and module-graph integrity rules (import cycles, god-modules, dead modules, layer leakage). Depends on the knowledge base and knowledge-seo plugins.",
+      "version": "0.4.0"
     },
     {
       "name": "knowledge-seo",
       "source": "./plugins/knowledge-seo",
       "description": "Stack-independent SEO conventions (meta, structured data, robots, sitemaps, social previews, Core Web Vitals, IndexNow) for baseline-by-default SEO. Policy knowledge only \u2014 on-demand project-wide SEO auditing moved to `auditing:seo` (`/plugin install auditing@claude-skills`).",
       "version": "0.1.3"
+    },
+    {
+      "name": "knowledge-principles",
+      "source": "./plugins/knowledge-principles",
+      "description": "Ten always-on programming rules as intent-triggered skills: clarity, abstraction timing, boy-scout cleanup, module boundaries, errors, state, naming, performance, security, change safety. Every rule states what it does not claim, so the consolidation it performs is recorded rather than hidden. Two shared core docs fix how the rules apply: precedence (a codified project convention always beats a universal principle) and proportionality (which rules are active for throwaway code, application code, and a new public surface). Stack-independent \u2014 per-rule Vue and Laravel references illustrate the rule in a framework's shape, never a project's conventions.",
+      "version": "0.1.0"
     },
     {
       "name": "planning",
@@ -43,8 +49,8 @@
     {
       "name": "auditing",
       "source": "./plugins/auditing",
-      "description": "On-demand audits of a WHOLE application from a chosen perspective: business-analysis (product integrity, flows, monetization) and seo (SEO baseline). Read-only \u2014 reports findings, never fixes them. Audits of PR diffs and changes belong to the auditing-prs plugin. The seo skill requires the knowledge-seo plugin to be installed separately.",
-      "version": "0.1.0"
+      "description": "On-demand audits of a WHOLE application, one domain per perspective plus a dispatcher that runs several at once: audit (dispatcher), security, performance, accessibility, reliability, code-quality, data, api-contracts, business-analysis, seo, and remediate (turns a report into a plan). An audit never changes code \u2014 it writes reports under docs/audit/ and nothing else (the repository's CLAUDE.md included in what it never touches). Every domain runs on three knowledge tiers and no domain hard-requires a knowledge plugin: a missing tier degrades the run and is disclosed in the report's coverage section. Optional agent-companion verifier panel, dispatcher-only. Audits of PR diffs and changes belong to the auditing-prs plugin.",
+      "version": "0.2.0"
     },
     {
       "name": "terse",

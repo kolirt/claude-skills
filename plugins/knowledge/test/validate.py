@@ -116,6 +116,20 @@ FILE_VALUED_TOKENS = load_file_valued_tokens()
 # Adding a name here is a deliberate, reviewable act — it shows up as a diff
 # to this file, not as prose buried in a skill body.
 UMBRELLA_SKILLS = {"vue-work"}
+# Explicit, hard-coded allow-list of POLICY skills inside a CODE_PLUGINS plugin —
+# a skill that codifies rules ABOUT code (which dependency directions are legal,
+# what makes a module dead, when a boundary has leaked) without ever telling the
+# agent to write a file. It has no artifact to reproduce, so it has no etalon to
+# ship, and demanding one would force an invented file whose only purpose is to
+# satisfy this validator.
+#
+# This is NOT the same exemption as UMBRELLA_SKILLS: an umbrella skill is an
+# index that routes to other skills, a policy skill is a leaf that decides a
+# question. Keeping the two lists apart means neither has to lie about what its
+# members are. Same discipline as UMBRELLA_SKILLS otherwise: matched on the
+# frontmatter `name:`, never on body text, so entry is a reviewable one-line diff
+# to this file rather than prose a skill can plant in itself.
+POLICY_SKILLS = {"architecture"}
 # A path-looking token; the char class admits `{}` so tokenised paths match too.
 PATHISH = re.compile(r"(?:[@~]/[\w@./{}-]+|(?<![\w./{}-])src/[\w@./{}-]+)")
 NAME_THEN_SKILL = re.compile(r"`([a-z0-9][a-z0-9-]*)`(?:'s)?\s+skill\b")
@@ -151,6 +165,17 @@ def is_umbrella(name):
     way in, and it is a one-line, reviewable diff to this file.
     """
     return name in UMBRELLA_SKILLS
+
+
+def is_policy(name):
+    """Explicit, hard-coded exemption for a policy skill (see POLICY_SKILLS),
+    matched ONLY on the skill's frontmatter `name:`. A policy skill states rules
+    about code and never produces a file, so reference-first has no artifact to
+    bind it to. Deliberately a separate list from UMBRELLA_SKILLS: the two
+    exemptions exist for different reasons and conflating them would make either
+    list unreadable as evidence of what its members are.
+    """
+    return name in POLICY_SKILLS
 
 
 def is_skeleton(text):
@@ -333,9 +358,13 @@ def check_direction_style(text, has_valid_etalon, name=None):
     (`is_skeleton`) and an explicit, hard-coded umbrella-skill allow-list
     (`is_umbrella`, matched on `name` — the frontmatter `name:`, never body
     text) — never the absence of code fragments, which is not evidence of
-    anything.
+    anything. A third exemption, `is_policy`, covers a rules-only skill that
+    never writes a file (see POLICY_SKILLS); it is kept as its own list rather
+    than folded into the umbrella one, because the two say different things
+    about their members.
     """
-    if has_valid_etalon or is_skeleton(text) or is_umbrella(name):
+    if (has_valid_etalon or is_skeleton(text) or is_umbrella(name)
+            or is_policy(name)):
         return []
     level = "error" if REFERENCE_FIRST_ENFORCED else "warning"
     return [(level, "direction-style", "code skill has no references/ etalon")]
