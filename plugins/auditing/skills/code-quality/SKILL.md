@@ -23,13 +23,17 @@ is not repeated and this domain does not disagree with it. Invoked directly, it 
 
 | Fact needed | Used for | When absent |
 |---|---|---|
-| Any detected runtime (Vue (Vite), Nuxt, React, Laravel, WordPress) | Resolving imports and building the module graph for the unit | No source unit to read: `skipped: not applicable` for that unit |
-| FSD architecture | Judging cross-layer leakage against a codified layer order | Boundary findings rest on the import graph alone; no claim is made about layer names the project never declared |
-| Test harness | Telling "nothing imports this" apart from "only its own tests import it" | Dead-code findings cap at `confidence: medium`; coverage records that test-only usage could not be distinguished |
-| Convention plugins | Whether tier 3 exists this run, and whether convention drift is reportable at all | Tiers 1 and 2 run; **no convention-drift findings are produced**, and a coverage line names the missing tier |
+| `manifests` (the unit declares a package), or any surface present | Resolving imports and building the module graph for the unit — a library, a CLI, or a server-less package is as auditable here as an application | Neither a manifest nor any surface present (a documentation or configuration tree): `your call` — structural findings are possible but thin, never `skipped: not applicable` |
+| `architecture` (`fsd` / `flat`) | Judging cross-layer leakage against a codified layer order when `fsd` | Boundary findings rest on the import graph alone; no claim is made about layer names the project never declared |
+| `test_harness` | Telling "nothing imports this" apart from "only its own tests import it" | Dead-code findings cap at `confidence: medium`; coverage records that test-only usage could not be distinguished |
+| `framework` | Selecting tier 2 idiom and, for a Vue unit, whether `knowledge-vue:architecture` supplies tier 3 | Tier 2 has no ecosystem idiom to lean on; the module graph is judged on tier 1 alone |
+| `convention_plugins` | Whether tier 3 exists this run, and whether convention drift is reportable at all | Tiers 1 and 2 run; **no convention-drift findings are produced**, and a coverage line names the missing tier |
 
-Every skip is recorded in coverage **with the fact that was missing**. A stack this domain does not run
-on produces no findings — never invented ones, never a guess at what a finding would have looked like.
+This domain has no whole-domain skip: a unit that declares no manifest and has no surface is
+`your call`, judged on tier 1 alone. What IS recorded in coverage, **with the fact that was missing**,
+is every reduced sub-check — a capped dead-code confidence, an absent tier 2 idiom, convention drift
+that could not be reported. A reduced run produces fewer findings, never invented ones and never a
+guess at what a finding would have looked like.
 
 ## 1. What this domain judges
 

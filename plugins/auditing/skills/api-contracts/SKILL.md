@@ -9,8 +9,8 @@ Judges whether the interface between client and server is **consistent and hones
 shaped the same way everywhere, errors a client can branch on, status codes that match what happened,
 and a client whose expectations match what the server actually sends.
 
-The separating sentence: other domains judge one side of the wire — this domain only reports what it
-can show on **both** sides.
+The separating sentence: other domains judge one side of the wire — this domain reports only what two
+locations can show, whether that is the two sides of the wire or two clauses of one contract document.
 
 ## 0. Preflight — stack facts this domain needs
 
@@ -20,24 +20,33 @@ runs detection itself first.
 
 | Fact needed | Used for | When absent |
 |---|---|---|
-| API schema (`openapi.*`, `swagger.*`, or a generated client dir) | Full contract mode — the schema is the declared contract. | Drop to client-internal mode, below. |
-| A server surface (routes, controllers/handlers, serialisers) | The implementation side of the contract. | Only the client side is checkable; state it in coverage. |
-| A client request layer | The consumer side of the contract. | Only the server side is checkable; state it in coverage. |
-| Convention plugins | Whether knowledge tier 3 exists this run. | Tiers 1 and 2 run; the missing tier is a coverage line. |
+| `api_contract` | Full contract mode — the schema is the declared contract. | Drop to client-internal mode, below. |
+| `server` | The implementation side of the contract. | Only the client side is checkable; state it in coverage. |
+| `ui` (as the carrier of a client request layer) | The consumer side of the contract. | Only the server side is checkable; state it in coverage. |
+| `convention_plugins` | Whether knowledge tier 3 exists this run. | Tiers 1 and 2 run; the missing tier is a coverage line. |
 
-**Two modes, driven by detection.**
+**Three modes, driven by detection.**
 
-- **Full contract mode** — an API schema is detected. The schema *is* the declared contract, and every
-  divergence between it and the implementation, or between it and the client, is a finding.
-- **Client-internal consistency mode** — no schema is detected. The domain checks only whether the
+- **Full contract mode** — `api_contract` is present and at least one of `server` or `ui` is also
+  present. The schema *is* the declared contract, and every divergence between it and the
+  implementation, or between it and the client, is a finding.
+- **Contract-document-only mode** — `api_contract` is present but both `server` and `ui` are absent.
+  Neither implementation side is visible, so the document itself is the whole audit: internal
+  consistency of its shape, error format, status codes, pagination, and versioning. Coverage states
+  plainly that neither the server nor the client side was visible this run.
+- **Client-internal consistency mode** — `api_contract` is absent. The domain checks only whether the
   application's own request and response handling is coherent **with itself**: the same endpoint
   described two ways in two places, a field parsed in one call site and ignored in another, an error
   branch that cannot be produced by the code that raises it. Coverage says explicitly that this run
   ran in this mode and what that excludes.
 
-Neither mode **invents the missing side** of the contract. Absent a server, the audit does not assume
-what the server returns; absent a schema, it does not treat one side's types as a specification. With
-no request surface at all, the outcome is `skipped: not applicable`, recorded with the reason.
+No mode **invents the missing side** of the contract. Absent a server, the audit does not assume
+what the server returns; absent a schema, it does not treat one side's types as a specification. `ui`
+being present does not by itself prove a client request layer exists: if reading the unit turns up no
+request-making code, the domain records that finding as `skipped: not applicable` with the reason,
+rather than assuming a client to audit. The outcome is `skipped: not applicable` only when
+`api_contract`, `server`, and `ui` are **all** absent — no contract document and no request surface of
+either kind, recorded with the reason.
 
 ## 1. What this domain judges
 
@@ -137,9 +146,14 @@ Static reading only. Do **not** call a live endpoint, start a server, or generat
 3. Read the **client's request layer**: its request builders, its response types, its error handling.
 4. Read the **schema** if one exists — in full contract mode it is the declared contract and takes
    priority over both implementations, per the source priority in `../../core/report-model.md`.
-5. **Establishing an inconsistency means citing both sides.** A contract finding with only one side
-   quoted is not evidence — it is a suspicion. Two locators, or a schema locator plus an
-   implementation locator, per finding.
+5. **Establishing an inconsistency means citing two locations.** A contract finding with one location
+   quoted is not evidence — it is a suspicion. In full contract mode and client-internal mode those
+   two are the two sides of the wire, or a schema locator plus an implementation locator. In
+   **contract-document-only** mode there is no second side to cite and the rule does not relax into
+   one locator: the two locations are both **inside the document** — the two endpoints whose error
+   shapes disagree, the two collection responses paginated differently, the declared type and the
+   example that contradicts it. A finding that would need an implementation to prove is not available
+   in this mode; coverage says so instead of the report implying it.
 6. An absent convention — no error format, no pagination rule, no versioning decision — has no
    `file:line`. Use the `expected surface absent` locator, naming where the convention was expected
    and how you established it is not declared elsewhere.
@@ -166,7 +180,10 @@ Static reading only. Do **not** call a live endpoint, start a server, or generat
 Read `../../core/report-model.md` and follow it as written; nothing from it is restated here.
 
 - Finding-id prefix: **`API`** — `API-1`, `API-2`, …
-- State which of the two modes the run used, in the report's scope declaration and again in coverage.
+- State which of the three modes the run used — full contract, client-internal consistency, or
+  contract-document-only — in the report's scope declaration and again in coverage. In
+  contract-document-only mode coverage also states that no implementation side was visible, so
+  nothing in the report is a claim about what the server returns or what the client sends.
 - `remediating skill` is fully qualified when a skill owns the fix — a client-side request-layer fix
   may be owned by `knowledge-vue:http-request` — and left empty when none does.
 - Never read `panel-integration.md`: that is dispatcher-only.

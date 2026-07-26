@@ -17,19 +17,20 @@ that cost (`auditing:reliability`) and not whether the schema is shaped to suppo
 
 Read `../../core/stack-detection.md`. Under the dispatcher the **snapshot** arrives as an input:
 detection is not repeated, and this domain does not disagree with the facts it was handed. Invoked
-directly, this domain runs detection itself first.
+directly, this domain runs the script itself first.
 
 | Fact needed | Used for | When absent |
 |---|---|---|
-| Data layer (Laravel / Prisma / Drizzle / raw SQL) | Reading query shape: per-item queries, eager loading, result-set bounds | Data-access sub-checks are `skipped: not applicable`; the domain still audits client cost and concurrency |
-| Vue (Vite) / Nuxt / React | Bundle shape, render cost, list rendering, route splitting | Client-side sub-checks `skipped: not applicable` |
-| Any server-side runtime | Locating hot paths, request handlers, and synchronous blocking calls | Server-side sub-checks `skipped: not applicable` |
-| API schema | Whether a batch form of an endpoint exists next to the per-item form | Batch availability is read from the client and server code instead; coverage says so |
-| Convention plugins | Whether knowledge tier 3 exists this run | Tiers 1 and 2 run; a coverage line names the missing tier |
+| `data_schema` or `server` | Reading query shape: per-item queries, eager loading, result-set bounds, hot paths, and synchronous blocking calls | Data-access and server-side sub-checks are `skipped: not applicable`; the domain still audits client cost where `ui` is present |
+| `ui` | Bundle shape, render cost, list rendering, route splitting — the client-side cost sub-checks | Client-side sub-checks `skipped: not applicable` |
+| `api_contract` | Whether a batch form of an endpoint exists next to the per-item form | Batch availability is read from the client and server code instead; coverage says so |
+| `convention_plugins` | Whether knowledge tier 3 exists this run | Tiers 1 and 2 run; a coverage line names the missing tier |
 
-Every skip is recorded in the coverage section **with the fact that was missing**. A stack this
-domain does not run on produces no findings — never invented ones, and never a guess at what a
-finding would have looked like.
+Neither `data_schema`/`server` nor `ui` present in a unit means there is no cost surface at all: the
+whole domain is `skipped: not applicable` there, wholesale rather than per sub-check. Every skip is
+recorded in the coverage section **with the fact that was missing**. A stack this domain does not run
+on produces no findings — never invented ones, and never a guess at what a finding would have looked
+like.
 
 ## 1. What this domain judges
 

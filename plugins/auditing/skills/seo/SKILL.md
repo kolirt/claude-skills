@@ -15,16 +15,18 @@ ranking factor (`auditing:performance`).
 
 ## 0. Preflight — stack facts this domain needs
 
-Read `../../core/stack-detection.md`. Under the dispatcher the **snapshot** arrives as an input:
-detection is not repeated, and this domain does not disagree with the facts it was handed. Invoked
-directly, this domain runs detection itself first.
+Read `../../core/stack-detection.md`. The snapshot is produced by the detection script it documents.
+Under the dispatcher the **snapshot** arrives as an input: detection is not repeated, and this domain
+does not disagree with the facts it was handed. Invoked directly, this domain runs the detection
+script itself first.
 
 | Fact needed | Used for | When absent |
 |---|---|---|
-| Any web-delivery surface (Vue/Nuxt/React, Laravel, WordPress) | Establishes there are pages to audit at all | No surface in this unit: the whole domain is `skipped: not applicable` for that unit |
-| Vue (Vite) / Nuxt / React | Whether JS-rendering sub-checks (SSR/SSG, crawlable routing) apply | Client-rendering sub-checks `skipped: not applicable`; delivery is assumed server-rendered or static |
-| i18n markers (`vue-i18n`/`next-intl`, `lang/`/`locales/`) | Whether an hreflang scaffold is expected at all | hreflang checklist item `skipped: not applicable` |
-| Convention plugins | Whether `knowledge-seo` supplies knowledge tier 3 this run | Tiers 1 and 2 run; a coverage line names `knowledge-seo` as unavailable |
+| `ui` (a web-delivery surface) | Establishes there are pages to audit at all — a `server` surface alone does not: an API-only backend has no page for a crawler to fetch | `ui` absent in this unit: the whole domain is `skipped: not applicable` for that unit, whatever `server` says |
+| `framework` (`vue-vite` or `nuxt`) | Whether JS-rendering sub-checks (SSR/SSG, crawlable routing) apply | Neither recorded: client-rendering sub-checks `skipped: not applicable`; delivery is assumed server-rendered or static |
+| `i18n` | Whether an hreflang scaffold is expected at all | hreflang checklist item `skipped: not applicable` |
+| `convention_plugins` | Whether `knowledge-seo` supplies knowledge tier 3 this run | Tiers 1 and 2 run; a coverage line names `knowledge-seo` as unavailable |
+| `indexability` (public / internal / unreleased) | This domain's stake — whether discoverability findings matter and how urgently; supplied by the dispatcher, not detected | An unanswered question is recorded as unknown, never assumed public |
 
 **`knowledge-seo` is a soft dependency, not a precondition.** If it is available this session, it is
 knowledge tier 3 — the source of SEO policy — and this skill defers to its skills by fully-qualified

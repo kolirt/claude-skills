@@ -29,9 +29,21 @@ down. No domain repeats any part of it.
 
 ### 2.1 Stack snapshot
 
-Read `../../core/stack-detection.md` and build the **snapshot**. Every domain subagent receives it
-as an input; detection is never re-run inside a domain and the snapshot is not argued with. For
-monorepos the snapshot is the list of units that document defines, not a single scalar.
+Read `../../core/stack-detection.md`, then **run the detection script exactly once**:
+
+```
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/detect-stack.py"
+```
+
+Run it in the audited repository's own working directory — never by `cd`-ing into the plugin. Its JSON
+output **is** the snapshot; the core doc owns what that JSON contains, how markers are cited, how units
+are discovered, and the `python3`-unavailable fallback. Do not restate any of it here.
+
+The dispatcher's only addition is the two **agent-supplied facts** the script cannot see:
+`convention_plugins` (2.3) and `indexability` (2.5). It does not re-derive, second-guess, or
+"double-check" what the script reported with directory reads of its own — an absent surface is absent.
+Every domain subagent receives the resulting snapshot as an input; detection is never re-run inside a
+domain and the snapshot is not argued with.
 
 ### 2.2 Product/strategy description
 
@@ -49,16 +61,25 @@ domain.
 
 ### 2.3 Convention plugins
 
-Detect which `knowledge-*` plugins are available this session. This is a row in the marker table
-like any other stack fact, and it is what decides whether **knowledge tier 3** exists for a given
-domain in this run. The tier definitions and the soft-dependency rule live in
-`../../core/report-model.md`; do not restate them here. Pass the result down with the snapshot.
+Detect which `knowledge-*` skills are available this session and record the result as the
+`convention_plugins` fact **in the snapshot**. It belongs here rather than to the script because it is
+session state, not a file on disk, and it is what decides whether **knowledge tier 3** exists for a
+given domain in this run. The tier definitions and the soft-dependency rule live in
+`../../core/report-model.md`; do not restate them here.
 
 ### 2.4 Prior runs
 
 Read `docs/audit/`, and `docs/audit/INDEX.md` if it exists, to identify the most recent prior run
 and the domains it covered. This is the basis for run comparison in section 9. No prior run is a
 normal state; it means every finding in this run is `new`.
+
+### 2.5 Indexability
+
+Ask the user, **once**, one optional question: is the project **public**, **internal**, or
+**unreleased**? Record the answer as the `indexability` fact in the snapshot. It is asked here for the
+same mechanical reason as 2.2 — a **parallel subagent cannot prompt the user** — and `seo`'s verdict
+turns on it, while intent has no marker a script could read. An unanswered question is recorded as
+**unknown**, never assumed to be public.
 
 ## 3. The annotated domain table
 
@@ -67,27 +88,36 @@ purpose, a **detection verdict**, and the reason for that verdict.
 
 The three verdicts:
 
-- **`recommended`** — the snapshot carries the facts this domain needs, and the domain applies to
-  almost any codebase.
+- **`recommended`** — the snapshot carries the surfaces this domain needs, and the domain applies to
+  almost any codebase that has them.
 - **`your call`** — the domain applies, but its value depends on the project's stage or priorities,
   or it would run in a reduced mode.
-- **`not applicable`** — a fact the domain requires is absent. **Name the missing fact.**
+- **`not applicable`** — a surface the domain requires is absent. **Name the missing fact.**
 
-Verdicts are resolved from the snapshot at run time, per the rules below:
+Verdicts are resolved per unit at run time, per the rules below. Each rule reads only **named snapshot
+facts plus the two preflight inputs** — the product/strategy description from 2.2 and `indexability`
+from 2.5 — so a reader can resolve every rule mechanically, with no judgement left over. A rule that
+needed anything else would not be resolvable before dispatch, which is the whole point of this table.
+
+A verdict here is a **dispatch decision**, not a promise about the outcome. A dispatched domain may
+still end at `not applicable` once it starts reading — `data` and `api-contracts` say so explicitly,
+because a `server` or `ui` surface is not proof that anything is persisted or that any request is
+made. That is recorded in coverage with its reason and is not a defect in this table.
 
 | Domain | Purpose | Verdict rule |
 |---|---|---|
-| `security` | Whether the app is safe by default: authentication, authorisation, validation, secrets, injection and rendering sinks | `recommended` with any application runtime detected; `not applicable` only when no application surface exists at all |
-| `reliability` | Whether it keeps working when something fails, and whether anyone would know | `recommended` with any application runtime detected; `not applicable` when there is no runtime to audit |
-| `code-quality` | Structural health: tangles, duplicated knowledge, broken boundaries, dead code | `recommended` with any detected runtime whose module graph can be resolved; `not applicable` when no source unit is readable |
-| `performance` | Work the app does that it does not need to do: query shape, over-fetching, client cost | `recommended` when a data layer or a client or server runtime is present; `not applicable` when none of the three is |
-| `data` | Whether the schema makes wrong data impossible: constraints, keys, migrations, money and time | `recommended` when a data-layer marker is present; `your call` when none is, since the domain then runs in its reduced API-boundary mode; `not applicable` only with neither a schema nor any data-handling surface |
-| `api-contracts` | Whether the client-server contract is consistent: shapes, errors, status codes, pagination, versioning | `recommended` when an API schema is detected (full contract mode); `your call` without one, since the domain drops to client-internal consistency mode; `not applicable` with no request surface at all |
-| `accessibility` | Whether the interface can be operated without sight, colour, or a mouse | `recommended` when a UI runtime or server-rendered templates are present; `not applicable` when the unit has no interface surface |
-| `business-analysis` | Product integrity: broken flows, entities without lifecycle, monetization leaks, intent-vs-implementation contradictions | `recommended` when a product surface is present **and** a product/strategy description was supplied in 2.2; `your call` when a product surface is present but the description is empty, since intent is then reconstructed from code alone; `not applicable` only for a repository with no discernible product surface — a library, a build tool, infrastructure-only code |
-| `seo` | Whether the crawler-facing baseline is closed: titles, canonicals, robots, sitemaps, structured data | `recommended` when a web-delivery surface is present **and** the project is publicly indexable; `your call` when a web-delivery surface exists but the project is internal or unreleased, where the SEO stake is a priority question; `not applicable` when no web-delivery surface was detected |
+| `security` | Whether the app is safe by default: authentication, authorisation, validation, secrets, injection and rendering sinks | `recommended` when `server` is present; `your call` when only `ui` is present, since client-side enforcement and secret exposure are still auditable but the server side is not there to check; `not applicable` when neither `server` nor `ui` is present |
+| `reliability` | Whether it keeps working when something fails, and whether anyone would know | `recommended` when `server` is present; `your call` when `server` is absent but `ui` or `data_schema` is present, since degradation or multi-step write consistency is still auditable; `not applicable` only when `server`, `ui` and `data_schema` are all absent |
+| `code-quality` | Structural health: tangles, duplicated knowledge, broken boundaries, dead code | `recommended` when the unit declares a `manifest` or any surface is present — structural harm is auditable in a library or a CLI with neither `ui` nor `server`; `your call` when the unit has neither, a documentation or configuration tree where findings are possible but thin. Never `not applicable`. `architecture` and the unit's `framework` list decide whether `knowledge-vue:architecture` supplies tier 3 |
+| `performance` | Work the app does that it does not need to do: query shape, over-fetching, client cost | `recommended` when `data_schema` or `server` is present; `your call` when only `ui` is present, where the audit covers client cost only; `not applicable` when none of the three is present |
+| `data` | Whether the schema makes wrong data impossible: constraints, keys, migrations, money and time | `recommended` when `data_schema` is present; `your call` when it is absent but `server` or `ui` is present, since the domain then runs its reduced API-boundary mode; `not applicable` when `data_schema`, `server` and `ui` are all absent. A reduced-mode unit where no data-handling code turns up while reading it reports `not applicable` with that reason — a surface is not proof that anything is persisted |
+| `api-contracts` | Whether the client-server contract is consistent: shapes, errors, status codes, pagination, versioning | `recommended` when `api_contract` is present — full contract mode when `server` or `ui` is present too, and contract-document-only mode when neither is, where the document is audited for internal consistency alone; `your call` when `api_contract` is absent but `server` or `ui` is present, since the domain drops to client-internal consistency mode; `not applicable` when `api_contract`, `server` and `ui` are all absent |
+| `accessibility` | Whether the interface can be operated without sight, colour, or a mouse | `recommended` when `ui` is present; `not applicable` when `ui` is absent |
+| `business-analysis` | Product integrity: broken flows, entities without lifecycle, monetization leaks, intent-vs-implementation contradictions | `recommended` when `ui` or `server` is present **and** a product/strategy description was supplied in 2.2; `your call` in every other case where the unit shows any sign of being an application — `ui` or `server` present with an empty description (intent reconstructed from code alone), or neither present while the unit declares a `manifest` or carries any other surface (a CLI tool, a library, a schema-only or contract-only package: a thinner product model, not no product model); `not applicable` only when the unit declares no `manifest` and has no surface at all |
+| `seo` | Whether the crawler-facing baseline is closed: titles, canonicals, robots, sitemaps, structured data | `recommended` when `ui` is present **and** `indexability` is public; `your call` when `ui` is present but `indexability` is internal, unreleased, or unknown, where the SEO stake is a priority question; `not applicable` when `ui` is absent, whatever `server` says — the detector's `server` also covers an API-only backend with no page a crawler could fetch |
 
-Every verdict is **evidence-based, never a guess**: it cites the snapshot fact that produced it, and
+Every verdict is **evidence-based, never a guess**: it cites the snapshot fact — and its marker — that
+produced it, and
 absence of a marker is absence, not a weaker presence. A `not applicable` verdict is **disclosed in
 the table and carried into the run's coverage section** — a domain is never quietly dropped from the
 list so the run looks cleaner than it was.
@@ -114,7 +144,9 @@ every domain ran, a single domain name, otherwise `custom`) — before executing
 
 Dispatch one subagent per selected domain, in parallel. Each receives:
 
-- the stack snapshot from 2.1, including the convention-plugin result from 2.3;
+- the stack snapshot from 2.1 — the detection script's JSON plus the two agent-supplied facts,
+  `convention_plugins` from 2.3 and `indexability` from 2.5. A subagent **never re-runs detection**
+  and never re-derives a surface the snapshot already answered;
 - the product/strategy description from 2.2, verbatim, or the explicit fact that it is empty;
 - the scope and any focus boundary the user stated;
 - its own domain skill to follow — `auditing:<domain>` — as the sole authority on what it judges.

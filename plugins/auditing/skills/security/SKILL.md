@@ -17,19 +17,20 @@ system stays up (`auditing:reliability`) and not whether the stored shape is cor
 
 Read `../../core/stack-detection.md`. Under the dispatcher the **snapshot** arrives as an input:
 detection is not repeated, and this domain does not disagree with the facts it was handed. Invoked
-directly, this domain runs detection itself first.
+directly, this domain runs the script itself first.
 
 | Fact needed | Used for | When absent |
 |---|---|---|
-| Any server-side runtime (Laravel, Nuxt server, WordPress, an API surface) | Locating the enforcement boundary — where a request is actually authorised | No server-side surface in this unit: the server-side sub-checks are `skipped: not applicable`; client-side-only enforcement becomes the central question instead |
-| Vue (Vite) / Nuxt / React | Locating rendering sinks, client-visible config, and build output | Client-side sub-checks `skipped: not applicable` |
-| Data layer (Laravel / Prisma / Drizzle / raw SQL) | Locating query construction and mass-assignment surfaces | Injection and mass-assignment sub-checks `skipped: not applicable` |
-| API schema | Enumerating the endpoints that must each carry a check | Endpoints are enumerated from routing instead; coverage says the enumeration is code-derived |
-| Convention plugins | Whether knowledge tier 3 exists this run | Tiers 1 and 2 run; a coverage line names the missing tier |
+| `server` | Locating the enforcement boundary — where a request is actually authorised; the endpoint, authorisation, injection, and mass-assignment sub-checks | No `server` surface in this unit: the server-side sub-checks are `skipped: not applicable`; client-side-only enforcement becomes the central question instead |
+| `ui` | Locating rendering sinks, client-visible config, and build output; client-side enforcement and secret-exposure sub-checks | Client-side sub-checks `skipped: not applicable` |
+| `data_schema` | The at-rest questions this domain shares with `auditing:data` only — not query construction, which is judged from `server` | That shared sub-check is `skipped: not applicable`; the rest of the domain is unaffected |
+| `api_contract` | Enumerating the endpoints that must each carry a check | Endpoints are enumerated from routing instead; coverage says the enumeration is code-derived |
+| `convention_plugins` | Whether knowledge tier 3 exists this run | Tiers 1 and 2 run; a coverage line names the missing tier |
 
-Every skip is recorded in the coverage section **with the fact that was missing**. A stack this
-domain does not run on produces no findings — never invented ones, and never a guess at what a
-finding would have looked like.
+When neither `server` nor `ui` is present in a unit, this domain has nothing to enforce and is
+`skipped: not applicable` wholesale in that unit. Every skip is recorded in the coverage section
+**with the fact that was missing**. A stack this domain does not run on produces no findings — never
+invented ones, and never a guess at what a finding would have looked like.
 
 ## 1. What this domain judges
 

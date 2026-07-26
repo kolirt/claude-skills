@@ -15,18 +15,25 @@ happens off the happy path, and who finds out.
 ## 0. Preflight — stack facts this domain needs
 
 Read `../../core/stack-detection.md`. Under the dispatcher the snapshot arrives as an input —
-detection is not repeated and the snapshot is not argued with. Invoked directly, this domain runs
-detection itself first.
+detection is not repeated and the snapshot is not argued with. Invoked directly, this domain runs the
+script itself first.
 
 | Fact needed | Why | When absent |
 |---|---|---|
-| At least one application runtime (a backend framework, or a frontend app) | Locates the outbound calls, handlers, jobs, and logging surfaces | Nothing to audit -> `skipped: not applicable`, recorded in coverage with the missing fact |
-| Data layer (Laravel / Prisma / Drizzle / raw SQL) | Tells whether a multi-step write has a transactional boundary available to it | Consistency sub-checks limited to what the code shows; recorded in coverage |
-| API schema | Names the outbound and inbound contracts whose failure modes are in scope | Enumerate calls from code instead; note the reduced certainty |
-| Convention plugins | Supplies tier 3 (see section 5) | Tiers 1 and 2 run; coverage names the missing tier |
+| `server` | Locates the outbound calls, handlers, jobs, retry and timeout logic, and logging surfaces | The failure-handling, idempotency, observability, and operational-surface sub-checks are `skipped: not applicable` |
+| `ui` | Locates the degradation-visible-to-the-user questions — what the user sees when a dependency is unavailable | The degradation sub-checks are `skipped: not applicable` |
+| `data_schema` | Tells whether a multi-step write has a transactional boundary available to it | The consistency-across-steps sub-checks are limited to what the code shows; recorded in coverage |
+| `api_contract` | Names the outbound and inbound contracts whose failure modes are in scope | Enumerate calls from code instead; note the reduced certainty |
+| `convention_plugins` | Supplies tier 3 (see section 5) | Tiers 1 and 2 run; coverage names the missing tier |
 
-A required fact that is absent produces `skipped: not applicable` with the reason, never an invented
-finding and never a guess at what the finding would have been.
+`server` absent removes the outbound-call, retry, job, and operational sub-checks; `ui` absent removes
+the degradation-visible-to-the-user sub-checks; `data_schema` present on its own keeps the
+consistency-across-steps sub-checks running — a unit with only a schema and no `server` or `ui` is
+still auditable for multi-step write consistency, and does not read as `not applicable`. Only when
+`server`, `ui`, and `data_schema` are **all** absent is there nothing to audit, and the whole domain is
+`skipped: not applicable` there, wholesale rather than per sub-check. A required fact that is absent
+produces `skipped: not applicable` with the reason, never an invented finding and never a guess at what
+the finding would have been.
 
 ## 1. What this domain judges
 

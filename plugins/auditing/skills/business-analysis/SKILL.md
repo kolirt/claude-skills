@@ -14,24 +14,32 @@ path crashes, is slow, or is exploitable; those are a neighbour's finding on the
 
 ## 0. Preflight — stack facts this domain needs
 
-Read `../../core/stack-detection.md`. Under the dispatcher the **snapshot** arrives as an input:
-detection is not repeated, and this domain does not disagree with the facts it was handed. Invoked
-directly, this domain runs detection itself first.
+Read `../../core/stack-detection.md`. The snapshot is produced by the detection script it documents.
+Under the dispatcher the **snapshot** arrives as an input: detection is not repeated, and this domain
+does not disagree with the facts it was handed. Invoked directly, this domain runs the detection
+script itself first.
 
 This domain reconstructs a product model from whatever code exists, so it has almost no hard stack
-dependency. It is applicable to nearly any repository that has an entry point at all, and it rarely
-reports `skipped: not applicable` — say that plainly rather than inventing a stack dependency this
-domain does not have.
+dependency. It is applicable to nearly any repository that declares a `manifest` or has a product
+surface at all, and it rarely reports `skipped: not applicable` — say that plainly rather than
+inventing a stack dependency this domain does not have.
 
 | Fact needed | Used for | When absent |
 |---|---|---|
-| Entry points / routing / command surfaces (any detected framework) | Locating where a feature or flow begins, for the feature map | Reconstruct entry points by reading the module layout directly; coverage notes that no framework marker guided this |
-| Data layer (Laravel / Prisma / Drizzle / raw SQL) | Locating entity definitions for the lifecycle check | Entities reconstructed from whatever persistence code exists; if none exists at all, that absence is part of the model, not a skip |
-| Convention plugins | Whether knowledge tier 3 exists this run | Tiers 1 and 2 run; a coverage line names the missing tier |
+| `ui` or `server` (a product surface), or `manifests` (the unit declares a package), or any other surface | Establishes there is a product to reconstruct a model from at all, and locates where a feature or flow begins for the feature map | `skipped: not applicable` only when the unit declares no manifest AND has no surface at all — nothing declared and nothing built (a documentation or configuration tree). Everything else is `your call`, never a skip: a manifest with neither `ui` nor `server` (a CLI tool, a library, a package), and a manifestless unit carrying only a non-product surface such as `data_schema`, `api_contract`, `i18n` or `test_harness` — a schema or a contract still encodes a product's entities and promises |
+| `data_schema` | Locating entity definitions for the lifecycle check | Entities reconstructed from whatever persistence code exists directly; if none exists at all, that absence is part of the model, not a skip |
+| `convention_plugins` | Whether knowledge tier 3 exists this run | Tiers 1 and 2 run; a coverage line names the missing tier |
 
-The closest this domain comes to `not applicable` is a repository with no discernible product
-surface at all — a library, a build tool, infrastructure-only code. Report that finding plainly and
-scope the audit down; do not skip the domain outright without saying why.
+The verdict vocabulary belongs to the dispatcher, not to this table: a unit with `ui` or `server` and a
+product/strategy description supplied is `recommended` there, and this section describes only the
+**reduced** shapes and how far the audit still reaches in each.
+
+The closest this domain comes to `not applicable` is a unit with no surfaces at all and no manifest —
+nothing declared, nothing built. Every other reduced shape is `your call` with the audit scoped down
+and the reason stated: a `manifest` with neither `ui` nor `server` (a CLI tool, a library, a package), and a
+manifestless unit carrying only a non-product surface — a bare `data_schema` still names the entities
+a product is built on, and a bare `api_contract` still states the promises it makes to a caller. Scope
+the audit to what that unit actually declares; do not skip the domain outright without saying why.
 
 ## 1. What this domain judges
 

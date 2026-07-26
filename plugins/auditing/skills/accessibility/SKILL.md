@@ -15,15 +15,15 @@ one asks a narrower question: can the user reach the thing, know what it is, and
 ## 0. Preflight — stack facts this domain needs
 
 Read `../../core/stack-detection.md`. Under the dispatcher the snapshot arrives as an input —
-detection is not repeated and the snapshot is not argued with. Invoked directly, this domain runs
-detection itself first.
+detection is not repeated and the snapshot is not argued with. Invoked directly, this domain runs the
+script itself first.
 
 | Fact needed | Why | When absent |
 |---|---|---|
-| A UI runtime (Vue, Nuxt, React) or server-rendered templates | Locates the markup and the interaction code that produce the interface | No interface surface at all -> `skipped: not applicable`, recorded in coverage with the missing fact |
-| Component layout / FSD architecture | Tells shared primitives from one-off screens, so a defect in a primitive is reported once at its source | Audit files as found; note in coverage that shared-primitive attribution was not possible |
-| i18n | Language declaration, translated accessible names, direction | Skip the language-and-translation sub-checks; record why |
-| Convention plugins | Supplies tier 3 (see section 5) | Tiers 1 and 2 run; coverage names the missing tier |
+| `ui` | Locates the markup and the interaction code that produce the interface | No `ui` surface in this unit: the whole domain is `skipped: not applicable`, recorded in coverage with the missing fact |
+| `architecture` (`fsd` / `flat`) | Tells shared primitives from one-off screens, so a defect in a primitive is reported once at its source | Audit files as found; note in coverage that shared-primitive attribution was not possible |
+| `i18n` | Language declaration, translated accessible names, direction | Skip the language-and-translation sub-checks; record why |
+| `convention_plugins` | Supplies tier 3 (see section 5) | Tiers 1 and 2 run; coverage names the missing tier |
 
 A required fact that is absent produces `skipped: not applicable` with the reason, never an invented
 finding and never a guess at what the finding would have been.

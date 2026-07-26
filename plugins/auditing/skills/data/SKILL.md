@@ -19,18 +19,23 @@ runs detection itself first.
 
 | Fact needed | Used for | When absent |
 |---|---|---|
-| Data layer — Laravel / Prisma / Drizzle / raw SQL (any one) | Full scope: the schema is the evidence. | Fall back to reduced scope, below. Never `not applicable` on its own. |
-| The application's read/write paths | Establishing what the code *assumes* about the data. | Findings are limited to what the schema alone shows; note it in coverage. |
-| Convention plugins | Whether knowledge tier 3 exists this run. | Tiers 1 and 2 run; the missing tier is a coverage line. |
+| `data_schema` | Full scope: the schema is the evidence. | Fall back to reduced scope, below. Never `not applicable` on its own. |
+| `server` or `ui` (either present) | Establishing what the code *assumes* about the data at the boundary it does have. | Findings are limited to what the schema alone shows; note it in coverage. |
+| `convention_plugins` | Whether knowledge tier 3 exists this run. | Tiers 1 and 2 run; the missing tier is a coverage line. |
 
 **Reduced scope when no schema is detected.** This domain does not report `skipped: not applicable`
-and stop merely because no data-layer marker was found. It falls back to **API-boundary data
-integrity** — the shapes the application sends, receives and stores through whatever layer it does
+and stop merely because `data_schema` came back absent. It falls back to **API-boundary data
+integrity** — the shapes the application sends, receives and stores through whatever surface it does
 have. The reduced scope is stated plainly in the report and recorded in coverage as a deliberate
 narrowing, not as full coverage.
 
-`skipped: not applicable` remains the correct outcome only when there is neither a schema nor any
-data-handling surface at all. Absent facts never produce invented findings.
+`server` or `ui` being present does not by itself prove the unit reads or writes anything. In reduced
+scope, if reading the unit turns up no data-handling code at all — no persistence call, no storage
+client, nothing kept between requests — the domain records `skipped: not applicable` with that reason,
+rather than reporting on a surface that does not actually persist anything.
+
+`skipped: not applicable` is the correct outcome only when `data_schema`, `server`, and `ui` are **all**
+absent — no schema and no data-handling surface at all. Absent facts never produce invented findings.
 
 ## 1. What this domain judges
 
@@ -169,9 +174,10 @@ diff tool.
 - **Tier 1 — universal storage invariants.** Everything in section 1 that holds regardless of engine:
   money is not a float, a unique assumption needs a constraint, a foreign key needs a delete
   behaviour, a destructive migration needs a stated intent.
-- **Tier 2 — the detected data layer's documented idioms.** How this ORM or migration tool declares
-  constraints, casts, enums, soft deletes and reversibility, and which of those it does *not* do for
-  you.
+- **Tier 2 — the detected `framework`'s documented data-layer idioms.** For `laravel`, how Eloquent
+  migrations and models declare constraints, casts, enums, soft deletes and reversibility, and which
+  of those they do *not* do for you. Where no framework is detected and the schema is raw `*.sql`
+  migrations, tier 2 is the general discipline of hand-written SQL migrations.
 - **Tier 3 — codified project conventions.** No `knowledge-*` plugin codifies backend data
   conventions today, so tier 3 is usually **empty** for this domain; say so in coverage rather than
   implying it was applied. The closest codified universal rules are `knowledge-principles:state`, for
