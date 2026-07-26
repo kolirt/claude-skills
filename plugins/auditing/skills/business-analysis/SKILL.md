@@ -135,8 +135,8 @@ organized before drawing conclusions from it.
    - **Standalone run** — ask the user once, at the start. Make clear it is optional and proceed
      either way; do not block on an answer and do not ask again later.
    - **Orchestrated run (under `audit`)** — a parallel subagent cannot prompt the user. The
-     dispatcher collects this description in preflight and hands it down as an **input**; this
-     domain never asks for it and never re-asks.
+     dispatcher asks for this description **after the domain selection**, once this domain is known to
+     be running, and hands it down as an **input**; this domain never asks for it and never re-asks.
    - If it arrives empty under either path, that is a recorded coverage fact, not a reason to stop:
      evidence priority falls to repository documentation and code reconstruction.
 4. Record which of the three evidence sources were actually available — the report must disclose it.

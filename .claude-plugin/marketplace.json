@@ -50,7 +50,7 @@
       "name": "auditing",
       "source": "./plugins/auditing",
       "description": "On-demand audits of a WHOLE application, one domain per perspective plus a dispatcher that runs several at once: audit (dispatcher), security, performance, accessibility, reliability, code-quality, data, api-contracts, business-analysis, seo, and remediate (turns a report into a plan). An audit never changes code \u2014 it writes reports under docs/audit/ and nothing else (the repository's CLAUDE.md included in what it never touches). Every domain runs on three knowledge tiers and no domain hard-requires a knowledge plugin: a missing tier degrades the run and is disclosed in the report's coverage section. Stack detection is deterministic: a bundled read-only python3 script emits the snapshot as JSON per unit, so a domain never guesses which surfaces a project has. Optional agent-companion verifier panel, dispatcher-only. Audits of PR diffs and changes belong to the auditing-prs plugin.",
-      "version": "0.2.1"
+      "version": "0.3.0"
     },
     {
       "name": "terse",

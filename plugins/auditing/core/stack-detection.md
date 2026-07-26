@@ -153,6 +153,12 @@ on every run and every filesystem.
   evidence; the dispatcher asks, and an unanswered question is recorded as unknown rather than
   assumed.
 
+A **domain input** like `indexability` is asked only when the domain that needs it is actually going to
+run — under the dispatcher, after the domain selection, never in preflight. No verdict depends on such
+an answer, precisely so that the question can wait until it is known to be worth asking: a domain input
+scopes an audit's severity or evidence, it never decides applicability. A domain invoked directly asks
+for its own input itself, or records it as unknown.
+
 ## The snapshot
 
 The snapshot is the script's output plus those two agent-supplied facts.

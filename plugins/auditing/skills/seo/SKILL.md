@@ -26,7 +26,7 @@ script itself first.
 | `framework` (`vue-vite` or `nuxt`) | Whether JS-rendering sub-checks (SSR/SSG, crawlable routing) apply | Neither recorded: client-rendering sub-checks `skipped: not applicable`; delivery is assumed server-rendered or static |
 | `i18n` | Whether an hreflang scaffold is expected at all | hreflang checklist item `skipped: not applicable` |
 | `convention_plugins` | Whether `knowledge-seo` supplies knowledge tier 3 this run | Tiers 1 and 2 run; a coverage line names `knowledge-seo` as unavailable |
-| `indexability` (public / internal / unreleased) | This domain's stake — whether discoverability findings matter and how urgently; supplied by the dispatcher, not detected | An unanswered question is recorded as unknown, never assumed public |
+| `indexability` (public / internal / unreleased) | This domain's stake — how much a discoverability gap costs, which scopes severity, never applicability | A **domain input**, not a detected fact: under the dispatcher it is asked after this domain is selected and arrives as an input; invoked directly, ask it once here. An unanswered question is recorded as unknown, never assumed public |
 
 **`knowledge-seo` is a soft dependency, not a precondition.** If it is available this session, it is
 knowledge tier 3 — the source of SEO policy — and this skill defers to its skills by fully-qualified

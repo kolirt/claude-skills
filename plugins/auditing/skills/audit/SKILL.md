@@ -39,27 +39,14 @@ Run it in the audited repository's own working directory — never by `cd`-ing i
 output **is** the snapshot; the core doc owns what that JSON contains, how markers are cited, how units
 are discovered, and the `python3`-unavailable fallback. Do not restate any of it here.
 
-The dispatcher's only addition is the two **agent-supplied facts** the script cannot see:
-`convention_plugins` (2.3) and `indexability` (2.5). It does not re-derive, second-guess, or
-"double-check" what the script reported with directory reads of its own — an absent surface is absent.
+The dispatcher's only additions are the facts the script cannot see: `convention_plugins` (2.2), which
+is session state, and any domain input gathered after the selection (section 5). It does not re-derive,
+second-guess, or "double-check" what the script reported with directory reads of its own — an absent
+surface is absent.
 Every domain subagent receives the resulting snapshot as an input; detection is never re-run inside a
 domain and the snapshot is not argued with.
 
-### 2.2 Product/strategy description
-
-Ask the user, **once**, for an optional description of the product and its strategy: what it is
-for, who uses it, how it makes money, what stage it is at.
-
-It is collected here, not inside the domain that needs it, for a mechanical reason: a **parallel
-subagent cannot prompt the user**. `auditing:business-analysis` treats an explicit product
-description as its highest-priority evidence source (Read `../../core/report-model.md`), so if it
-is not gathered before dispatch it can never be gathered at all for this run.
-
-Empty is allowed and is a normal outcome. An empty description is recorded as a **coverage fact** —
-the audit reconstructed intent from code alone — never as a finding and never as a reason to skip a
-domain.
-
-### 2.3 Convention plugins
+### 2.2 Convention plugins
 
 Detect which `knowledge-*` skills are available this session and record the result as the
 `convention_plugins` fact **in the snapshot**. It belongs here rather than to the script because it is
@@ -67,19 +54,16 @@ session state, not a file on disk, and it is what decides whether **knowledge ti
 given domain in this run. The tier definitions and the soft-dependency rule live in
 `../../core/report-model.md`; do not restate them here.
 
-### 2.4 Prior runs
+### 2.3 Prior runs
 
 Read `docs/audit/`, and `docs/audit/INDEX.md` if it exists, to identify the most recent prior run
-and the domains it covered. This is the basis for run comparison in section 9. No prior run is a
+and the domains it covered. This is the basis for run comparison in section 10. No prior run is a
 normal state; it means every finding in this run is `new`.
 
-### 2.5 Indexability
-
-Ask the user, **once**, one optional question: is the project **public**, **internal**, or
-**unreleased**? Record the answer as the `indexability` fact in the snapshot. It is asked here for the
-same mechanical reason as 2.2 — a **parallel subagent cannot prompt the user** — and `seo`'s verdict
-turns on it, while intent has no marker a script could read. An unanswered question is recorded as
-**unknown**, never assumed to be public.
+**Preflight asks the user nothing.** Everything above is read from the repository and the session. The
+two questions this run may need belong to specific domains, so they are asked in section 5 — after the
+user has chosen which domains run — and never before the domain table. Asking up front costs the user
+two answers that a `critical only` selection then throws away.
 
 ## 3. The annotated domain table
 
@@ -94,10 +78,10 @@ The three verdicts:
   or it would run in a reduced mode.
 - **`not applicable`** — a surface the domain requires is absent. **Name the missing fact.**
 
-Verdicts are resolved per unit at run time, per the rules below. Each rule reads only **named snapshot
-facts plus the two preflight inputs** — the product/strategy description from 2.2 and `indexability`
-from 2.5 — so a reader can resolve every rule mechanically, with no judgement left over. A rule that
-needed anything else would not be resolvable before dispatch, which is the whole point of this table.
+Verdicts are resolved per unit at run time and read **nothing but named snapshot facts**, so a reader
+can resolve every rule mechanically, with no judgement left over and **no question to the user first**.
+That is deliberate: a verdict that depended on an answer would force the question before the table, and
+the table is what tells the user which questions are even worth answering.
 
 A verdict here is a **dispatch decision**, not a promise about the outcome. A dispatched domain may
 still end at `not applicable` once it starts reading — `data` and `api-contracts` say so explicitly,
@@ -113,8 +97,8 @@ made. That is recorded in coverage with its reason and is not a defect in this t
 | `data` | Whether the schema makes wrong data impossible: constraints, keys, migrations, money and time | `recommended` when `data_schema` is present; `your call` when it is absent but `server` or `ui` is present, since the domain then runs its reduced API-boundary mode; `not applicable` when `data_schema`, `server` and `ui` are all absent. A reduced-mode unit where no data-handling code turns up while reading it reports `not applicable` with that reason — a surface is not proof that anything is persisted |
 | `api-contracts` | Whether the client-server contract is consistent: shapes, errors, status codes, pagination, versioning | `recommended` when `api_contract` is present — full contract mode when `server` or `ui` is present too, and contract-document-only mode when neither is, where the document is audited for internal consistency alone; `your call` when `api_contract` is absent but `server` or `ui` is present, since the domain drops to client-internal consistency mode; `not applicable` when `api_contract`, `server` and `ui` are all absent |
 | `accessibility` | Whether the interface can be operated without sight, colour, or a mouse | `recommended` when `ui` is present; `not applicable` when `ui` is absent |
-| `business-analysis` | Product integrity: broken flows, entities without lifecycle, monetization leaks, intent-vs-implementation contradictions | `recommended` when `ui` or `server` is present **and** a product/strategy description was supplied in 2.2; `your call` in every other case where the unit shows any sign of being an application — `ui` or `server` present with an empty description (intent reconstructed from code alone), or neither present while the unit declares a `manifest` or carries any other surface (a CLI tool, a library, a schema-only or contract-only package: a thinner product model, not no product model); `not applicable` only when the unit declares no `manifest` and has no surface at all |
-| `seo` | Whether the crawler-facing baseline is closed: titles, canonicals, robots, sitemaps, structured data | `recommended` when `ui` is present **and** `indexability` is public; `your call` when `ui` is present but `indexability` is internal, unreleased, or unknown, where the SEO stake is a priority question; `not applicable` when `ui` is absent, whatever `server` says — the detector's `server` also covers an API-only backend with no page a crawler could fetch |
+| `business-analysis` | Product integrity: broken flows, entities without lifecycle, monetization leaks, intent-vs-implementation contradictions | `recommended` when `ui` or `server` is present; `your call` when neither is but the unit declares a `manifest` or carries any other surface (a CLI tool, a library, a schema-only or contract-only package: a thinner product model, not no product model); `not applicable` only when the unit declares no `manifest` and has no surface at all. The reason line notes that a product/strategy description sharpens this domain and is asked in section 5 if it is selected |
+| `seo` | Whether the crawler-facing baseline is closed: titles, canonicals, robots, sitemaps, structured data | `recommended` when `ui` is present; `not applicable` when `ui` is absent, whatever `server` says — the detector's `server` also covers an API-only backend with no page a crawler could fetch. The reason line notes that the SEO stake depends on whether the project is public, which is asked in section 5 if this domain is selected |
 
 Every verdict is **evidence-based, never a guess**: it cites the snapshot fact — and its marker — that
 produced it, and
@@ -140,19 +124,43 @@ Offer exactly four options, and state what each resolves to against the table ju
 Confirm the resolved selection — the explicit domain list, and the scope it implies (`full` when
 every domain ran, a single domain name, otherwise `custom`) — before executing anything.
 
-## 5. Parallel domain subagents
+## 5. Domain inputs — asked only for the domains that were selected
+
+Two facts have no marker a script could read, because they are intent rather than evidence. They are
+asked **here**, after the selection is confirmed and before dispatch, and each is asked **only if the
+domain that needs it is in the selected set**. A `critical only` run asks nothing at all.
+
+They are asked by the dispatcher rather than by the domain for one mechanical reason: a **parallel
+subagent cannot prompt the user**, so a fact not gathered before dispatch can never be gathered for
+this run.
+
+- **Product/strategy description** — needed by `business-analysis`. Ask once, optional: what the
+  product is for, who uses it, how it makes money, what stage it is at. It is that domain's
+  highest-priority evidence source (Read `../../core/report-model.md`). Empty is a normal outcome,
+  recorded as a **coverage fact** — intent reconstructed from code alone — never a finding and never a
+  reason to skip the domain.
+- **Indexability** — needed by `seo`. Ask once, optional: is the project **public**, **internal**, or
+  **unreleased**? It does not change whether the baseline is closed; it changes what a gap costs, so it
+  scopes severity. Unanswered is recorded as **unknown** and never assumed to be public.
+
+Both answers are recorded in the snapshot alongside the detected facts, so the report states what the
+audit was told as well as what it found. Ask each as one question, and do not re-ask a domain's input
+if the user already volunteered it earlier in the conversation.
+
+## 6. Parallel domain subagents
 
 Dispatch one subagent per selected domain, in parallel. Each receives:
 
-- the stack snapshot from 2.1 — the detection script's JSON plus the two agent-supplied facts,
-  `convention_plugins` from 2.3 and `indexability` from 2.5. A subagent **never re-runs detection**
-  and never re-derives a surface the snapshot already answered;
-- the product/strategy description from 2.2, verbatim, or the explicit fact that it is empty;
+- the stack snapshot from 2.1 — the detection script's JSON plus `convention_plugins` from 2.2 and any
+  domain input gathered in section 5. A subagent **never re-runs detection** and never re-derives a
+  surface the snapshot already answered;
+- the product/strategy description verbatim when `business-analysis` is dispatched, or the explicit
+  fact that it is empty;
 - the scope and any focus boundary the user stated;
 - its own domain skill to follow — `auditing:<domain>` — as the sole authority on what it judges.
 
 **Invariant: a domain subagent writes nothing.** No run directory, no report file, no scratch file,
-no repository mutation of any kind. **Only the dispatcher writes files** (section 8). A subagent
+no repository mutation of any kind. **Only the dispatcher writes files** (section 9). A subagent
 also never reads `../../core/panel-integration.md`: the panel is dispatcher-only.
 
 Each subagent **returns structured findings** so the dispatcher can assemble the report without
@@ -170,7 +178,7 @@ re-deriving anything:
 
 The dispatcher assembles; it does not re-judge. A returned severity is transcribed, not adjusted.
 
-## 6. Finding ids
+## 7. Finding ids
 
 Finding ids are **domain-prefixed** and numbered within the domain: `SEC-1`, `PERF-3`, `A11Y-2`.
 
@@ -191,7 +199,7 @@ cannot collide, because their prefixes differ. **The dispatcher does not renumbe
 by a subagent is the id in the report, in the summary, in run comparison, and in any hand-off — so a
 user who quotes `DATA-4` is quoting something stable.
 
-## 7. Failure isolation
+## 8. Failure isolation
 
 A domain that fails, times out, returns malformed findings, or exhausts its budget is recorded as
 `not run: <reason>` — in the report and in the run's coverage section — and **never aborts the other
@@ -206,7 +214,7 @@ A partial run is a **legitimate outcome**, as long as what did not run is named,
 both the chat digest and coverage. A run that hides a failed domain is worse than a run that covers
 less.
 
-## 8. Writes — the dispatcher owns all of them
+## 9. Writes — the dispatcher owns all of them
 
 The dispatcher is the sole writer. It writes exactly:
 
@@ -220,34 +228,34 @@ not pointed at the output. The naming scheme, the collision suffix, the immutabi
 report, and the closed forbidden-write list are fixed in `../../core/report-model.md`; follow that
 document rather than a restatement here. Reports are written in the user's language.
 
-## 9. Run comparison
+## 10. Run comparison
 
-Compare this run against the most recent prior run of comparable scope, identified in 2.4, per
+Compare this run against the most recent prior run of comparable scope, identified in 2.3, per
 `../../core/report-model.md`: prior findings reported `closed` or `still open`, this run's additions
 `new`, and any domain whose prior coverage does not qualify reported `not comparable`. Comparability
 and match strictness are that document's rules; do not invent looser ones.
 
 This is **run comparison**. It is not consolidation. Keep the two words in their own lanes.
 
-## 10. Optional panel integration
+## 11. Optional panel integration
 
 Read `../../core/panel-integration.md`. The verifier panel is **offered, never assumed**: everything
 here works unchanged without it, and an absent panel is a plain **coverage fact**, not an apology.
 Offer it where that document says it earns its cost, and state the cost when offering.
 
 Merging the panel's independent pass with the audit's own findings is **consolidation**. Run
-comparison (section 9) and consolidation are **two different mechanisms** — one compares this run to
+comparison (section 10) and consolidation are **two different mechanisms** — one compares this run to
 an earlier run, the other merges two passes over the same run — and the terms are never
 interchanged, here or in the report.
 
-## 11. Closing digest and hand-off
+## 12. Closing digest and hand-off
 
 Return to chat a short digest — never the whole report, and never only a path. It names:
 
 - the **full path** of the run directory;
 - the domains that ran, each with its finding count, and the blockers called out;
 - the domains that **did not run**, each with its reason: `not applicable` with the missing fact, or
-  `not run: <reason>` from section 7;
+  `not run: <reason>` from section 8;
 - the **warning** that `docs/audit/**` now shows as uncommitted changes in the working tree and
   could be committed by accident along with unrelated work.
 
