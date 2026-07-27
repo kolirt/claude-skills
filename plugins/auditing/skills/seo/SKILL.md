@@ -1,6 +1,6 @@
 ---
 name: seo
-description: Use on demand to audit a project's SEO baseline — 'check/audit SEO', 'SEO review before deploy', 'SEO-аудит', 'перевір SEO'. Static code check across the WHOLE project: reports what is missing, never fixes it. NOT a deep-crawl/scoring/monitoring product, and not the Vue delivery layer (knowledge-vue:seo wires meta tags into a Vue app — this skill audits the baseline). Audits of a PR diff or a set of changes belong to the auditing-prs plugin. SEO policy lives in the knowledge-seo plugin; this skill uses it when present and runs on universal invariants and general practice when it is not.
+description: Use on demand to audit a project's SEO baseline — 'check/audit SEO', 'SEO review before deploy', 'SEO-аудит', 'перевір SEO'. Static code check across the WHOLE project — reports what is missing, never fixes it. NOT a deep-crawl/scoring/monitoring product, and not the Vue delivery layer (knowledge-vue:seo wires meta tags into a Vue app — this skill audits the baseline). Audits of a PR diff or a set of changes belong to the auditing-prs plugin. SEO policy lives in the knowledge-seo plugin; this skill uses it when present and runs on universal invariants and general practice when it is not.
 ---
 
 # SEO audit

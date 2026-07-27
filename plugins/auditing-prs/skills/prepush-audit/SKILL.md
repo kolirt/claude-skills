@@ -1,6 +1,6 @@
 ---
 name: prepush-audit
-description: Use when an executor wants to self-check a branch BEFORE pushing or before opening a PR — does the work actually complete the task, and is every prior review Issue addressed? Read-only and chat-only: never writes to GitHub or Jira and never pushes. Surfaces the same findings the audit-pr reviewer would, so problems get fixed first.
+description: Use when an executor wants to self-check a branch BEFORE pushing or before opening a PR — does the work actually complete the task, and is every prior review Issue addressed? Read-only and chat-only — never writes to GitHub or Jira and never pushes. Surfaces the same findings the audit-pr reviewer would, so problems get fixed first.
 ---
 
 # Pre-push audit

@@ -1,6 +1,6 @@
 ---
 name: structured-data
-description: Use when adding schema.org structured data (JSON-LD) — choosing a type, required fields, validity. Type catalog: references/schema-types.md; content→type map: references/recognition.md.
+description: Use when adding schema.org structured data (JSON-LD) — choosing a type, required fields, validity. Type catalog — references/schema-types.md; content→type map — references/recognition.md.
 ---
 
 # structured-data — schema.org JSON-LD markup

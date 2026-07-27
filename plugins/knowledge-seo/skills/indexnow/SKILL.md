@@ -1,6 +1,6 @@
 ---
 name: indexnow
-description: Use to set up IndexNow — instant URL-change notification for Bing/Yandex/Seznam/Naver/Yep (not Google): key file, GET/POST submission, debounce.
+description: Use to set up IndexNow — instant URL-change notification for Bing/Yandex/Seznam/Naver/Yep (not Google) — key file, GET/POST submission, debounce.
 ---
 
 # IndexNow — instant URL-change notification

@@ -1,6 +1,6 @@
 ---
 name: naming
-description: Use when naming a function, variable, type, module, or flag, or when reviewing a name that describes its implementation instead of its purpose — and when a signature hides what it reads or changes: ambient singletons, global reads, unannounced side effects, a helper that quietly writes.
+description: Use when naming a function, variable, type, module, or flag, or when reviewing a name that describes its implementation instead of its purpose — and when a signature hides what it reads or changes — ambient singletons, global reads, unannounced side effects, a helper that quietly writes.
 ---
 
 # Rule 7 — Name the intent; make effects and dependencies explicit
