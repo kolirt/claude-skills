@@ -1,6 +1,6 @@
 ---
 name: remediate
-description: Use to turn an existing audit report into a fix plan — 'remediate', 'turn the audit into a plan', 'fix the findings', 'plan the remediation', 'план по аудиту', 'виправити знайдене', 'план по звіту'. Reads a report out of docs/audit/ and writes exactly one plan under docs/plans/ that planning:implement can execute. Does NOT audit: a request to audit, review, or check a project belongs to the auditing domain skills or the auditing:audit dispatcher. Does NOT plan new features or refactors — planning:brainstorm owns that; this skill plans only from findings that already exist in a written report.
+description: Use to turn an existing audit report into a fix plan — 'remediate', 'turn the audit into a plan', 'fix the findings', 'plan the remediation', 'план по аудиту', 'виправити знайдене', 'план по звіту'. Reads a report out of docs/audit/ and writes exactly one plan under docs/plans/ that planning:implement can execute. Does NOT audit — a request to audit, review, or check a project belongs to the auditing domain skills or the auditing:audit dispatcher. Does NOT plan new features or refactors — planning:brainstorm owns that; this skill plans only from findings that already exist in a written report.
 ---
 
 # remediate — from audit report to fix plan

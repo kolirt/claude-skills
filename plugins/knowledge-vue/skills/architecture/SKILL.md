@@ -1,6 +1,6 @@
 ---
 name: architecture
-description: Use when a question is about the health of the module graph rather than where a file goes — an import cycle or load-order error, a module that has become a dumping ground that everything imports, suspected dead code nothing references, or a layer/boundary violation (a shared module reaching into a feature, a type that drifted into the wrong bucket). NOT for placement: "where does this file go", resolving a placement token to a path, slice/segment anatomy, and barrel rules belong to the architecture and placement core docs this skill names.
+description: Use when a question is about the health of the module graph rather than where a file goes — an import cycle or load-order error, a module that has become a dumping ground that everything imports, suspected dead code nothing references, or a layer/boundary violation (a shared module reaching into a feature, a type that drifted into the wrong bucket). NOT for placement — "where does this file go", resolving a placement token to a path, slice/segment anatomy, and barrel rules belong to the architecture and placement core docs this skill names.
 ---
 
 # Architecture integrity

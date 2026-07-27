@@ -1,6 +1,6 @@
 ---
 name: change-safety
-description: Use when removing, rewriting, or "cleaning up" code whose purpose is unclear — an odd guard, a sleep, a redundant-looking check, a commented workaround — and when changing anything a caller can observe: response shape, ordering, timing, error text, default values, or an accidental leniency.
+description: Use when removing, rewriting, or "cleaning up" code whose purpose is unclear — an odd guard, a sleep, a redundant-looking check, a commented workaround — and when changing anything a caller can observe — response shape, ordering, timing, error text, default values, or an accidental leniency.
 ---
 
 # Rule 10 — Do not touch what you do not understand; observable behaviour is someone's dependency

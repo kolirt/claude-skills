@@ -1,6 +1,6 @@
 ---
 name: data
-description: Use on demand to audit the storage layer of a WHOLE application — 'data audit', 'аудит даних', 'schema audit', 'check the migrations', 'are our constraints right', 'money stored as float', 'orphan rows'. Judges whether the schema makes wrong data impossible: uniqueness, foreign keys and delete behaviour, migration safety, money and time representation, soft-delete consistency, constrained enumerations, indexes behind real filters, nullability. Reports findings, never fixes them and never touches a database. Not a query-speed review (auditing:performance) and not an access-control review (auditing:security). Audits of a PR diff belong to the auditing-prs plugin.
+description: Use on demand to audit the storage layer of a WHOLE application — 'data audit', 'аудит даних', 'schema audit', 'check the migrations', 'are our constraints right', 'money stored as float', 'orphan rows'. Judges whether the schema makes wrong data impossible — uniqueness, foreign keys and delete behaviour, migration safety, money and time representation, soft-delete consistency, constrained enumerations, indexes behind real filters, nullability. Reports findings, never fixes them and never touches a database. Not a query-speed review (auditing:performance) and not an access-control review (auditing:security). Audits of a PR diff belong to the auditing-prs plugin.
 ---
 
 # Data audit

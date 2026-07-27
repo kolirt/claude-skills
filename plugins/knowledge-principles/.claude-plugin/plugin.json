@@ -1,6 +1,6 @@
 {
   "name": "knowledge-principles",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Ten always-on programming rules as intent-triggered skills: clarity, abstraction timing, boy-scout cleanup, module boundaries, errors, state, naming, performance, security, change safety. Every rule states what it does not claim, so the consolidation it performs is recorded rather than hidden. Two shared core docs fix how the rules apply: precedence (a codified project convention always beats a universal principle) and proportionality (which rules are active for throwaway code, application code, and a new public surface). Stack-independent — per-rule Vue and Laravel references illustrate the rule in a framework's shape, never a project's conventions.",
   "author": {
     "name": "kolirt"

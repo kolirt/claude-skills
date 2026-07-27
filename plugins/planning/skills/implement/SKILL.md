@@ -1,6 +1,6 @@
 ---
 name: implement
-description: Take a self-contained plan (typically produced by the brainstorm skill in another session) and implement it. Use ONLY when the user provides an existing plan document (pasted text, skill argument, or a file path) and asks to implement it — "implement", "реалізуй план". Not for feature requests without a plan. The plan is authoritative — do not re-interview or re-plan. Asks the user to choose the execution approach: inline, or subagent orchestration for large or parallelizable plans.
+description: Take a self-contained plan (typically produced by the brainstorm skill in another session) and implement it. Use ONLY when the user provides an existing plan document (pasted text, skill argument, or a file path) and asks to implement it — "implement", "реалізуй план". Not for feature requests without a plan. The plan is authoritative — do not re-interview or re-plan. Asks the user to choose the execution approach — inline, or subagent orchestration for large or parallelizable plans.
 ---
 
 # Implement a Plan
