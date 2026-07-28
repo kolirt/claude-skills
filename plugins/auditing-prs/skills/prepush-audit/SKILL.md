@@ -45,8 +45,12 @@ PR=$(gh pr list --head "$BRANCH" --repo "$REPO" --json number,headRefOid,baseRef
 PR_N=$(echo "$PR" | jq -r '.number // empty')
 PR_HEAD=$(echo "$PR" | jq -r '.headRefOid // empty')
 # Base: the PR target if a PR exists, else the repo default branch (never assume main).
+DEFAULT=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
 BASE=$(echo "$PR" | jq -r '.baseRefName // empty')
-[ -z "$BASE" ] && BASE=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's@^origin/@@')
+[ -z "$BASE" ] && BASE="$DEFAULT"
+# When the base IS the default branch, the branch may be stacked — run core §9
+# discovery (bindings below) and diff from its TRUE_BASE instead of "$BASE".
+TRUE_BASE="$BASE"
 # Delta anchor = the commit the LATEST review was submitted against. A review carries
 # its own commit_id, so this works for summary-only reviews with no inline comments.
 # --slurp combines all --paginate pages into one array, so max_by is GLOBAL, not per-page.
@@ -63,6 +67,33 @@ if [ -n "$PR_HEAD" ] && ! git merge-base --is-ancestor "$PR_HEAD" HEAD 2>/dev/nu
   echo "Local HEAD is behind PR head $PR_HEAD — pull before auditing"; # then stop
 fi
 ```
+
+**Stacked-branch base discovery (core §9) — local bindings.** Run this **only** when
+`$BASE` equals `$DEFAULT`; when the PR already targets a parent branch, `$BASE` is
+correct and discovery is skipped. The rule and its outputs (`TRUE_BASE`, `PARENT_PR`,
+`INHERITED_FILES`) and honesty rules live in core §9 — not restated here.
+```bash
+# CANDIDATES — every other open PR's head, this branch's own PR excluded.
+gh pr list --repo "$REPO" --state open \
+  --json number,headRefName,headRefOid,isCrossRepository --limit 200
+
+# Candidate heads are NOT in the default refspec (fork heads never are) — fetch
+# each candidate before asking anything about its ancestry:
+git fetch origin "refs/pull/<N>/head"
+# …or all of them in one call:
+git fetch origin "+refs/pull/*/head:refs/remotes/origin/pr/*"
+
+# The two core primitives, locally:
+git merge-base "$A" "$B"                  # merge-base(A, B)
+git merge-base --is-ancestor "$A" "$B"    # is-ancestor(A, B) — exit status
+```
+A candidate whose object is still missing after the fetch is a **skipped candidate**,
+counted and reported — never a negative ancestry result (core §9). `--is-ancestor`
+against an absent object errors; do not read that as "not an ancestor".
+
+Set `TRUE_BASE` to the discovered branch point so "Snapshot selection" diffs
+`git diff "$TRUE_BASE"...HEAD`. With no parent found, `TRUE_BASE` stays `$BASE` and
+everything behaves exactly as before.
 
 **PR conversation — paginated, GET-only (core §1; mirrors `audit-pr`'s fetch):**
 ```bash
@@ -84,8 +115,8 @@ Step 0.5 — never a write.
 
 **Snapshot diff (per "Snapshot selection"):**
 ```bash
-git diff "$BASE"...HEAD          # default parity snapshot (committed base...HEAD)
-git diff "$BASE"                 # with the --include-working-tree flag (adds staged+unstaged)
+git diff "$TRUE_BASE"...HEAD     # default parity snapshot (committed base...HEAD)
+git diff "$TRUE_BASE"            # with the --include-working-tree flag (adds staged+unstaged)
 git status --porcelain           # detect a dirty tree to warn about
 ```
 
@@ -142,6 +173,14 @@ never changes shared state:
 - If a PR exists, the base is the PR's target branch — read it, do not assume `main`.
 - If no PR exists, default to the merge base with the repo's default branch
   (`main`/`master`/whatever the repo uses), discovered, not hardcoded.
+- **When that base is the default branch, run core §9** (bindings under "Binding
+  commands") — the branch may be stacked on another open PR, and the honest snapshot
+  then starts at `TRUE_BASE`, not at the default branch's branch point.
+- When a `PARENT_PR` was found, state it before the findings: the parent PR number and
+  branch, the audited range `TRUE_BASE..HEAD`, the count of files excluded as
+  inherited, and any skipped-candidate or truncated-listing counts. Inherited changes
+  are context, never the subject of a finding (core §10). Say nothing when no parent
+  was found.
 - The executor may override the base. Always state the base chosen, so a mismatch with
   the eventual PR target is visible.
 
@@ -216,7 +255,9 @@ agent-companion is off or no verifier is available, run solo and say so explicit
 ## Checklist
 
 - [ ] Local HEAD not behind the PR head (stale-checkout guard) — else stop.
-- [ ] Base discovered/stated; snapshot selected; dirty tree warned if relevant.
+- [ ] Base discovered/stated; stacked-parent discovery run when the base is the
+      default branch (core §9), and the parent/range/inherited counts stated if found;
+      snapshot selected; dirty tree warned if relevant.
 - [ ] Tracker context fetched (all comments) or noted unavailable.
 - [ ] PR discovered (read-only); mode chosen (delta vs first-pass).
 - [ ] For every prior Issue, file read at the snapshot (`git show HEAD:{path}`), not the diff.

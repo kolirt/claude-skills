@@ -37,6 +37,13 @@ where the PR lives (github.com or a GitHub Enterprise host — same flow).
    - Otherwise use the current repository:
      `gh repo view --json nameWithOwner -q .nameWithOwner`.
    - Address it everywhere via `--repo {owner}/{repo}`.
+   - **Resolve the default branch too** — the stacked-branch discovery of core §9
+     (Step 2) needs it:
+     ```bash
+     DEFAULT=$(gh repo view {owner}/{repo} --json defaultBranchRef -q .defaultBranchRef.name)
+     ```
+     NEVER hardcode `main` or `master` anywhere in this skill — the repository
+     answers that question, not a convention.
 
 3. **Multiple accounts / hosts.** A project may require a specific GitHub
    account (a separate work account or a bot). Two options — read them from the
@@ -145,10 +152,14 @@ all-comments/full-pagination rule and "skipping the existing conversation is a h
 bug" — lives in core §1. Always pull existing conversation **before** drafting.
 
 ```bash
-# Metadata + diff + head SHA
+# Metadata + target branch + head SHA
 gh pr view {N} --repo {owner}/{repo}
+gh pr view {N} --repo {owner}/{repo} --json headRefOid,baseRefName \
+  -q '[.headRefOid, .baseRefName] | @tsv'
+# Diff — authoritative ONLY when "Stacked-branch base discovery" below finds no
+# parent. `gh pr diff` is computed against baseRefName, which is the wrong range
+# for a stacked branch whose PR targets the default branch.
 gh pr diff {N} --repo {owner}/{repo}
-gh pr view {N} --repo {owner}/{repo} --json headRefOid -q .headRefOid
 
 # Prior inline comments (every review, every revision).
 # --paginate is REQUIRED — without it long PRs return only the first page and
@@ -184,6 +195,58 @@ gh api graphql --paginate -f query='
 Record the **head SHA** — this is the snapshot under review (required for inline
 comments). Identify changed files and open the conventions for those paths per core
 §3 (convention discovery).
+
+### Stacked-branch base discovery (core §9)
+
+**When `baseRefName` is not the default branch, skip this subsection entirely** — the
+PR is already correctly stacked onto its parent, `gh pr diff` is authoritative, and
+nothing below changes. Run discovery **only** when `baseRefName == $DEFAULT`
+(Step 0), which is the failure mode: a branch cut from a parent branch whose PR
+nevertheless targets the default branch.
+
+The rule, the outputs (`TRUE_BASE`, `PARENT_PR`, `INHERITED_FILES`), and the honesty
+rules are **core §9** — do not restate them here. These are this adapter's bindings:
+
+```bash
+# CANDIDATES — every other open PR's head (exclude this PR's own number).
+gh pr list --repo {owner}/{repo} --state open \
+  --json number,headRefName,headRefOid,isCrossRepository --limit 200
+
+# merge-base + ancestry in ONE call per pair: merge_base_commit.sha is the
+# merge-base; status == "ahead" means B is a strict descendant of A.
+gh api repos/{owner}/{repo}/compare/{A}...{B} \
+  --jq '{status, merge_base_commit: .merge_base_commit.sha}'
+```
+
+- **Truncation.** `--limit 200` bounds the cost at one compare call per open PR. If
+  the listing returns 200 entries, the candidate set may be cut — report it (core §9,
+  honesty rules); a long-lived parent older than the limit would otherwise be missed
+  silently.
+- **Unreachable candidate.** A `404`/`403` on a compare call — typically a
+  cross-repository fork head a read-only token cannot read — means **skipped and
+  counted**, never "not an ancestor" (core §9). A stack whose parent lives in a fork
+  is not detected.
+
+### Taking the diff from `TRUE_BASE`
+
+When discovery found a `PARENT_PR`, `gh pr diff` is **not** the audit subject — it
+carries the parent's commits. Take the range from `TRUE_BASE` instead, and narrow the
+commit list (fetched below) to the same range:
+
+```bash
+gh api repos/{owner}/{repo}/compare/{TRUE_BASE}...{head-sha} \
+  --jq '{status, changed_files, commits: [.commits[].sha], files: [.files[].filename]}'
+```
+
+**State the API's limits, never absorb them silently:**
+
+- The compare endpoint returns **at most 300 changed files** and paginates only its
+  commits. When `files` reaches 300 or `changed_files` exceeds the returned count, say
+  in the digest that the file set was truncated, and recommend re-running the audit
+  against a local checkout (`prepush-audit`), which has no such cap.
+
+When discovery found no parent, nothing changes: `gh pr diff` stays the subject
+exactly as today.
 
 ### Reconciling prior issues
 
@@ -263,6 +326,23 @@ The draft has **three parts**, in this order:
    Omit a bucket only if it is genuinely empty. Nothing the audit touched may be
    silently absent — if you are closing it, it is in ✅; if it is new, 🆕; if it
    still fails, ⏳.
+
+   **Stacked-branch line — only when Step 2 detected a `PARENT_PR`.** Directly under
+   the `## Review state @ HEAD <sha>` heading, above the buckets:
+   ```
+   🧬 Stacked on PR <parent-N> (<parent-branch>) — audited range <TRUE_BASE>..<head-sha>
+      <K> file(s) excluded as inherited · <T> candidate(s) skipped (unreachable) ·
+      candidate list truncated: <yes/no> · file set truncated at 300: <yes/no>
+   ```
+   Then one line offering the guard workflow, e.g.:
+   > This PR targets the default branch while its parent is unmerged. A copy-ready
+   > workflow that fails a status check on exactly this condition ships with the
+   > plugin at `references/stacked-pr-guard.yml` — copy it into the repository
+   > yourself if you want it; this skill does not install it.
+
+   Absent entirely when no parent was detected — no noise in the common case. Never
+   raise the stacked condition as an `Issue N` (core §10); it is chat context, and
+   merge blocking is the workflow's job.
 3. **Audit findings** — the publish-ready drafts of inline comments + summary
    review per Step 4.
 
@@ -370,6 +450,9 @@ matters, `remediation` → 🔍 Where to dig. The scaffold IS the educational pa
 forces the reader to encounter the problem, its mechanism, and a direction. Inside
 each section, write as little as possible to land the point. This adapter renders
 `remediation` as a **non-recipe direction** — never the final fix.
+
+When a stack parent was detected (Step 2), which lines may carry a finding's evidence
+is governed by **core §10** — read it there.
 
 - 🚫 **Problem** — one sentence, what's wrong.
 - 💡 **Why it matters** — root cause / mechanism. 1–3 sentences; one short
@@ -649,7 +732,10 @@ worktree: it uses the GitHub head SHA via the `contents` API.
 - [ ] `gh auth status` OK; repository resolved.
 - [ ] Focus confirmed.
 - [ ] Tracker context fetched (Step 0.5) — or noted as unavailable.
-- [ ] PR fetched: `view` + `diff` + head SHA recorded.
+- [ ] PR fetched: `view` + head SHA + `baseRefName` recorded.
+- [ ] If `baseRefName` is the default branch: stacked-parent discovery run (core §9);
+      when a parent was found, the diff taken from `TRUE_BASE` and the parent/range/
+      inherited/truncation counts stated in the digest.
 - [ ] Existing conversation fetched; prior `Issue N`s mapped before drafting.
 - [ ] For every still-open prior `Issue N`, the file read at HEAD (not the diff).
 - [ ] User-proposed issues investigated against HEAD (Step 2.5) — and, if the
