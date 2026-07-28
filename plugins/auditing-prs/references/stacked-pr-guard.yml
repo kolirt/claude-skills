@@ -1,0 +1,116 @@
+# Stacked-PR guard — copy-ready reference workflow.
+#
+# Fails when a pull request targets the repository's DEFAULT branch while its
+# branch is stacked on another open pull request that is not merged yet. Merging
+# such a PR drags the parent's unfinished commits into the default branch.
+#
+# Read before copying:
+#   * This workflow only reports a failed check. It blocks a merge ONLY once you
+#     register the job ("stacked-pr-guard") as a REQUIRED status check in the
+#     branch-protection rule (or ruleset) of the default branch.
+#   * The `edited` trigger also fires on title/body edits, not just base changes.
+#     A re-run is harmless — the check is a pure read.
+#   * A pull request from a fork receives a READ-ONLY token, which is all this
+#     workflow needs. Candidate heads that the token cannot compare are SKIPPED
+#     and counted, never treated as "no shared history" — a stack whose parent
+#     lives in a fork is therefore not detected.
+#   * Detection is ancestry-only: branch names and ticket keys are never parsed.
+#
+# Nothing installs this file for you — copy it to .github/workflows/ yourself.
+
+name: Stacked PR guard
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  stacked-pr-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect a stacked parent
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          if [ "$PR_BASE" != "$DEFAULT_BRANCH" ]; then
+            echo "Base is '$PR_BASE', not the default branch — nothing to check."
+            exit 0
+          fi
+
+          # merge-base of the default branch and this head: where an ordinary PR
+          # diff starts.
+          MB_DEFAULT=$(git merge-base "origin/$DEFAULT_BRANCH" "$PR_HEAD")
+          echo "Default-branch branch point: $MB_DEFAULT"
+
+          # Sorted by number so a tie between siblings resolves deterministically
+          # to the lowest-numbered candidate.
+          CANDIDATES=$(gh pr list --repo "$REPO" --state open \
+            --json number,headRefName,headRefOid \
+            --limit 200 \
+            --jq "sort_by(.number)[] | select(.number != $PR_NUMBER) | [.number, .headRefName, .headRefOid] | @tsv")
+
+          TOTAL_OPEN=$(gh pr list --repo "$REPO" --state open --json number --limit 200 --jq 'length')
+          if [ "$TOTAL_OPEN" -ge 200 ]; then
+            echo "::warning::Open-PR listing hit the 200 limit — an older parent branch may be missed."
+          fi
+
+          SKIPPED=0
+          PARENT_NUMBER=""
+          PARENT_BRANCH=""
+          PARENT_BASE=""
+
+          while IFS=$'\t' read -r NUMBER BRANCH OID; do
+            [ -n "${NUMBER:-}" ] || continue
+
+            # One compare call gives both primitives: merge_base_commit.sha is
+            # merge-base(candidate, head).
+            if ! CMP=$(gh api "repos/$REPO/compare/$OID...$PR_HEAD" \
+                 --jq '.merge_base_commit.sha' 2>/dev/null); then
+              echo "Skipping PR #$NUMBER — head $OID unreachable (fork or no access)."
+              SKIPPED=$((SKIPPED + 1))
+              continue
+            fi
+            MB_C="$CMP"
+
+            # Above us in the stack: that PR already contains all of our work.
+            [ "$MB_C" = "$PR_HEAD" ] && continue
+            # No shared history beyond the default branch: not a stack ancestor.
+            [ "$MB_C" = "$MB_DEFAULT" ] && continue
+            git merge-base --is-ancestor "$MB_DEFAULT" "$MB_C" 2>/dev/null || continue
+
+            # Deepest surviving merge-base wins: a STRICT descendant of the current
+            # best. Equality keeps the earlier (lower-numbered) candidate.
+            if [ -z "$PARENT_BASE" ] || { [ "$MB_C" != "$PARENT_BASE" ] &&
+                 git merge-base --is-ancestor "$PARENT_BASE" "$MB_C" 2>/dev/null; }; then
+              PARENT_BASE="$MB_C"
+              PARENT_NUMBER="$NUMBER"
+              PARENT_BRANCH="$BRANCH"
+            fi
+          done <<< "$CANDIDATES"
+
+          if [ "$SKIPPED" -gt 0 ]; then
+            echo "::warning::$SKIPPED candidate head(s) skipped as unreachable — a fork-hosted parent cannot be detected."
+          fi
+
+          if [ -z "$PARENT_NUMBER" ]; then
+            echo "No stacked parent found — this PR is based on the default branch."
+            exit 0
+          fi
+
+          echo "::error::This PR is stacked on PR #$PARENT_NUMBER ($PARENT_BRANCH), which is not merged yet, but it targets '$DEFAULT_BRANCH'. Merging it would bring that PR's commits along. Retarget this PR's base branch onto '$PARENT_BRANCH' (branch point $PARENT_BASE), and merge it after PR #$PARENT_NUMBER lands."
+          exit 1
