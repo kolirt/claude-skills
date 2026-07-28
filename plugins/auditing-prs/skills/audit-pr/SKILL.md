@@ -364,12 +364,71 @@ reacts, never *whether* they must explicitly approve before Step 5.
    command -v plannotator
    ```
 
-2. **Render the draft to a file.** Write all three parts (tracker context,
-   review-state digest, audit findings) as one markdown file in a temp location —
-   e.g. `"$(mktemp -d)/pr-{N}-audit.md"`. This is the same content you would show
-   in chat; the tracker block and digest stay **chat-only** in the sense that they
-   are never published to GitHub, but they belong in the annotated file because
-   they help the user review.
+2. **Render the draft to a file** — one markdown file in a temp location, e.g.
+   `"$(mktemp -d)/pr-{N}-audit.md"`, holding all three parts in the usual order
+   (tracker context → review-state digest → audit findings). The tracker block and
+   the digest are still **chat-only** — never published to GitHub — but they belong
+   in the file because they help the user review. Open the file with a title line
+   (e.g. `# PR {N} — audit draft`), never a bare `---`, which can parse as YAML
+   front matter.
+
+   This file is **live Markdown, and is the explicit exception to the "show drafts
+   as fenced markdown" rule above** — that rule governs chat, which stays the
+   raw-source preview. Hard rules for the file:
+
+   - **No outer code fence around any part.** Plannotator renders a fence as a
+     non-wrapping block, so long prose lines vanish behind a horizontal scrollbar.
+   - **Paste each publishable body verbatim** — byte-for-byte the same text that
+     goes to chat and to GitHub, minus the outer fence. Never reflow, re-indent,
+     re-quote, escape or regenerate it.
+   - **Fences *inside* a body stay fenced** (code quotes, ` ```suggestion `) and
+     must be balanced — an unclosed inner fence swallows the rest of the document.
+   - **The review-state digest and the stacked-branch line may be reformatted**,
+     because they are chat-only chrome: emit one Markdown list item per bucket
+     instead of the whitespace-aligned columns (alignment does not survive live
+     Markdown and is not needed for review). This freedom applies ONLY to chat-only
+     blocks — publishable bodies stay verbatim.
+   - **Separate issues with `---`, preceded by the target as a bold line** (e.g.
+     `**path/to/File.vue:8**`), not a heading — the body already carries its own
+     `### Issue N`, and a second heading would duplicate it in the outline.
+   - **Everything the file adds around the drafts is Plannotator-only chrome** —
+     the document title, the bold locator lines, the bold summary-review label and
+     the `---` separators. None of it is ever part of a published comment body;
+     only the verbatim body between them is publishable.
+   - **The summary review has no file:line** — label it with a plain bold line
+     placed *outside* its verbatim body. Never invent a locator for it.
+
+   Skeleton of the finished file (`←` marks Plannotator-only chrome):
+
+   ```markdown
+   # PR {N} — audit draft            ← chrome
+
+   ## Task context (<ticket>)        ← chat-only, reformat freely
+   …tracker context…
+
+   ## Review state @ HEAD <sha>      ← chat-only, reformat freely
+   - 🧬 Stacked on PR <parent-N> (<parent-branch>) — audited range <TRUE_BASE>..<head-sha>
+   - ✅ Closing — verified done: Issue 5 (<commit>), Issue 7 (<commit>)
+   - 🆕 New this review: Issue 8 — <one line>
+   - ⏳ Not fixed / partial / open: Issue 8 — partial: <one line>
+   - 🎯 Asks (<ticket>): <ask> ✅ · <ask> ❌
+
+   ---                               ← chrome
+   **src/components/Form.vue:42**    ← chrome
+
+   > _[Claude review] — automated audit published via Claude Code from account @<gh-username>_
+
+   ### Issue 8
+   …verbatim publishable body, inner fences intact…
+
+   ---                               ← chrome
+   **Summary review**                ← chrome
+
+   > _[Claude review] — automated audit published via Claude Code from account @<gh-username>_
+
+   ### Issue 9
+   …verbatim publishable summary body, ending with the §4.7 checklist…
+   ```
 
 3. **Open the annotator** (this is what `plannotator-annotate` runs) and read its
    result:
