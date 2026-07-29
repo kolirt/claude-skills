@@ -225,12 +225,12 @@ not do it for you.
   before drafting.
 
 - **terse** — Output-style plugin: a `SessionStart` hook injects terse-mode
-  rules into every session — answer first (a problem report names what breaks),
-  brevity that cuts filler rather than compressing meaning, literal prose that
-  survives one reading, no preamble or closers, questions strictly one at a
-  time, one concrete next step named outright, no tool-call narration or log
-  dumps. Hook-only: no skills, no state, no on/off commands; active from the
-  next session after install.
+  rules into every session — brevity and clarity weighted equally, answer first
+  (a problem report names what breaks), filler cut without compressing meaning,
+  one idea per sentence with an explicit subject, no vocabulary the reader has
+  not already met, questions strictly one at a time, one concrete next step
+  named outright, no tool-call narration or log dumps. Hook-only: no skills, no
+  state, no on/off commands; active from the next session after install.
 
 ## Structure
 

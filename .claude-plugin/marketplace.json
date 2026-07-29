@@ -55,8 +55,8 @@
     {
       "name": "terse",
       "source": "./plugins/terse",
-      "description": "Injects terse output-style rules into every session via a SessionStart hook: a one-line restate of how a new task was understood, brevity that cuts filler instead of compressing meaning, literal prose that stays readable, questions strictly one at a time.",
-      "version": "0.3.0"
+      "description": "Injects terse output-style rules into every session via a SessionStart hook: brevity and clarity weighted equally, a one-line restate of how a new task was understood, one idea per sentence with no invented vocabulary, questions strictly one at a time.",
+      "version": "0.4.0"
     }
   ]
 }
