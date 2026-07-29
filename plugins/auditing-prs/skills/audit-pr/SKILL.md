@@ -508,7 +508,7 @@ core neutral finding model (core §8): `problem` → 🚫 Problem, `mechanism` �
 matters, `remediation` → 🔍 Where to dig. The scaffold IS the educational part — it
 forces the reader to encounter the problem, its mechanism, and a direction. Inside
 each section, write as little as possible to land the point. This adapter renders
-`remediation` as a **non-recipe direction** — never the final fix.
+`remediation` as a **named outcome without the edit** — never the final fix.
 
 When a stack parent was detected (Step 2), which lines may carry a finding's evidence
 is governed by **core §10** — read it there.
@@ -516,21 +516,26 @@ is governed by **core §10** — read it there.
 - 🚫 **Problem** — one sentence, what's wrong.
 - 💡 **Why it matters** — root cause / mechanism. 1–3 sentences; one short
   paragraph is the ceiling.
-- 🔍 **Where to dig** — direction only, never a recipe. Either point to a
-  reference file where the correct shape already lives, or describe the principle
-  to apply. NEVER name the exact class, prop, attribute, refactor step, or
-  before/after substitution — the reviewer must arrive at the fix themselves.
+- 🔍 **Where to dig** — name the outcome, never the edit. Say what must become
+  true, using the real names: which entity is wrong, which property must change,
+  or which layer the decision belongs in. Then stop. Do not supply the change
+  itself — no corrected code, no before/after substitution, no ordered refactor
+  steps. When the outcome is architectural (move a decision to another layer,
+  split a component, make something reusable), naming the outcome IS the whole
+  section; the shape of the refactor is the reviewer's.
 
-  Recipes vs directions:
-  - ❌ "use `hidden md:flex` on `Button`"
-  - ❌ "this should be `min-h`, not `h`"
-  - ✅ "toggle visibility by breakpoint, like the rest of the wrapper"
-  - ✅ "sizing is the wrapper's responsibility; see how other shared wrappers
-    handle it"
+  Outcome vs edit:
+  - ❌ "use `hidden md:flex` on `Button`" — that is the edit
+  - ✅ "`Button` must be hidden below `md`; the wrapper already decides
+    visibility by breakpoint"
+  - ❌ "add `required: true` to `stats`" — that is the edit
+  - ✅ "`stats` must not be optional, or the decision to render `ProfileButton`
+    must move to the component that knows whether stats exist"
 
-DO NOT include the final corrected code. The reader arrives at the fix by reading
-the reference or applying the principle — that is where the "educational" comes
-from.
+DO NOT include the final corrected code. The reader must always finish the section
+knowing WHAT has to change; how to change it is theirs to work out. An issue the
+reader can read twice and still not know what is being asked of them has failed,
+however educational it feels.
 
 **Target ≤ 8–10 lines of body text per issue** (excluding disclosure prefix and
 code-quote blocks). If you exceed that, you're explaining, not pointing.
@@ -773,8 +778,11 @@ worktree: it uses the GitHub head SHA via the `contents` API.
   heading — composing the scaffold without writing the heading first is the easy
   miss; the pre-publish guard (Step 5) must catch it.
 - ❌ Including the final fixed code in a comment.
-- ❌ Recipe-style "Where to dig" — exact names, "use X instead of Y", named
-  refactor steps. Direction only.
+- ❌ Recipe-style "Where to dig" — corrected code, before/after substitution,
+  ordered refactor steps.
+- ❌ A "Where to dig" that leaves the reader unable to say what must change —
+  hints, unnamed entities ("this pair", "that layer"), a principle with no
+  target.
 - ❌ Marking an issue resolved without reading the file at HEAD.
 - ❌ Resetting issue numbers between revisions.
 - ❌ Drafting an audit without first reading existing PR comments / reviews.
