@@ -517,22 +517,29 @@ is governed by **core §10** — read it there.
 - 💡 **Why it matters** — the mechanism, and what it costs a human. Two things
   only: how the wrong behaviour happens, and what a person using the product
   sees or loses because of it. The human sentence is MANDATORY — an issue that
-  describes only code behaviour has not said why it matters. Nothing else goes
-  here: not a cross-reference to another issue, not the history of where a value
-  moved in this PR, not the fix. Hard ceiling 3 sentences — count them.
+  describes only code behaviour has not said why it matters. State the mechanism
+  in the code's own words — the option, flag, or call that produces it — never a
+  paraphrase of what it lets happen. Nothing else goes here: not a
+  cross-reference to another issue, not the history of where a value moved in
+  this PR, not the fix. Hard ceiling 3 sentences — count them.
 
   Mechanism vs cost:
   - ❌ "Both values look like real data and cannot be told apart from outside."
     — code behaviour, no human in it
   - ✅ "The user reads `0` as a real score of zero, not as data that failed to
     load."
+  - ❌ "`stats.ts:12-14` deliberately lets this request not go through." — a
+    paraphrase; name the option that does it
 - 🔍 **Where to dig** — name the outcome, never the edit. Say what must become
   true, using the real names: which entity is wrong, which property must change,
   or which layer the decision belongs in. Then stop. Do not supply the change
   itself — no corrected code, no before/after substitution, no ordered refactor
   steps. When the outcome is architectural (move a decision to another layer,
   split a component, make something reusable), naming the outcome IS the whole
-  section; the shape of the refactor is the reviewer's.
+  section; the shape of the refactor is the reviewer's. When more than one
+  outcome is acceptable, present them as alternatives from the first word
+  ("Either X, or Y") — never one stated as an instruction and the other appended
+  after an "or", which reads as the first sentence contradicting itself.
 
   Outcome vs edit:
   - ❌ "use `hidden md:flex` on `Button`" — that is the edit
