@@ -514,20 +514,34 @@ When a stack parent was detected (Step 2), which lines may carry a finding's evi
 is governed by **core §10** — read it there.
 
 - 🚫 **Problem** — one sentence, what's wrong.
-- 💡 **Why it matters** — the mechanism, and what it costs a human. Two things
-  only: how the wrong behaviour happens, and what a person using the product
-  sees or loses because of it. The human sentence is MANDATORY — an issue that
-  describes only code behaviour has not said why it matters. State the mechanism
-  in the code's own words — the option, flag, or call that produces it — never a
-  paraphrase of what it lets happen. Nothing else goes here: not a
-  cross-reference to another issue, not the history of where a value moved in
-  this PR, not the fix. Hard ceiling 3 sentences — count them.
+- 💡 **Why it matters** — the mechanism, and the cost. Two things only: how the
+  wrong behaviour happens, and what it costs. State the mechanism in the code's
+  own words — the option, flag, or call that produces it — never a paraphrase of
+  what it lets happen.
 
-  Mechanism vs cost:
+  The cost sentence is MANDATORY. Which kind it is depends on the finding:
+  - **It reaches the product** — say what a person using it sees, believes, or
+    loses. Check for this first; it is the default.
+  - **It does not reach the product** (structure, naming, dead exports, types) —
+    say what the current shape makes more expensive or riskier to change, as a
+    fact about the code: what must change together, what a search will not find,
+    what a name hides. Never invent a person to carry it. If the sentence needs
+    the word "developer" to work, it is a story, not a cost — rewrite it about
+    the code.
+
+  Nothing else goes here: not a cross-reference to another issue, not the
+  history of where a value moved in this PR, not the fix. Hard ceiling 3
+  sentences — count them.
+
+  Cost, both kinds:
   - ❌ "Both values look like real data and cannot be told apart from outside."
-    — code behaviour, no human in it
+    — states no cost at all
   - ✅ "The user reads `0` as a real score of zero, not as data that failed to
     load."
+  - ❌ "A developer who searches for `profileStats` by filename will not find
+    it." — an invented person
+  - ✅ "`stats.ts` exports `profileStats()`; the export is not reachable by
+    filename and the two can drift with nothing to catch it."
   - ❌ "`stats.ts:12-14` deliberately lets this request not go through." — a
     paraphrase; name the option that does it
 - 🔍 **Where to dig** — name the outcome, never the edit. Say what must become
@@ -560,6 +574,14 @@ code-quote blocks). If you exceed that, you're explaining, not pointing.
 **Optional supplementary markers** — only when they carry information the
 scaffold can't, one per issue at most: `🎯 Architectural`, `📌 Side note`,
 `⏳ If left as-is`. If a marker doesn't carry weight, omit it.
+
+**One confidence per issue.** Every sentence in the body carries the same
+certainty about whether the failure happens. A finding whose harm depends on a
+precondition you could not check is not confirmed: either verify the
+precondition, or state it once in 🚫 as part of what is wrong. Never assert the
+harm in 💡 and then take it back in ⏳, a footnote, or a parenthetical, and never
+in the first person ("I could not check this offline") — the issue reads as if
+written cold.
 
 **Do not embed chat Q&A.** The drafting conversation (the user's questions, your
 clarifications, "out of scope" notes) is for refining the draft only — it MUST
@@ -802,6 +824,12 @@ worktree: it uses the GitHub head SHA via the `contents` API.
   target.
 - ❌ A "Why it matters" with no human sentence, or one carrying a cross-reference
   to another issue or the history of where a value moved in the diff.
+- ❌ An issue that asserts a failure in one section and doubts it in another, or
+  that reports what the auditor did or did not manage to check.
+- ❌ A cost sentence built on an invented person ("a developer who opens this
+  file will…") instead of a fact about the code.
+- ❌ A "Problem" longer than one sentence, or one that already carries the
+  mechanism "Why it matters" then repeats.
 - ❌ Marking an issue resolved without reading the file at HEAD.
 - ❌ Resetting issue numbers between revisions.
 - ❌ Drafting an audit without first reading existing PR comments / reviews.
