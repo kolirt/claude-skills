@@ -514,8 +514,18 @@ When a stack parent was detected (Step 2), which lines may carry a finding's evi
 is governed by **core §10** — read it there.
 
 - 🚫 **Problem** — one sentence, what's wrong.
-- 💡 **Why it matters** — root cause / mechanism. 1–3 sentences; one short
-  paragraph is the ceiling.
+- 💡 **Why it matters** — the mechanism, and what it costs a human. Two things
+  only: how the wrong behaviour happens, and what a person using the product
+  sees or loses because of it. The human sentence is MANDATORY — an issue that
+  describes only code behaviour has not said why it matters. Nothing else goes
+  here: not a cross-reference to another issue, not the history of where a value
+  moved in this PR, not the fix. Hard ceiling 3 sentences — count them.
+
+  Mechanism vs cost:
+  - ❌ "Both values look like real data and cannot be told apart from outside."
+    — code behaviour, no human in it
+  - ✅ "The user reads `0` as a real score of zero, not as data that failed to
+    load."
 - 🔍 **Where to dig** — name the outcome, never the edit. Say what must become
   true, using the real names: which entity is wrong, which property must change,
   or which layer the decision belongs in. Then stop. Do not supply the change
@@ -783,6 +793,8 @@ worktree: it uses the GitHub head SHA via the `contents` API.
 - ❌ A "Where to dig" that leaves the reader unable to say what must change —
   hints, unnamed entities ("this pair", "that layer"), a principle with no
   target.
+- ❌ A "Why it matters" with no human sentence, or one carrying a cross-reference
+  to another issue or the history of where a value moved in the diff.
 - ❌ Marking an issue resolved without reading the file at HEAD.
 - ❌ Resetting issue numbers between revisions.
 - ❌ Drafting an audit without first reading existing PR comments / reviews.
