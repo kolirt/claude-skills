@@ -170,6 +170,8 @@ whose criteria are the convention files discovered per core §3. Each searcher's
 package (core §4 — searchers never re-fetch):
 
 - the asks (tracker requirements + open prior issues);
+- the mechanisms of prior issues being closed this revision (core §13) — each
+  searcher checks their sibling sites within its lens;
 - the audited range and changed-file list (the revision delta on repeat audits,
   core §11);
 - the worktree path — the searcher reads code itself, but pulls nothing from
@@ -249,8 +251,10 @@ A `matches` verdict is **two-directional** (core §12): the original ask is sati
 AND the state the fix created is sound — what it removed, what it now lets in, what
 its call sites now receive. When the fix rewrote a contract (props/emits, an exported
 API, a consumed type), read every consumer of that contract at HEAD before settling on
-`matches`. And once a mechanism is confirmed anywhere, sweep the sibling changed files
-(Step 2 file list, in the worktree) for the same pattern before drafting (core §13).
+`matches`. And `matches` is **BLOCKED until the mechanism sweep is done** (core §13):
+enumerate the mechanism's sibling sites across the delta (Step 2 file list, in the
+worktree) — both the defect pattern and the accepted fix pattern — and record a
+per-site verdict; a sibling still failing the mechanism caps the issue at `partial`.
 
 **BLOCKING — verification before drafting.** Fetch and read the file at HEAD for
 every still-open prior issue **before** presenting the reconciliation table or the
@@ -639,9 +643,11 @@ gh api repos/{owner}/{repo}/contents/{path}?ref={head-sha} -q .content | base64 
 ```
 Read the file at HEAD against the original issue yourself — in both directions (core
 §12): the ask is satisfied AND the state the fix created is sound. For a contract
-rewrite, read every consumer of the contract at HEAD; then sweep sibling changed
-files for the same mechanism (core §13). `gh pr diff` is not enough. Never close on
-the user's word alone or on a `[x]` row.
+rewrite, read every consumer of the contract at HEAD. Then the mechanism sweep (core
+§13) — BLOCKING: enumerate the sibling sites of the mechanism across the delta
+(defect pattern AND fix pattern) with a per-site verdict; a failing sibling caps the
+issue at partial. `gh pr diff` is not enough. Never close on the user's word alone
+or on a `[x]` row.
 
 ### Close — the three mechanisms
 
@@ -700,8 +706,9 @@ refuted → tell the user with evidence and do not add.
   without the fix-impact check (core §12); or closing a contract rewrite without
   reading its consumers.
 - ❌ On a repeat audit, reading only files with open issues — the reading list is
-  the revision delta (core §11); or skipping the sibling-file sweep for a confirmed
-  mechanism (core §13).
+  the revision delta (core §11).
+- ❌ Closing an issue on the named file alone — no sibling enumeration with
+  per-site verdicts, in both the defect and the fix direction (core §13).
 - ❌ Raising an out-of-scope structural finding as an `Issue N` instead of a
   follow-up (core §14), or adding new non-blocker findings after convergence
   (core §15).
@@ -733,8 +740,8 @@ refuted → tell the user with evidence and do not add.
 - [ ] Repeat audit: anchor bound; every file in the revision delta read at HEAD,
       regardless of issue state (core §11).
 - [ ] Still-open prior issues read at HEAD (not the diff); closures verified in both
-      directions, contract rewrites at every consumer, mechanism sweep run
-      (core §12–13).
+      directions, contract rewrites at every consumer; mechanism sweep done with
+      per-site verdicts — no `matches` without it (core §12–13).
 - [ ] User-proposed issues investigated against HEAD (Step 2.5; through the panel
       when the companion is enabled).
 - [ ] Project conventions opened for changed paths.

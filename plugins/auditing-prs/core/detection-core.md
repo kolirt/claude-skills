@@ -121,7 +121,8 @@ surface-triggered domain — not inline in the manager's context:
   that plugin is installed.
 - **The manager gathers once; searchers never re-fetch.** Each searcher receives a
   prepared package: the asks, the audited range and changed-file list (the revision
-  delta on repeat audits, §11), the materialized snapshot on disk, and **only its
+  delta on repeat audits, §11), the mechanisms of issues being closed this revision
+  (§13 — so siblings get checked), the materialized snapshot on disk, and **only its
   own** criteria source. Reading code from the snapshot is the searcher's job;
   pulling PR or tracker data again is not — N re-fetches waste calls and can
   straddle a moving head.
@@ -146,6 +147,11 @@ Each verdict carries `file:line` evidence at the snapshot. Additionally, flag an
 **new problems** the changes introduce. For a prior `Issue N` this verdict is the
 same judgement as reconciliation (§6), bridged: `matches=done`, `partial=partial`,
 `ignored=not_done`.
+
+**A verdict judges the ask's mechanism across the whole delta**, not only the file
+the ask names (§13): a sibling site in the delta where the same mechanism still
+fails caps the verdict at `partial`. This binds everyone who judges asks — the
+manager, the searchers, and the panel — without further instruction.
 
 ## 6. Prior-issue reconciliation (delta logic)
 
@@ -355,11 +361,31 @@ surface.
 ## 13. Mechanism propagation
 
 A confirmed mechanism is a property of a **pattern**, not of the file where it was
-first seen. Once a finding's mechanism is confirmed at one site, search the rest of
-the changed set (and, on repeat audits, the delta of §11) for the same pattern
-**before drafting**, and attach each additional site as its own `evidence` line.
-Closing the issue at one site while a sibling file keeps the same defect is a
-detection bug, not a next revision's discovery.
+first seen. The sweep runs in **both directions**:
+
+- **Defect direction.** Once a finding's mechanism is confirmed at one site, search
+  the rest of the changed set (and, on repeat audits, the delta of §11) for the same
+  pattern **before drafting**, and attach each additional site as its own `evidence`
+  line. Closing the issue at one site while a sibling file keeps the same defect is a
+  detection bug, not a next revision's discovery.
+- **Fix direction.** When a fix establishes how a state is presented or handled — a
+  loading skeleton, a validation, an error state — check the sibling sites in the
+  delta that carry the same state: a sibling left on a different treatment is a
+  finding or a follow-up ("one state, two presentations"), decided by the scope
+  boundary (§14). The question is not only "is the defect elsewhere?" but "is the
+  accepted fix applied everywhere it applies?".
+
+**Ownership is explicit — three nets, one definition:**
+
+1. **The manager, at closure — BLOCKING.** No prior issue reaches `matches` (§6)
+   until the manager has enumerated the mechanism's sibling sites across the delta
+   and recorded a per-site verdict. Closing on the named file alone is the failure
+   mode this section exists to stop.
+2. **The searchers.** The searcher package (§4) carries the mechanisms of issues
+   being closed this revision; each searcher checks siblings within its own lens.
+3. **The panel — by definition, not by extra instruction.** §5 defines an ask's
+   verdict as the mechanism holding across the whole delta; the panel judges every
+   ask against that definition.
 
 ## 14. Scope boundary (ticket vs refactor)
 
