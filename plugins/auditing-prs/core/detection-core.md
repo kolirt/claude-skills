@@ -186,8 +186,9 @@ independent check.
   criteria the searchers used: the active domain-skill contents and the discovered
   convention files (§3), framed as "apply these rules, and do not limit yourself to
   them". Criteria are shared rules, not conclusions — they sharpen the panel without
-  breaking independence. What stays withheld is the manager's and the searchers'
-  findings and verdicts.
+  breaking independence. Include the executable-evidence instruction (§17) as best
+  effort. What stays withheld is the manager's and the searchers' findings and
+  verdicts.
 - **Consolidation.** A problem found independently by a searcher and by the panel is
   confirmed. A single-source finding is judged critically by the manager — kept with
   evidence, dropped with a stated reason, or escalated; never silently absorbed and
@@ -416,3 +417,42 @@ anything newly noticed to follow-ups (§14). After convergence a new finding is
 admitted only if it is (a) a regression introduced by a fix (§12) or (b) a `blocker`.
 Reaching convergence and continuing to add non-blocking findings anyway is a process
 defect, not thoroughness.
+
+## 16. Adversarial refutation (the skeptic)
+
+Every verdict that ends a conversation gets an adversary before it is presented:
+
+- **A candidate finding** → task: *prove this is not a bug.* Angles: the case is
+  handled elsewhere, the behaviour is intended, the precondition cannot occur.
+- **A closure candidate** (an ask about to be `done`, an issue about to be
+  `matches`) → task: *prove this is NOT done.* Angles: the original ask only
+  partially satisfied; the state the fix created (§12); sibling sites (§13); what
+  the contract's consumers now receive.
+
+One skeptic per batch is enough — hand it both lists plus the snapshot and the
+delta; it returns "survived" or "refuted + evidence" per item. A refuted finding is
+dropped and never published; a refuted closure falls to `partial`, carrying the
+skeptic's evidence. The skeptic can be wrong in both directions — the manager
+judges its verdicts critically, same as the panel's (§7); on reasoned disagreement,
+escalate rather than silently comply.
+
+Refutation may be skipped only for findings independently confirmed by both a
+searcher and the panel (§7 consolidation) — cross-confirmation already did the
+work. A confirmer looks for evidence of "yes"; the skeptic looks for evidence of
+"no"; together they are more honest than either alone.
+
+## 17. Executable evidence
+
+Where a check can be executed cheaply — a grep over the snapshot, a type-check in
+the worktree, a small computation (a contrast ratio, a count of call sites) —
+executing it is **mandatory** for the manager, the searchers, and the skeptic.
+Reading the code and concluding is not evidence when a one-command check exists;
+the command's output becomes the finding's `evidence`, cited in it.
+
+**Arbitration:** an executed check outranks any agent's claim — the manager's, a
+searcher's, the skeptic's, or a panel verifier's. A claim contradicted by an
+executed check is wrong: re-examine the claim, not the output (unless the check
+itself was malformed — then fix the check and re-run it).
+
+External panel verifiers cannot be forced to execute anything; the §7 handoff
+carries this instruction as best effort.

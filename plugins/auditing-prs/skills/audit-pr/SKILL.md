@@ -180,9 +180,20 @@ package (core §4 — searchers never re-fetch):
   convention file paths.
 
 Searchers return findings in the core §8 model; consolidate before drafting —
-dedupe, scope-gate (core §14). With the `auditing` plugin absent, domain searchers
+dedupe, scope-gate (core §14). Searchers, the skeptic, and you follow core §17:
+where a one-command check exists (grep, type-check, computation), run it and cite
+its output as the evidence. With the `auditing` plugin absent, domain searchers
 run on general knowledge — state once in the Step 3 digest that those lenses ran
 without codified criteria (the conventions searcher is unaffected).
+
+### Skeptic pass (core §16)
+
+After consolidating the searchers (and the panel, when enabled), dispatch one
+skeptic subagent with two lists — the candidate findings ("prove it's not a bug")
+and the closure candidates ("prove it's NOT done") — plus the worktree path and the
+delta. Apply the results before drafting: a refuted finding is dropped; a refuted
+closure falls to `partial`, carrying the skeptic's evidence in the ⏳ bucket.
+Findings confirmed by both a searcher and the panel skip refutation (core §16).
 
 ### Revision delta (core §11)
 
@@ -671,8 +682,9 @@ The worktree already exists — Step 2 materialized it; you, the searchers, and 
 panel judge one snapshot. Hand each verifier the core §7 package: the **raw
 context** (full tracker ticket, full PR conversation, the asks, the worktree path)
 **plus the criteria** — the active domain-skill contents and the discovered
-convention file paths, framed floor-not-ceiling — and **never your or the
-searchers' conclusions**. Treat the result with **strict acceptance**: the audit is
+convention file paths, framed floor-not-ceiling — plus the executable-evidence
+instruction (core §17, best effort), and **never your or the searchers'
+conclusions**. Treat the result with **strict acceptance**: the audit is
 not "done" if any ask is partial/not_done or the PR introduces a new blocker.
 Consolidate per core §7: searcher∩panel = confirmed; single-source findings you
 judge critically. Fold the outcome into your reconciliation and the Step 3 draft
@@ -716,6 +728,10 @@ refuted → tell the user with evidence and do not add.
   codified criteria were applied when the `auditing` plugin was absent (core §4).
 - ❌ A searcher re-fetching PR or tracker data instead of using the manager's
   package, or receiving another lens's criteria (core §4).
+- ❌ Publishing a finding or closing an ask that never passed the skeptic
+  (core §16) — unless searcher∩panel already confirmed it.
+- ❌ Concluding by reading where a one-command check exists, or letting any agent's
+  claim override an executed check (core §17).
 - ❌ Adding a user-proposed issue without investigating it against HEAD first
   (Step 2.5).
 - ❌ **(companion)** Handing the panel your or the searchers' conclusions — criteria
@@ -748,6 +764,9 @@ refuted → tell the user with evidence and do not add.
 - [ ] **(if companion)** panel run on the Step 2 worktree with raw context +
       criteria (never conclusions); searcher∩panel consolidation done; gate
       handled.
+- [ ] Skeptic pass run over candidate findings + closure candidates; results
+      applied before drafting (core §16). Cheap executable checks run, outputs
+      cited as evidence (core §17).
 - [ ] Findings scope-gated — follow-ups unnumbered, rendered once (core §14);
       convergence checked and stated in the 🏁 line (core §15).
 - [ ] Draft presented (digest first; Plannotator if installed); user explicitly

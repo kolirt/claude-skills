@@ -229,6 +229,12 @@ never changes shared state:
 detection over the changes since the anchor (delta) or over the whole branch
 (first-pass).
 
+**Skeptic + executable evidence (core §16–17).** Before the report, run the skeptic
+pass over candidate findings ("prove it's not a bug") and `fixed` verdicts ("prove
+it's NOT done"); a refuted verdict falls to `partial` with the skeptic's evidence.
+Where a one-command check exists (grep, type-check, computation), run it — its
+output is the evidence, and it outranks any agent's claim.
+
 ## Output
 
 Chat-only. Render the core finding model (core §8) with a Problem / Why / How-to-fix
@@ -294,6 +300,8 @@ agent-companion is off or no verifier is available, run solo and say so explicit
       (core §12–13).
 - [ ] Lens criteria loaded from the `auditing` domain skills when available — or
       disclosed as not codified (core §4).
+- [ ] Skeptic pass applied to findings and `fixed` verdicts; cheap executable
+      checks run, outputs cited (core §16–17).
 - [ ] Conventions opened for changed paths.
 - [ ] Panel run if agent-companion enabled; solo + disclaimer otherwise.
 - [ ] Findings in chat with concrete fix recommendations; no external writes.
