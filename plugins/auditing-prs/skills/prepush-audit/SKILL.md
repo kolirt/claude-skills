@@ -235,6 +235,12 @@ it's NOT done"); a refuted verdict falls to `partial` with the skeptic's evidenc
 Where a one-command check exists (grep, type-check, computation), run it — its
 output is the evidence, and it outranks any agent's claim.
 
+**History check + coverage (core §18–19).** Run the blame pass over the audited
+range (`../../references/history-check.md`; `$BASE` is `TRUE_BASE`, `$WT` the local
+checkout or the snapshot worktree) — every hotspot gets a verdict. Fold the
+searchers' examined-file lists into the coverage map; a file nobody examined is
+read or named in the report before the readiness verdict.
+
 ## Output
 
 Chat-only. Render the core finding model (core §8) with a Problem / Why / How-to-fix
@@ -302,6 +308,8 @@ agent-companion is off or no verifier is available, run solo and say so explicit
       disclosed as not codified (core §4).
 - [ ] Skeptic pass applied to findings and `fixed` verdicts; cheap executable
       checks run, outputs cited (core §16–17).
+- [ ] History-check hotspots all carry verdicts; coverage map has no unnamed gaps
+      (core §18–19).
 - [ ] Conventions opened for changed paths.
 - [ ] Panel run if agent-companion enabled; solo + disclaimer otherwise.
 - [ ] Findings in chat with concrete fix recommendations; no external writes.

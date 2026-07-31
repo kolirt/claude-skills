@@ -54,6 +54,7 @@ Skeleton of the finished file (`←` marks Plannotator-only chrome):
 - ⏳ Not fixed / partial / open: Issue 8 — partial: <one line>
 - 🎯 Asks (<ticket>): <ask> ✅ · <ask> ❌
 - 📮 Follow-ups (out of scope): <one line>
+- 📂 Coverage: <N>/<M> files examined · gaps: none
 - 🏁 Convergence: not yet — <what remains>
 
 ---                               ← chrome

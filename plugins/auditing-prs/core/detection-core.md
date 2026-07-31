@@ -456,3 +456,34 @@ itself was malformed — then fix the check and re-run it).
 
 External panel verifiers cannot be forced to execute anything; the §7 handoff
 carries this instruction as best effort.
+
+## 18. Coverage accounting
+
+Fan-out reads selectively — each searcher opens what looks relevant to its lens —
+so nothing guarantees every changed file was examined by anyone. Make it a checked
+fact, not an assumption:
+
+- **Every searcher reports the files it examined** alongside its findings.
+- **The manager folds these into a map**: audited file → lenses that examined it.
+  The audited set is the full diff on a first pass, the revision delta (§11) on a
+  repeat audit.
+- **A file no searcher examined is a coverage gap**: read it before drafting, or
+  name it in the report. A gap neither closed nor named is a detection bug —
+  "covered everything" may only be said when the map shows it.
+
+## 19. History check (rewritten lines)
+
+The diff shows what the change is; history shows what the change **undoes**. For
+the lines the change rewrites or deletes, check where they came from (blame at the
+base of the audited range): a line that originated in a fix, workaround, or revert
+commit is a **hotspot** — the change may be silently reintroducing the bug that
+commit fixed.
+
+- **The manager runs this as an executable check (§17)** over the audited range and
+  hands each hotspot to the relevant searcher's package. Every hotspot gets an
+  explicit verdict: *intentional* (the asks or the PR conversation sanction the
+  removal) or a *finding* anchored at this change's lines.
+- Commit-message markers (`fix`, `hotfix`, `revert`, `bug`) and explanatory
+  comments on the removed lines are signals, not proof — the verdict comes from
+  comparing the old commit's purpose with the new code's behaviour.
+- A hotspot with no verdict is a coverage gap (§18). Silence is not allowed.

@@ -174,10 +174,29 @@ package (core §4 — searchers never re-fetch):
   searcher checks their sibling sites within its lens;
 - the audited range and changed-file list (the revision delta on repeat audits,
   core §11);
+- the hotspots from the history check (below) that fall in this searcher's lens —
+  each needs a verdict (core §19);
 - the worktree path — the searcher reads code itself, but pulls nothing from
   GitHub or the tracker;
 - **only its own** criteria source: the mapped `auditing` domain skill, or the
   convention file paths.
+
+Every searcher returns, alongside its findings, **the list of files it examined**
+(core §18).
+
+### History check (core §19)
+
+Before dispatching searchers, run the blame pass over the audited range — bindings
+in `../../references/history-check.md`. Each hotspot (a rewritten/deleted line that
+originated in a fix/revert commit) goes into the relevant searcher's package and
+must end with a verdict: intentional, or a finding anchored at this change's lines.
+
+### Coverage map (core §18)
+
+At consolidation, fold the searchers' examined-file lists into a map: audited file
+→ lenses that examined it. A file nobody examined is a gap — read it before
+drafting, or name it in the digest's 📂 line. Never claim full coverage without the
+map.
 
 Searchers return findings in the core §8 model; consolidate before drafting —
 dedupe, scope-gate (core §14). Searchers, the skeptic, and you follow core §17:
@@ -319,13 +338,15 @@ The draft has **three parts**, in this order:
    ⏳ Not fixed / partial / open: Issue 8 — partial: <one line>
    🎯 Asks (<ticket>):           <ask> ✅ · <ask> ✅ · <ask> ❌
    📮 Follow-ups (out of scope): <one line each — separate-ticket candidates, not Issues>
+   📂 Coverage:                  <N>/<M> files examined · gaps: none / <files>
    🏁 Convergence:               converged — asks done, no open blockers / not yet: <what remains>
    ```
    Omit a bucket only if it is genuinely empty. Nothing the audit touched may be
    silently absent — if you are closing it, it is in ✅; if it is new, 🆕; if it
-   still fails, ⏳; if it is real but out of ticket scope, 📮 (core §14). The 🏁 line
-   is never omitted: state the core §15 condition every revision — and once it holds,
-   the review closes; only a fix-introduced regression or a blocker may reopen it.
+   still fails, ⏳; if it is real but out of ticket scope, 📮 (core §14). The 📂 and
+   🏁 lines are never omitted: coverage is stated from the core §18 map, and the
+   core §15 condition is stated every revision — once it holds, the review closes;
+   only a fix-introduced regression or a blocker may reopen it.
 
    **Stacked-branch line — only when Step 2 detected a `PARENT_PR`.** Directly under
    the `## Review state @ HEAD <sha>` heading, above the buckets:
@@ -517,6 +538,7 @@ Fixed scheme, same meaning every time:
 | ✅ | Resolved |
 | 📋 | Checklist (summary only) |
 | 📮 | Follow-up — out of ticket scope (digest + summary only) |
+| 📂 | Coverage — files examined / gaps (digest only) |
 | 🏁 | Convergence state (digest only) |
 
 One marker per section heading. Do not sprinkle into prose.
@@ -732,6 +754,10 @@ refuted → tell the user with evidence and do not add.
   (core §16) — unless searcher∩panel already confirmed it.
 - ❌ Concluding by reading where a one-command check exists, or letting any agent's
   claim override an executed check (core §17).
+- ❌ Claiming full coverage without the examined-file map, or leaving a coverage
+  gap neither read nor named in 📂 (core §18).
+- ❌ A hotspot from the history check left without a verdict — a rewritten fix-line
+  is judged, never silently passed (core §19).
 - ❌ Adding a user-proposed issue without investigating it against HEAD first
   (Step 2.5).
 - ❌ **(companion)** Handing the panel your or the searchers' conclusions — criteria
@@ -767,6 +793,9 @@ refuted → tell the user with evidence and do not add.
 - [ ] Skeptic pass run over candidate findings + closure candidates; results
       applied before drafting (core §16). Cheap executable checks run, outputs
       cited as evidence (core §17).
+- [ ] History check run; every hotspot has a verdict (core §19). Coverage map
+      built from searchers' examined-file lists; gaps read or named in 📂
+      (core §18).
 - [ ] Findings scope-gated — follow-ups unnumbered, rendered once (core §14);
       convergence checked and stated in the 🏁 line (core §15).
 - [ ] Draft presented (digest first; Plannotator if installed); user explicitly
