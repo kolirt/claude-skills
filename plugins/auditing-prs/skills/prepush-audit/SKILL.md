@@ -11,8 +11,10 @@ branch and reported **in chat** — never published.
 ## Detection engine
 
 Read `../../core/detection-core.md` first — it defines the sources, HEAD/snapshot
-discipline, convention discovery, focus lenses, the per-ask acceptance verdict,
-reconciliation states, the verifier-panel protocol, and the neutral finding model.
+discipline, convention discovery, focus lenses and their criteria map, the per-ask
+acceptance verdict, reconciliation states, the verifier-panel protocol, the neutral
+finding model, revision-delta discipline, fix-impact verification, mechanism
+propagation, the scope boundary, and the convergence condition.
 This skill is the **local adapter**: it binds the core's sources to the local branch
 (PR optional), enforces a read-only contract, and renders findings as concrete fix
 recommendations. Where a step below names a detection rule, the core is the authority.
@@ -28,6 +30,16 @@ recommendations. Where a step below names a detection rule, the core is the auth
   conversation and the reviewer's published audit (this drives delta mode). If none
   exists, first-pass mode.
 - **Focus lenses.** Default to all five (core §4); the executor may narrow them.
+- **Lens criteria.** When the `auditing` plugin's domain skills are available in the
+  session, use the ones core §4 maps to the active lenses (plus surface-triggered
+  domains the diff activates) per core §4 — criteria only, delta-scoped, severity
+  mapped. Absent → run as before and say once that the lenses ran without codified
+  criteria.
+- **Searcher fan-out (core §4).** Lenses run as searcher subagents bound to the
+  snapshot — the committed-snapshot worktree, or the working tree in working-tree
+  mode — each with the core §4 package and only its own criteria; the conventions
+  searcher uses the convention files discovered per core §3. Searchers never
+  re-fetch PR or tracker data.
 
 ## Binding commands (read-only)
 
@@ -189,11 +201,15 @@ never changes shared state:
 - **Delta mode (a prior published audit exists):** report the delta, not a re-derived
   full report. Produce:
   (a) a status table mapping each prior `Issue N` to `matches→fixed / partial /
-  ignored→open` at the local snapshot (core §6), with a concrete fix recommendation
+  ignored→open` at the local snapshot (core §6) — `fixed` only after the
+  two-directional fix-impact check of core §12 (consumers included for contract
+  rewrites) and the mechanism sweep of core §13 — with a concrete fix recommendation
   for anything not fully fixed; and
   (b) a scan of the changes made since that audit for new problems — by the solo
   engine **and**, when agent-companion is enabled, by the panel (core §7), so
-  readiness gates on the same new-problem detection `audit-pr` applies.
+  readiness gates on the same new-problem detection `audit-pr` applies. The reading
+  surface for this scan is **every** file in `anchor…HEAD`, regardless of whether its
+  issues are closed (core §11).
   Do **not** reproduce the reviewer's whole report.
 
   **Prior-audit anchor.** "Changes since that audit" needs an explicit anchor: the
@@ -223,12 +239,16 @@ divergence from `audit-pr`; detection is identical.
 Sections, in order:
 1. **Prior-audit reconciliation table** (delta mode only) — Issue N → fixed / partial /
    open at the snapshot, with a concrete fix recommendation per unfinished item.
-2. **New findings** — scaffold (Problem / Why / How-to-fix) per finding.
-3. **Push-readiness verdict.**
+2. **New findings** — scaffold (Problem / Why / How-to-fix) per finding. In-scope
+   findings only (core §14); out-of-scope observations go to the next section.
+3. **Follow-ups (out of scope)** — one line each, separate-ticket candidates; they
+   never gate readiness (core §14).
+4. **Push-readiness verdict.**
 
-**Push-readiness verdict.** "Ready" requires **every ask `done`** — both every prior
-`Issue N` at `matches` (fixed) AND every tracker/original requirement satisfied — AND
-no new blocker-severity finding (core §8). Any ask left `cannot-verify-offline` does
+**Push-readiness verdict.** "Ready" is the convergence condition of core §15: **every
+ask `done`** — both every prior `Issue N` at `matches` (fixed) AND every
+tracker/original requirement satisfied — AND no new **in-scope** blocker-severity
+finding (core §8, §14). Follow-ups never downgrade the verdict. Any ask left `cannot-verify-offline` does
 **not** count as ready: list it explicitly as unverifiable and downgrade the verdict to
 "ready except for N unverifiable items" — never silently treat it as done. A skipped
 panel (agent-companion off) is surfaced the same way (see Panel).
@@ -239,7 +259,10 @@ If agent-companion is enabled, the panel runs — mandatory, same as `audit-pr`,
 protocol in core §7. It matters **more** here: an executor auditing their own work has
 a confirmation-bias blind spot an independent panel does not. Materialize the committed
 snapshot as a detached worktree at its SHA using the `git worktree add --detach "$SNAP"`
-binding above (read-only; `trap` cleanup). If
+binding above (read-only; `trap` cleanup). Hand verifiers the core §7 package — raw
+context **plus the criteria** (active domain-skill contents + discovered convention
+files, floor-not-ceiling), never your or the searchers' conclusions; consolidate
+searcher∩panel per core §7. If
 agent-companion is off or no verifier is available, run solo and say so explicitly
 ("ran without independent verification") — do not claim parity.
 
@@ -248,6 +271,11 @@ agent-companion is off or no verifier is available, run solo and say so explicit
 - ❌ Any write to GitHub/Jira or any `git push`.
 - ❌ Judging the diff instead of the file at the snapshot (core §2).
 - ❌ Reproducing the reviewer's whole report in delta mode.
+- ❌ Reporting `fixed` on the original ask alone, without judging the state the fix
+  created (core §12) or sweeping sibling files for the confirmed mechanism (core §13).
+- ❌ Scanning only files with open issues in delta mode — the surface is the whole
+  `anchor…HEAD` delta (core §11).
+- ❌ Letting an out-of-scope structural finding gate push-readiness (core §14).
 - ❌ Claiming "ready" while asks are `cannot-verify-offline` or the panel was skipped.
 - ❌ Hardcoding conventions instead of discovering them per changed path (core §3).
 - ❌ Inlining the detection core instead of referencing it.
@@ -261,6 +289,11 @@ agent-companion is off or no verifier is available, run solo and say so explicit
 - [ ] Tracker context fetched (all comments) or noted unavailable.
 - [ ] PR discovered (read-only); mode chosen (delta vs first-pass).
 - [ ] For every prior Issue, file read at the snapshot (`git show HEAD:{path}`), not the diff.
+- [ ] Delta mode: every file in `anchor…HEAD` read, closed issues exempt nothing
+      (core §11); `fixed` verdicts passed the two-directional check + mechanism sweep
+      (core §12–13).
+- [ ] Lens criteria loaded from the `auditing` domain skills when available — or
+      disclosed as not codified (core §4).
 - [ ] Conventions opened for changed paths.
 - [ ] Panel run if agent-companion enabled; solo + disclaimer otherwise.
 - [ ] Findings in chat with concrete fix recommendations; no external writes.

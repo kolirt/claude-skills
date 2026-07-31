@@ -12,8 +12,10 @@ resolution when fixes are pushed.
 ## Detection engine
 
 Read `../../core/detection-core.md` first — it defines the sources, HEAD/snapshot
-discipline, convention discovery, focus lenses, the per-ask acceptance verdict,
-reconciliation states, the verifier-panel protocol, and the neutral finding model.
+discipline, convention discovery, focus lenses and their criteria map, the per-ask
+acceptance verdict, reconciliation states, the verifier-panel protocol, the neutral
+finding model, revision-delta discipline, fix-impact verification, mechanism
+propagation, the scope boundary, and the convergence condition.
 This skill is the **publish adapter**: it binds those to a GitHub PR via `gh` (the
 snapshot is the PR head SHA) and adds the comment-format, draft, publish, and
 resolution machinery below. Where a step below names a detection rule, the core is
@@ -70,64 +72,19 @@ where the PR lives (github.com or a GitHub Enterprise host — same flow).
 
 ## Step 0.5 — Issue-tracker context (Jira, optional)
 
-This step is **optional** and only enriches the audit with *what was asked*.
-If no tracker is configured, skip it cleanly and proceed — it never blocks the
-audit.
+Optional — enriches the audit with *what was asked*; it never blocks the audit.
+**Trigger:** the PR branch encodes an issue key (default regex
+`^[A-Z][A-Z0-9]+-[0-9]+`, adjust per project). No key in the branch name → skip
+this step silently.
 
-1. **Trigger.** The PR branch encodes an issue key. Default regex
-   `^[A-Z][A-Z0-9]+-[0-9]+` (adjust per project). No key in the branch name →
-   skip this step silently.
-   ```bash
-   gh pr view {N} --repo {owner}/{repo} --json headRefName -q .headRefName
-   ```
+```bash
+gh pr view {N} --repo {owner}/{repo} --json headRefName -q .headRefName
+```
 
-2. **Credentials — read from the environment only; never store or print them:**
-   - `JIRA_BASE_URL` — e.g. `https://your-org.atlassian.net`
-   - `JIRA_EMAIL` — the account email
-   - `JIRA_API_TOKEN` — an **Atlassian API token** (create at
-     `id.atlassian.com` → Security → *Create API token*), used with HTTP Basic
-     auth in the form `email:token`.
-
-   How these reach the environment is the user's choice (direnv, shell profile,
-   a secrets manager, CI secrets). The skill only reads them.
-
-3. **Token safety.** Never echo the token into chat, drafts, comments, or logs.
-   Pass it only inside the `-u` argument of `curl`. If you must show a command to
-   the user, redact it (`-u "$JIRA_EMAIL:***"`).
-
-4. **Fetch the issue** (summary, status, type, assignee, description, comments):
-   ```bash
-   curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
-     -H "Accept: application/json" \
-     "$JIRA_BASE_URL/rest/api/3/issue/{KEY}?fields=summary,status,issuetype,assignee,description,comment"
-   ```
-
-5. **Parse.** `summary`, `status.name`, `issuetype.name`, `assignee.displayName`
-   come straight from JSON. `description` and each `comment.body` are ADF
-   (Atlassian Document Format); extract plain text with:
-   ```bash
-   jq -r '[.. | objects | select(.type? == "text") | .text] | join(" ")'
-   ```
-   Take **all** comments — the full ticket context matters both for the audit and
-   for independent verification by the companion panel (§ "Verification via
-   agent-companion"). The `fields=comment` form may return only the first page of
-   comments on heavily-discussed issues; if the returned `comment.total` exceeds
-   the items present, page the dedicated endpoint
-   `$JIRA_BASE_URL/rest/api/3/issue/{KEY}/comment?startAt=…&maxResults=…` until
-   you have them all.
-
-6. **Failure modes — all non-fatal:**
-   - 401/403 → credentials missing or token expired: tell the user and proceed
-     without tracker context.
-   - 404 → the branch looks like a key but the issue does not exist: note it in
-     the draft and proceed.
-   - Network error → same: note and proceed.
-
-7. **Summarize the tracker context as the first part of the Step 3 draft.**
-
-> **Other trackers.** Jira is the concrete example here. For another tracker keep
-> the same shape: optional "what was asked" context, credentials from the
-> environment only, all failures non-fatal.
+When triggered, read `../../references/jira-context.md` — credentials (environment
+only), token safety, the fetch/parse commands with full comment pagination, and the
+non-fatal failure modes. Summarize the tracker context as the first part of the
+Step 3 draft.
 
 ## Step 1 — Confirm focus
 
@@ -196,56 +153,73 @@ Record the **head SHA** — this is the snapshot under review (required for inli
 comments). Identify changed files and open the conventions for those paths per core
 §3 (convention discovery).
 
+### Materialize the snapshot (worktree)
+
+Always put the PR on disk at the exact head SHA — the searchers (below) and the
+verifier panel read code from disk, and a detached worktree pins one snapshot for
+everyone. Bindings: `../../references/pr-worktree.md` (existing-remote fetch for
+fork heads, `--detach` at the SHA, `trap` cleanup). Reuse the same `HEAD_SHA` for
+your own `contents`-API reads.
+
+### Searcher fan-out (core §4)
+
+Dispatch one subagent per active lens, plus one per surface-triggered domain the
+changed files activate (endpoint/API → `api-contracts`, migration/schema → `data`,
+failure handling / external calls → `reliability`), plus a **conventions** searcher
+whose criteria are the convention files discovered per core §3. Each searcher's
+package (core §4 — searchers never re-fetch):
+
+- the asks (tracker requirements + open prior issues);
+- the audited range and changed-file list (the revision delta on repeat audits,
+  core §11);
+- the worktree path — the searcher reads code itself, but pulls nothing from
+  GitHub or the tracker;
+- **only its own** criteria source: the mapped `auditing` domain skill, or the
+  convention file paths.
+
+Searchers return findings in the core §8 model; consolidate before drafting —
+dedupe, scope-gate (core §14). With the `auditing` plugin absent, domain searchers
+run on general knowledge — state once in the Step 3 digest that those lenses ran
+without codified criteria (the conventions searcher is unaffected).
+
+### Revision delta (core §11)
+
+When any prior review exists, bind the anchor and the delta before drafting:
+
+```bash
+# Anchor = the commit the LATEST review was submitted against.
+# --slurp combines all --paginate pages, so max_by is global, not per-page.
+ANCHOR=$(gh api --paginate repos/{owner}/{repo}/pulls/{N}/reviews --slurp \
+  --jq 'add | map(select(.commit_id)) | max_by(.submitted_at) | .commit_id')
+# Fallback for inline-only prior audits: latest inline comment's commit.
+[ -z "$ANCHOR" -o "$ANCHOR" = "null" ] && ANCHOR=$(gh api --paginate \
+  repos/{owner}/{repo}/pulls/{N}/comments --slurp \
+  --jq 'add | max_by(.created_at) | .original_commit_id')
+
+# Every file changed since the last reviewed snapshot.
+gh api repos/{owner}/{repo}/compare/${ANCHOR}...{head-sha} \
+  --jq '{changed_files, files: [.files[].filename]}'
+```
+
+Read **every** file in that list at HEAD (`contents` API, as in "Reconciling prior
+issues") — including files whose issues are all closed (core §11). The compare
+endpoint's 300-file cap applies here too: when `files` hits 300 or `changed_files`
+exceeds the returned count, say so in the digest.
+
 ### Stacked-branch base discovery (core §9)
 
 **When `baseRefName` is not the default branch, skip this subsection entirely** — the
 PR is already correctly stacked onto its parent, `gh pr diff` is authoritative, and
-nothing below changes. Run discovery **only** when `baseRefName == $DEFAULT`
-(Step 0), which is the failure mode: a branch cut from a parent branch whose PR
-nevertheless targets the default branch.
+nothing changes. Run discovery **only** when `baseRefName == $DEFAULT` (Step 0),
+which is the failure mode: a branch cut from a parent branch whose PR nevertheless
+targets the default branch.
 
 The rule, the outputs (`TRUE_BASE`, `PARENT_PR`, `INHERITED_FILES`), and the honesty
-rules are **core §9** — do not restate them here. These are this adapter's bindings:
-
-```bash
-# CANDIDATES — every other open PR's head (exclude this PR's own number).
-gh pr list --repo {owner}/{repo} --state open \
-  --json number,headRefName,headRefOid,isCrossRepository --limit 200
-
-# merge-base + ancestry in ONE call per pair: merge_base_commit.sha is the
-# merge-base; status == "ahead" means B is a strict descendant of A.
-gh api repos/{owner}/{repo}/compare/{A}...{B} \
-  --jq '{status, merge_base_commit: .merge_base_commit.sha}'
-```
-
-- **Truncation.** `--limit 200` bounds the cost at one compare call per open PR. If
-  the listing returns 200 entries, the candidate set may be cut — report it (core §9,
-  honesty rules); a long-lived parent older than the limit would otherwise be missed
-  silently.
-- **Unreachable candidate.** A `404`/`403` on a compare call — typically a
-  cross-repository fork head a read-only token cannot read — means **skipped and
-  counted**, never "not an ancestor" (core §9). A stack whose parent lives in a fork
-  is not detected.
-
-### Taking the diff from `TRUE_BASE`
-
-When discovery found a `PARENT_PR`, `gh pr diff` is **not** the audit subject — it
-carries the parent's commits. Take the range from `TRUE_BASE` instead, and narrow the
-commit list (fetched below) to the same range:
-
-```bash
-gh api repos/{owner}/{repo}/compare/{TRUE_BASE}...{head-sha} \
-  --jq '{status, changed_files, commits: [.commits[].sha], files: [.files[].filename]}'
-```
-
-**State the API's limits, never absorb them silently:**
-
-- The compare endpoint returns **at most 300 changed files** and paginates only its
-  commits. When `files` reaches 300 or `changed_files` exceeds the returned count, say
-  in the digest that the file set was truncated, and recommend re-running the audit
-  against a local checkout (`prepush-audit`), which has no such cap.
-
-When discovery found no parent, nothing changes: `gh pr diff` stays the subject
+rules are **core §9**. When discovery runs, read
+`../../references/stacked-discovery.md` for this adapter's bindings — candidate
+listing, compare calls, truncation/unreachable handling, and the `TRUE_BASE` diff
+range. When a parent is found, `gh pr diff` is NOT the audit subject — take the
+range from `TRUE_BASE` per that file; with no parent, `gh pr diff` stays the subject
 exactly as today.
 
 ### Reconciling prior issues
@@ -270,6 +244,13 @@ head SHA and read the original issue against it yourself:
 ```bash
 gh api repos/{owner}/{repo}/contents/{path}?ref={head-sha} -q .content | base64 -d
 ```
+
+A `matches` verdict is **two-directional** (core §12): the original ask is satisfied
+AND the state the fix created is sound — what it removed, what it now lets in, what
+its call sites now receive. When the fix rewrote a contract (props/emits, an exported
+API, a consumed type), read every consumer of that contract at HEAD before settling on
+`matches`. And once a mechanism is confirmed anywhere, sweep the sibling changed files
+(Step 2 file list, in the worktree) for the same pattern before drafting (core §13).
 
 **BLOCKING — verification before drafting.** Fetch and read the file at HEAD for
 every still-open prior issue **before** presenting the reconciliation table or the
@@ -322,10 +303,14 @@ The draft has **three parts**, in this order:
    🆕 New this review:            Issue 8 — <one line>,  Issue 9 — <one line>
    ⏳ Not fixed / partial / open: Issue 8 — partial: <one line>
    🎯 Asks (<ticket>):           <ask> ✅ · <ask> ✅ · <ask> ❌
+   📮 Follow-ups (out of scope): <one line each — separate-ticket candidates, not Issues>
+   🏁 Convergence:               converged — asks done, no open blockers / not yet: <what remains>
    ```
    Omit a bucket only if it is genuinely empty. Nothing the audit touched may be
    silently absent — if you are closing it, it is in ✅; if it is new, 🆕; if it
-   still fails, ⏳.
+   still fails, ⏳; if it is real but out of ticket scope, 📮 (core §14). The 🏁 line
+   is never omitted: state the core §15 condition every revision — and once it holds,
+   the review closes; only a fix-introduced regression or a blocker may reopen it.
 
    **Stacked-branch line — only when Step 2 detected a `PARENT_PR`.** Directly under
    the `## Review state @ HEAD <sha>` heading, above the buckets:
@@ -352,127 +337,31 @@ they are not published.
 
 ### Optional — review the draft in Plannotator (if installed)
 
-If the **Plannotator** annotator is available, offer it as the review surface for
-the draft: the user annotates specific lines in a browser UI instead of replying
-in chat. It is a drop-in for the "present, then WAIT" checkpoint below — the
-iterative-loop rules there still govern; Plannotator only changes *how* the user
-reacts, never *whether* they must explicitly approve before Step 5.
+Probe with `command -v plannotator` — non-fatal; if it fails, skip this subsection
+silently and use the plain chat checkpoint. When available, offer it as the review
+surface for the draft: the user annotates specific lines in a browser UI instead of
+replying in chat. It is a drop-in for the "present, then WAIT" checkpoint below —
+the iterative-loop rules there still govern; Plannotator only changes *how* the
+user reacts, never *whether* they must explicitly approve before Step 5.
 
-1. **Detect.** Non-fatal probe — if it fails, skip this subsection silently and
-   use the plain chat checkpoint:
-   ```bash
-   command -v plannotator
-   ```
-
-2. **Render the draft to a file** — one markdown file in a temp location, e.g.
-   `"$(mktemp -d)/pr-{N}-audit.md"`, holding all three parts in the usual order
-   (tracker context → review-state digest → audit findings). The tracker block and
-   the digest are still **chat-only** — never published to GitHub — but they belong
-   in the file because they help the user review. Open the file with a title line
-   (e.g. `# PR {N} — audit draft`), never a bare `---`, which can parse as YAML
-   front matter.
-
-   This file is **live Markdown, and is the explicit exception to the "show drafts
-   as fenced markdown" rule above** — that rule governs chat, which stays the
-   raw-source preview. Hard rules for the file:
-
-   - **No outer code fence around any part.** Plannotator renders a fence as a
-     non-wrapping block, so long prose lines vanish behind a horizontal scrollbar.
-   - **Paste each publishable body verbatim** — byte-for-byte the same text that
-     goes to chat and to GitHub, minus the outer fence. Never reflow, re-indent,
-     re-quote, escape or regenerate it.
-   - **Fences *inside* a body stay fenced** (code quotes, ` ```suggestion `) and
-     must be balanced — an unclosed inner fence swallows the rest of the document.
-   - **The review-state digest and the stacked-branch line may be reformatted**,
-     because they are chat-only chrome: emit one Markdown list item per bucket
-     instead of the whitespace-aligned columns (alignment does not survive live
-     Markdown and is not needed for review). This freedom applies ONLY to chat-only
-     blocks — publishable bodies stay verbatim.
-   - **Separate issues with `---`, preceded by the target as a bold line** (e.g.
-     `**path/to/File.vue:8**`), not a heading — the body already carries its own
-     `### Issue N`, and a second heading would duplicate it in the outline.
-   - **Everything the file adds around the drafts is Plannotator-only chrome** —
-     the document title, the bold locator lines, the bold summary-review label and
-     the `---` separators. None of it is ever part of a published comment body;
-     only the verbatim body between them is publishable.
-   - **The summary review has no file:line** — label it with a plain bold line
-     placed *outside* its verbatim body. Never invent a locator for it.
-
-   Skeleton of the finished file (`←` marks Plannotator-only chrome):
-
-   ```markdown
-   # PR {N} — audit draft            ← chrome
-
-   ## Task context (<ticket>)        ← chat-only, reformat freely
-   …tracker context…
-
-   ## Review state @ HEAD <sha>      ← chat-only, reformat freely
-   - 🧬 Stacked on PR <parent-N> (<parent-branch>) — audited range <TRUE_BASE>..<head-sha>
-   - ✅ Closing — verified done: Issue 5 (<commit>), Issue 7 (<commit>)
-   - 🆕 New this review: Issue 8 — <one line>
-   - ⏳ Not fixed / partial / open: Issue 8 — partial: <one line>
-   - 🎯 Asks (<ticket>): <ask> ✅ · <ask> ❌
-
-   ---                               ← chrome
-   **src/components/Form.vue:42**    ← chrome
-
-   > _[Claude review] — automated audit published via Claude Code from account @<gh-username>_
-
-   ### Issue 8
-   …verbatim publishable body, inner fences intact…
-
-   ---                               ← chrome
-   **Summary review**                ← chrome
-
-   > _[Claude review] — automated audit published via Claude Code from account @<gh-username>_
-
-   ### Issue 9
-   …verbatim publishable summary body, ending with the §4.7 checklist…
-   ```
-
-3. **Open the annotator** (this is what `plannotator-annotate` runs) and read its
-   result:
-   ```bash
-   plannotator annotate "$FILE"
-   ```
-
-4. **Act on the result** — map it onto the Step 3 loop:
-   - `The user approved.` / `"decision": "approved"` → treat as the explicit
-     approval Step 5 requires. Proceed to publish.
-   - Empty / `"decision": "dismissed"` → the user closed without deciding. Do NOT
-     publish and do NOT force a menu; hand control back with an open prompt, same
-     as the chat checkpoint.
-   - Plaintext feedback / `"decision": "annotated"` with `"feedback"` → revise the
-     draft per the annotations (including a brand-new issue raised there — Step 2.5),
-     then re-render and re-open the annotator. This is the normal revise loop.
-     Annotations that drop or add a finding renumber the surviving batch (§4.5)
-     before the file is re-rendered — report the new numbers, not the old ones.
-
-Fall back to the chat checkpoint whenever Plannotator is absent, the probe fails,
-or the user prefers chat. Everything else about Step 3 — never publishing without
-approval, the open iterative loop, treating new issues as normal — is unchanged.
+Before rendering the file, read `../../references/plannotator-draft.md` — the
+file-rendering rules (verbatim publishable bodies, Plannotator-only chrome, fence
+handling), the file skeleton, the annotate command, and how to map the annotator's
+result onto the Step 3 loop. Fall back to the chat checkpoint whenever Plannotator
+is absent, the probe fails, or the user prefers chat.
 
 ### Present the draft, then WAIT — do not force a decision
 
-After showing the draft, **stop and hand control back to the user with an open
-prompt** — something like "review the draft above; tell me what to change, or say
-publish when it's good." Then wait for their free-form reply.
-
-Do NOT, in the same turn as the draft, pop a multiple-choice "Publish? (1) yes
-(2) request-changes …" decision menu. That pressures a yes/no before the user has
-read the issues and blocks them from doing anything else. The draft step is an
-**open, iterative checkpoint**, not a one-shot choice:
-
-- The user may need several turns to read and react — let them.
-- They may want to reword an issue, drop one, change scope, or **raise a brand-new
-  issue** (Step 2.5) before anything is published — treat that as the normal loop,
-  revise the draft, and show it again. Dropping or adding one **renumbers the whole
-  surviving batch** (§4.5) — a dropped draft never leaves a hole behind it.
-- Only after the user **explicitly** approves do you move to Step 5 (publish).
-  Approval is theirs to give in their own words; do not pre-empt it with a forced
-  gate. A structured choice is fine only once the user has signalled they are
-  ready to publish and the only open question is *how* (e.g. `--comment` vs
-  `--request-changes`).
+After showing the draft, **stop and hand control back with an open prompt**
+("review the draft above; tell me what to change, or say publish when it's good")
+and wait for the free-form reply. Never pop a "Publish? yes/no" menu in the same
+turn — the draft step is an **open, iterative checkpoint**: the user may take
+several turns, reword or drop an issue, change scope, or raise a brand-new one
+(Step 2.5); revise and show again, renumbering the surviving batch (§4.5) after
+every change — a dropped draft never leaves a hole behind it. Move to Step 5 only
+after **explicit** approval in the user's own words. A structured choice is fine
+only once they have signalled readiness and the sole open question is *how* to
+publish (`--comment` vs `--request-changes`).
 
 ## Step 4 — Comment format
 
@@ -612,6 +501,8 @@ Fixed scheme, same meaning every time:
 | ⏳ | If left as-is (consequence) |
 | ✅ | Resolved |
 | 📋 | Checklist (summary only) |
+| 📮 | Follow-up — out of ticket scope (digest + summary only) |
+| 🏁 | Convergence state (digest only) |
 
 One marker per section heading. Do not sprinkle into prose.
 
@@ -641,7 +532,7 @@ One marker per section heading. Do not sprinkle into prose.
   (Gaps across revisions are impossible, because published numbers are never
   withdrawn.)
 - **Always number AND always include the checklist — even for a single issue.**
-  The checklist (§4.7) lists issues in ascending number order.
+  The checklist (§4.8) lists issues in ascending number order.
 
 ### 4.6 — Cross-references and commit links
 
@@ -661,7 +552,24 @@ When you reference a commit, make the SHA clickable too:
 [`{short-sha}`](https://{host}/{owner}/{repo}/commit/{full-sha})
 ```
 
-### 4.7 — Summary review ends with a checklist
+### 4.7 — Scope and follow-ups (core §14)
+
+Only in-scope findings become `Issue N`. A `follow-up` finding (core §14) is rendered
+**once**, in the summary review body, under its own heading placed before the
+checklist:
+
+```
+### 📮 Follow-ups (out of ticket scope, non-blocking)
+
+- <one line each: the observation and the suggested separate ticket>
+```
+
+No `Issue N` number, no checklist row, no inline comment — and never repeated in a
+later revision's summary. An architectural relocation raised as an `Issue N` on a
+narrow ticket, when the diff did not introduce the problem, is exactly what this
+section exists to stop.
+
+### 4.8 — Summary review ends with a checklist
 
 The summary body always ends with the checklist (even for a single issue):
 ```
@@ -729,63 +637,21 @@ verify first, then close).
 ```bash
 gh api repos/{owner}/{repo}/contents/{path}?ref={head-sha} -q .content | base64 -d
 ```
-Read the file at HEAD against the original issue yourself. `gh pr diff` is not
-enough. Never close on the user's word alone or on a `[x]` row.
+Read the file at HEAD against the original issue yourself — in both directions (core
+§12): the ask is satisfied AND the state the fix created is sound. For a contract
+rewrite, read every consumer of the contract at HEAD; then sweep sibling changed
+files for the same mechanism (core §13). `gh pr diff` is not enough. Never close on
+the user's word alone or on a `[x]` row.
 
-### Mechanism 1 — checklist row
+### Close — the three mechanisms
 
-Update the body of **every** summary review that lists the issue (not just the
-latest) — via the review-update call shown above. Change the matching row to:
-```
-- [x] ~~[**Issue N**](inline-url) — original action~~ ✅ fixed in [`{short-sha}`](https://{host}/{owner}/{repo}/commit/{full-sha})
-```
-Strikethrough preserves history; the resolution note carries a clickable SHA.
-
-**Mechanism 1 is BLOCKING.** The harness treats `PUT .../reviews/{id}` as editing
-a pre-existing PR review on the user's account and will prompt for permission.
-That is expected. Surface it in one batched message naming every review ID you
-need to update (rev 1, rev 2, …) so they approve in one shot. A `[x]` without
-`~~...~~ ✅ commit` is not a resolution.
-
-### Mechanism 2 — inline comment banner
-
-PATCH the inline comment body. Prepend a banner and collapse the original:
-```
-> ✅ **RESOLVED** in commit [`{short-sha}`](https://{host}/{owner}/{repo}/commit/{full-sha}) (rev {N})
-
-<details>
-<summary>Original review (click to expand)</summary>
-
-{original body — keep the disclosure prefix and full content}
-
-</details>
-```
-
-### Mechanism 3 — GitHub native "Resolve conversation"
-```bash
-# --paginate follows the reviewThreads cursor, so this works on PRs with more
-# than 100 threads; without it you may miss the target thread on a long PR.
-THREAD_ID=$(gh api graphql --paginate -f query='
-  query($owner:String!, $repo:String!, $pr:Int!, $endCursor:String) {
-    repository(owner:$owner, name:$repo) {
-      pullRequest(number:$pr) {
-        reviewThreads(first:100, after:$endCursor) {
-          nodes { id comments(first:1){ nodes{ databaseId } } }
-          pageInfo { hasNextPage endCursor }
-        }
-      }
-    }
-  }' -f owner={owner} -f repo={repo} -F pr={N} \
-  -q ".data.repository.pullRequest.reviewThreads.nodes[] | select(.comments.nodes[0].databaseId == {COMMENT_ID}) | .id")
-
-gh api graphql -f query='
-  mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }' \
-  -f id="$THREAD_ID"
-```
-`COMMENT_ID` is the numeric `id` from the inline comment POST response.
-
-Order: verify → Mechanism 2 → Mechanism 1 → Mechanism 3. Partial resolution:
-apply the three mechanisms only to closed issues; leave open ones untouched.
+Read `../../references/resolution.md` for the exact bodies and calls, then apply
+per closed issue, in order: verify → **Mechanism 2** (inline banner + collapsed
+original) → **Mechanism 1** (strikethrough checklist row in EVERY summary review
+that lists the issue — BLOCKING: the review `PUT` prompts for permission; batch all
+review IDs in one message; a `[x]` without `~~...~~ ✅ commit` is not a resolution)
+→ **Mechanism 3** (GitHub native resolve via GraphQL). Partial resolution: apply
+the mechanisms only to closed issues; leave open ones untouched.
 
 ## Verification via agent-companion (when enabled)
 
@@ -795,33 +661,18 @@ context to hand it, that it runs a per-ask acceptance review AND flags new probl
 and how to treat the verdicts critically — is **core §7**. When the companion is off,
 skip this section; the skill runs solo as described above.
 
-This adapter's only job is the **PR binding**: put the PR code on disk at the exact
-head SHA so the panel can read it. Materialize the PR as a detached worktree:
-```bash
-HEAD_SHA=$(gh pr view {N} --repo {owner}/{repo} --json headRefOid -q .headRefOid)
-# Fetch via an EXISTING local remote so its configured auth/protocol is reused
-# (the clone may be SSH, a host alias, gh's https helper, …). Pick the remote
-# whose URL contains {owner}/{repo}; fall back to origin. Do NOT build an https
-# URL from `gh repo view --json url` — git can't auth a bare https URL on an
-# SSH clone ("could not read Username for https://…").
-REMOTE=$(git remote -v | awk -v r="{owner}/{repo}" 'index($2,r){print $1; exit}')
-REMOTE=${REMOTE:-origin}
-git fetch "$REMOTE" "pull/{N}/head"              # PR head ref (works for forks)
-# Confirm the exact PR head is now present (a fork PR may need its own remote).
-git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null \
-  || { echo "PR head $HEAD_SHA not fetched from $REMOTE — resolve the remote first"; }
-WT="$(mktemp -d)/pr-{N}"
-git worktree add --detach "$WT" "$HEAD_SHA"
-trap 'git worktree remove --force "$WT" 2>/dev/null' EXIT   # clean up always
-```
-`--detach` at the exact head SHA means a head that moves mid-audit can't change what
-was verified. Reuse this `HEAD_SHA` for your own `contents`-API reads so you and the
-panel judge one snapshot. Hand the panel **raw context, never your conclusions** (core
-§7), and treat the result with **strict acceptance**: the audit is not "done" if any
-ask is partial/not_done or the PR introduces a new blocker. Fold the panel's findings
-into your reconciliation and the Step 3 draft (as findings, not ready-to-publish
-comments); if it surfaces an issue you'd marked closed, revisit that row. If the panel
-can't run at all, say so and continue solo.
+The worktree already exists — Step 2 materialized it; you, the searchers, and the
+panel judge one snapshot. Hand each verifier the core §7 package: the **raw
+context** (full tracker ticket, full PR conversation, the asks, the worktree path)
+**plus the criteria** — the active domain-skill contents and the discovered
+convention file paths, framed floor-not-ceiling — and **never your or the
+searchers' conclusions**. Treat the result with **strict acceptance**: the audit is
+not "done" if any ask is partial/not_done or the PR introduces a new blocker.
+Consolidate per core §7: searcher∩panel = confirmed; single-source findings you
+judge critically. Fold the outcome into your reconciliation and the Step 3 draft
+(as findings, not ready-to-publish comments); if the panel surfaces an issue you'd
+marked closed, revisit that row. If the panel can't run at all, say so and continue
+solo.
 
 ### User-proposed issues
 
@@ -830,75 +681,71 @@ description (raw) and the worktree, and let the companion verify it independentl
 under whichever mode its protocol selects. Confirmed → add as the next `Issue N`;
 refuted → tell the user with evidence and do not add.
 
-### Cleanup
-
-Remove the worktree **after** synthesis + the gate + any drill-down into raw
-verdicts by `file:line` — via the `trap`. Publishing (Step 5) does not need the
-worktree: it uses the GitHub head SHA via the `contents` API.
-
 ## Anti-patterns
 
-- ❌ Calling `gh` without authentication against the right host/account.
-- ❌ Publishing comments without showing drafts in chat first.
-- ❌ Forcing a "Publish? yes/no" decision menu in the same turn as the draft —
-  present it, then wait; let the user read, revise, or add issues first.
-- ❌ Writing `Issue #1` instead of `Issue 1` — `#` auto-links to other PRs.
-- ❌ Posting a comment body with the disclosure prefix but no `### Issue N`
-  heading — composing the scaffold without writing the heading first is the easy
-  miss; the pre-publish guard (Step 5) must catch it.
-- ❌ Including the final fixed code in a comment.
-- ❌ Recipe-style "Where to dig" — corrected code, before/after substitution,
-  ordered refactor steps.
-- ❌ A "Where to dig" that leaves the reader unable to say what must change —
-  hints, unnamed entities ("this pair", "that layer"), a principle with no
-  target.
-- ❌ A "Why it matters" with no human sentence, or one carrying a cross-reference
-  to another issue or the history of where a value moved in the diff.
-- ❌ An issue that asserts a failure in one section and doubts it in another, or
-  that reports what the auditor did or did not manage to check.
-- ❌ A cost sentence built on an invented person ("a developer who opens this
-  file will…") instead of a fact about the code.
-- ❌ A "Problem" longer than one sentence, or one that already carries the
-  mechanism "Why it matters" then repeats.
-- ❌ Marking an issue resolved without reading the file at HEAD.
-- ❌ Resetting issue numbers between revisions, or reassigning a number that was
-  already published.
-- ❌ Treating a draft number as spent — dropping Issue 7 in the Step 3 loop and
-  publishing 6, 8, 9. An unpublished number costs nothing; renumber the survivors.
-- ❌ Numbering in discovery order, so the numbers jump while the reader scrolls the
-  diff (5, 6, 1, 9). The batch is numbered in diff position order (§4.5).
-- ❌ Drafting an audit without first reading existing PR comments / reviews.
-- ❌ Echoing or logging the tracker token.
-- ❌ Adding a user-proposed issue without investigating it against HEAD first.
-- ❌ **(companion)** Handing the panel your conclusions instead of raw context —
-  it destroys independence.
-- ❌ **(companion)** Re-implementing the companion's mechanics here (dispatcher,
-  modes, exit codes) instead of deferring to its manager protocol.
-- ❌ **(companion)** Leaving the worktree behind — always clean up via the `trap`.
+- ❌ Publishing without explicit approval of a shown draft — including forcing a
+  "Publish? yes/no" menu in the same turn as the draft.
+- ❌ Drafting without first reading the existing PR conversation, or echoing the
+  tracker token anywhere.
+- ❌ `Issue #1` instead of `Issue 1` (`#` auto-links to other PRs); a body without
+  its `### Issue N` heading; resetting or reassigning published numbers; treating a
+  dropped draft's number as spent; numbering in discovery order instead of diff
+  order (§4.5).
+- ❌ Final corrected code in a comment; a recipe-style "Where to dig"; or one so
+  vague ("this pair", "that layer") the reader cannot say what must change.
+- ❌ A "Why it matters" with no cost sentence, a cost carried by an invented person,
+  a cross-reference or diff-history filler, or an issue that asserts a failure in
+  one section and doubts it in another.
+- ❌ Closing an issue without reading the file at HEAD; on the original ask alone
+  without the fix-impact check (core §12); or closing a contract rewrite without
+  reading its consumers.
+- ❌ On a repeat audit, reading only files with open issues — the reading list is
+  the revision delta (core §11); or skipping the sibling-file sweep for a confirmed
+  mechanism (core §13).
+- ❌ Raising an out-of-scope structural finding as an `Issue N` instead of a
+  follow-up (core §14), or adding new non-blocker findings after convergence
+  (core §15).
+- ❌ Applying a domain skill's whole-codebase criteria beyond the delta, or claiming
+  codified criteria were applied when the `auditing` plugin was absent (core §4).
+- ❌ A searcher re-fetching PR or tracker data instead of using the manager's
+  package, or receiving another lens's criteria (core §4).
+- ❌ Adding a user-proposed issue without investigating it against HEAD first
+  (Step 2.5).
+- ❌ **(companion)** Handing the panel your or the searchers' conclusions — criteria
+  yes, findings never (core §7) — or leaving the worktree behind (the `trap`
+  cleans up).
 
 ## Checklist (one audit cycle)
 
-- [ ] `gh auth status` OK; repository resolved.
-- [ ] Focus confirmed.
+- [ ] `gh auth status` OK; repository + default branch resolved; focus confirmed.
 - [ ] Tracker context fetched (Step 0.5) — or noted as unavailable.
-- [ ] PR fetched: `view` + head SHA + `baseRefName` recorded.
+- [ ] PR fetched: head SHA + `baseRefName` recorded; existing conversation fully
+      paginated; prior `Issue N`s mapped before drafting.
 - [ ] If `baseRefName` is the default branch: stacked-parent discovery run (core §9);
-      when a parent was found, the diff taken from `TRUE_BASE` and the parent/range/
-      inherited/truncation counts stated in the digest.
-- [ ] Existing conversation fetched; prior `Issue N`s mapped before drafting.
-- [ ] For every still-open prior `Issue N`, the file read at HEAD (not the diff).
-- [ ] User-proposed issues investigated against HEAD (Step 2.5) — and, if the
-      companion is enabled, routed through the panel for independent confirmation
-      (see "User-proposed issues" in the companion section) before being added or
-      refuted.
+      when found, diff taken from `TRUE_BASE`, parent/range/inherited/truncation
+      stated in the digest.
+- [ ] Worktree materialized at the head SHA (Step 2); removed via `trap` after the
+      audit.
+- [ ] Searchers dispatched — one per active lens + surface-triggered domains +
+      conventions, each with the package and only its own criteria (core §4);
+      findings consolidated (dedupe, scope-gate). Uncodified lenses disclosed in
+      the digest.
+- [ ] Repeat audit: anchor bound; every file in the revision delta read at HEAD,
+      regardless of issue state (core §11).
+- [ ] Still-open prior issues read at HEAD (not the diff); closures verified in both
+      directions, contract rewrites at every consumer, mechanism sweep run
+      (core §12–13).
+- [ ] User-proposed issues investigated against HEAD (Step 2.5; through the panel
+      when the companion is enabled).
 - [ ] Project conventions opened for changed paths.
-- [ ] **(if companion)** worktree at head SHA; panel run; gate handled; worktree
-      cleaned up.
-- [ ] Draft presented (review-state digest first) — in chat, or in Plannotator if
-      installed (Step 3); user explicitly approved.
-- [ ] Pre-publish guard: every body has its disclosure prefix AND `### Issue N`
-      heading (§4.1); the batch's numbers are contiguous, ascending from
-      `max(published) + 1`, and in diff position order (§4.5).
-- [ ] Inline comments posted; `id` + `html_url` recorded.
-- [ ] Summary posted (`--request-changes` if blockers).
-- [ ] Final state verified.
+- [ ] **(if companion)** panel run on the Step 2 worktree with raw context +
+      criteria (never conclusions); searcher∩panel consolidation done; gate
+      handled.
+- [ ] Findings scope-gated — follow-ups unnumbered, rendered once (core §14);
+      convergence checked and stated in the 🏁 line (core §15).
+- [ ] Draft presented (digest first; Plannotator if installed); user explicitly
+      approved.
+- [ ] Pre-publish guard: disclosure prefix + `### Issue N` heading on every body
+      (§4.1); numbers contiguous, ascending, in diff order (§4.5).
+- [ ] Inline comments posted (`id` + `html_url` recorded); summary posted
+      (`--request-changes` if blockers); final state verified.

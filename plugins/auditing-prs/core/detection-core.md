@@ -72,6 +72,66 @@ Examine the snapshot through these lenses (the adapter or the user may narrow th
 **architecture**, **conventions** compliance, **code-quality** (readability,
 duplication, complexity), **security**, **performance**.
 
+### Lens criteria (soft dependency on the `auditing` plugin)
+
+A lens without criteria is a name, not a check. When the `auditing` plugin's domain
+skills are available in the session, each active lens reads the matching domain
+skill's judgement content — its "What this domain judges" catalogue, its impact
+dimensions, and its "findings versus notes" line — and judges the snapshot's changes
+against it:
+
+- `security` lens → `auditing:security`
+- `performance` lens → `auditing:performance`
+- `architecture` + `code-quality` lenses → `auditing:code-quality`
+
+**Surface-triggered domains** join regardless of the chosen focus, but only when the
+changes touch their surface:
+
+- an endpoint, route, or API request/response shape → `auditing:api-contracts`
+- a migration or storage-schema change → `auditing:data`
+- failure handling, external calls, retries/timeouts → `auditing:reliability`
+
+**Never wired:** `auditing:audit` and `auditing:remediate` (orchestration and
+planning, not criteria), and the whole-product domains (`business-analysis`, `seo`,
+`accessibility`) — application-scope audits, not change-review criteria.
+
+Rules of use:
+
+- **Criteria only, never process.** Take what counts as a finding, what does not, and
+  how harm is graded. The domain skills' preflight, stack detection, report model,
+  output locations, and finding-id prefixes do NOT apply — findings stay in this
+  plugin's model (§8) and this plugin's flow.
+- **Delta-scoped, always.** The domain skills read a whole codebase; here their
+  criteria judge only what the snapshot's changes introduced or worsened. A
+  pre-existing condition a domain skill would report is at most a follow-up here
+  (§14), never an in-scope finding.
+- **Severity mapping.** A domain `blocker` is a `blocker` (§8); `major` and `minor`
+  map to `non-blocker` (the finer label may be carried in the rendered finding).
+- **The dependency is soft.** With the `auditing` plugin absent, the lenses run on
+  general knowledge exactly as before — and the report says so once ("lenses ran
+  without codified criteria") instead of implying codified criteria were applied.
+
+### Lens execution — searcher fan-out
+
+Lenses run as parallel **searcher** subagents — one per active lens, plus one per
+surface-triggered domain — not inline in the manager's context:
+
+- **Conventions is a searcher too.** Its criteria are the discovered convention
+  files (§3) instead of an `auditing` domain skill, so it runs regardless of whether
+  that plugin is installed.
+- **The manager gathers once; searchers never re-fetch.** Each searcher receives a
+  prepared package: the asks, the audited range and changed-file list (the revision
+  delta on repeat audits, §11), the materialized snapshot on disk, and **only its
+  own** criteria source. Reading code from the snapshot is the searcher's job;
+  pulling PR or tracker data again is not — N re-fetches waste calls and can
+  straddle a moving head.
+- **Searchers return findings in the §8 model.** The manager consolidates: dedupes,
+  applies the scope boundary (§14), and drafts. A searcher's finding is a candidate,
+  never a verdict.
+
+An adapter without subagent dispatch runs the lenses inline — same criteria, same
+rules; fan-out is the execution default, not a semantic change.
+
 ## 5. Per-ask acceptance verdict
 
 For **every** ask (each tracker requirement + every prior `Issue N`), return exactly
@@ -96,6 +156,9 @@ states — judged by reading the file at the snapshot (§2), not any prior claim
 - **partial** → partially addressed; not yet done.
 - **ignored** → unaddressed at the snapshot.
 
+A `matches` verdict additionally requires the fix-impact check of §12 — satisfying the
+original ask is necessary, not sufficient.
+
 These canonical states are the single source of truth. An adapter that presents them
 under other labels uses the fixed mapping: `matches→fixed`, `partial→partial`,
 `ignored→open`. What an adapter then *does* with each state — drafting, re-flagging,
@@ -113,6 +176,16 @@ independent check.
   invariant): the full tracker ticket, the full PR conversation verbatim, and the
   list of asks — plus the code. Do not provide your own verdicts; let each verifier
   reach its own against the code at the snapshot.
+- **Hand the criteria too — floor, not ceiling.** Give each verifier the same
+  criteria the searchers used: the active domain-skill contents and the discovered
+  convention files (§3), framed as "apply these rules, and do not limit yourself to
+  them". Criteria are shared rules, not conclusions — they sharpen the panel without
+  breaking independence. What stays withheld is the manager's and the searchers'
+  findings and verdicts.
+- **Consolidation.** A problem found independently by a searcher and by the panel is
+  confirmed. A single-source finding is judged critically by the manager — kept with
+  evidence, dropped with a stated reason, or escalated; never silently absorbed and
+  never blindly published.
 - **What is judged:** the panel runs an **acceptance review of each ask** (the per-ask
   verdict of §5) **and additionally flags new problems the changes introduce** —
   exactly the two outputs an adapter needs. "Acceptance review" only excludes a
@@ -132,6 +205,8 @@ Every finding the engine produces carries these fields:
 - `evidence` — `file:line` at the snapshot.
 - `severity` — `blocker` or `non-blocker`; this is what a readiness/publish decision
   gates on.
+- `scope` — `in-scope` or `follow-up`, decided by the scope boundary (§14). Only
+  in-scope findings gate anything or become issues; follow-ups are routed aside.
 - `remediation` — the direction to the fix.
 
 The core defines the **fields**. Each adapter decides how to render them — in
@@ -243,3 +318,75 @@ belong to the parent branch. They are **context, not subject**.
   and names the inherited code in `mechanism`. The subject stays what this branch did.
 - **The stacked condition itself is not a finding.** That a branch is stacked is
   reported as context by the adapter; it never becomes an issue of its own.
+
+## 11. Revision delta discipline (repeat audits)
+
+On a repeat audit (any prior review exists), the mandatory reading surface is **every
+file changed since the last reviewed snapshot** — never the list of files with open
+issues. Bind the **anchor** (the snapshot the latest review judged), take the diff
+`anchor … snapshot`, and read every file in that delta at the snapshot, regardless of
+its issue state.
+
+- **A closed issue does not exempt a file.** An issue-driven reading list drops a file
+  exactly when fixes land in it — which is when it most needs reading. Files whose
+  issues are all resolved stay on the list as long as they appear in the delta.
+- The full-branch diff still defines the overall finding surface (§1); the revision
+  delta defines what MUST be re-read this revision.
+
+## 12. Fix-impact verification (two-directional)
+
+A fix is judged in **two directions**, and `matches` (§6) requires both:
+
+1. **Backward** — the original ask is satisfied at the snapshot (§2).
+2. **Forward** — the state the fix **created** is judged as a new change in its own
+   right: what the fix removed (a total function, a validation, a fallback, an
+   invariant), what it now lets in, and what its call sites now receive. Ask
+   explicitly: *what does this fix make possible that was impossible before?* A defect
+   introduced by a fix is a new finding anchored at the fix's own lines — never
+   silently absorbed into the closed issue.
+
+**Proportional depth for contract rewrites.** When a fix (or the remediation that asked
+for it) rewrites a contract — a component's props/emits/slots, an exported API, a type
+consumed elsewhere, a data-flow direction — closing it requires reading **every
+consumer of that contract** at the snapshot, not just the file the issue named. A
+one-line local fix needs its file; a contract rewrite needs the contract's whole
+surface.
+
+## 13. Mechanism propagation
+
+A confirmed mechanism is a property of a **pattern**, not of the file where it was
+first seen. Once a finding's mechanism is confirmed at one site, search the rest of
+the changed set (and, on repeat audits, the delta of §11) for the same pattern
+**before drafting**, and attach each additional site as its own `evidence` line.
+Closing the issue at one site while a sibling file keeps the same defect is a
+detection bug, not a next revision's discovery.
+
+## 14. Scope boundary (ticket vs refactor)
+
+Every finding carries a `scope` (§8), decided here. A finding is **in-scope** when at
+least one holds:
+
+- it shows a tracker ask `partial` / `not_done` (§5);
+- the snapshot's own changes introduced or worsened it;
+- it is `blocker` severity, wherever it lives.
+
+Everything else — pre-existing structure the ticket did not ask to change,
+architectural relocations ("move this to the domain layer"), type consolidations,
+data-flow inversions that merely *improve* code the diff touched — is `follow-up`.
+Follow-ups are reported once, in a dedicated non-gating section, as candidates for
+separate tickets; they never gate the review, never demand a fix in this change set,
+and are never re-flagged revision after revision. A narrow ticket must not grow into a
+structural refactor through review pressure.
+
+## 15. Convergence and exit
+
+The review has an explicit exit condition, checked every revision **before** drafting
+new findings:
+
+> Every tracker ask is `done` (§5) **and** no in-scope `blocker` finding is open.
+
+When it holds, the review **converges**: state it, close what is closable, and route
+anything newly noticed to follow-ups (§14). After convergence a new finding is
+admitted only if it is (a) a regression introduced by a fix (§12) or (b) a `blocker`.
+Reaching convergence and continuing to add non-blocking findings anyway is a process
+defect, not thoroughness.
