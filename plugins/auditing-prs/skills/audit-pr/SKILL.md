@@ -445,6 +445,8 @@ reacts, never *whether* they must explicitly approve before Step 5.
    - Plaintext feedback / `"decision": "annotated"` with `"feedback"` → revise the
      draft per the annotations (including a brand-new issue raised there — Step 2.5),
      then re-render and re-open the annotator. This is the normal revise loop.
+     Annotations that drop or add a finding renumber the surviving batch (§4.5)
+     before the file is re-rendered — report the new numbers, not the old ones.
 
 Fall back to the chat checkpoint whenever Plannotator is absent, the probe fails,
 or the user prefers chat. Everything else about Step 3 — never publishing without
@@ -464,7 +466,8 @@ read the issues and blocks them from doing anything else. The draft step is an
 - The user may need several turns to read and react — let them.
 - They may want to reword an issue, drop one, change scope, or **raise a brand-new
   issue** (Step 2.5) before anything is published — treat that as the normal loop,
-  revise the draft, and show it again.
+  revise the draft, and show it again. Dropping or adding one **renumbers the whole
+  surviving batch** (§4.5) — a dropped draft never leaves a hole behind it.
 - Only after the user **explicitly** approves do you move to Step 5 (publish).
   Approval is theirs to give in their own words; do not pre-empt it with a forced
   gate. A structured choice is fine only once the user has signalled they are
@@ -615,9 +618,30 @@ One marker per section heading. Do not sprinkle into prose.
 ### 4.5 — Issue numbering
 
 - Format: **`Issue N`** — NO hash. GitHub auto-links `#N` to other PRs.
-- **Continuous numbering across revisions.** Resolved issues keep their numbers
-  forever.
+- **A number is claimed at publish, never in the draft.** Only a number that
+  reached GitHub is spent. A finding the user drops during the Step 3 loop takes
+  its number with it — it does not burn a slot.
+- **Renumber the surviving drafts after every revision of the draft.** Dropping,
+  merging or adding a finding in Step 3 re-runs the assignment below over the
+  whole surviving batch. Numbers move; the user sees the final ones before
+  approving.
+- **Assignment.** Sort the surviving batch by the position the reader meets it:
+  inline findings first, by file path in the order `gh pr diff` lists the files,
+  then by line within a file; findings that live only in the summary review come
+  after all inline ones. Number that sorted list contiguously, starting at
+  `max(published Issue N) + 1` across all prior revisions — 1 on the first
+  revision.
+- **Publish in that same order** (Step 5 posts inline comments one by one) so both
+  the Files-changed and the Conversation tab read ascending.
+- **Continuous numbering across revisions.** Published issues keep their numbers
+  forever, resolved or not; a later revision never reuses or reassigns them and
+  never resets to 1.
+- **No gaps inside a revision.** A gap in the batch you are about to publish means
+  a dropped draft's number survived it — renumber before the pre-publish guard.
+  (Gaps across revisions are impossible, because published numbers are never
+  withdrawn.)
 - **Always number AND always include the checklist — even for a single issue.**
+  The checklist (§4.7) lists issues in ascending number order.
 
 ### 4.6 — Cross-references and commit links
 
@@ -644,9 +668,10 @@ The summary body always ends with the checklist (even for a single issue):
 ### 📋 Checklist
 
 - [ ] [**Issue 1**](inline-url) — concrete action: which file, which change
-- [ ] **Issue 3** — concrete action (no link if the issue lives in the summary)
+- [ ] **Issue 2** — concrete action (no link if the issue lives in the summary)
 ```
-One sentence per line, action only — not a re-description of the problem.
+One sentence per line, action only — not a re-description of the problem. Ascending
+by number, which puts the summary-only issues last (§4.5).
 
 ## Step 5 — Publish
 
@@ -656,10 +681,15 @@ PATCH, confirm it carries both its disclosure prefix AND its `### Issue N` headi
 scaffold lose the number. Do not post any body that fails the check; add the
 heading first.
 
+Then read the batch's numbers as a list: they must be contiguous and ascending
+from `max(published Issue N) + 1`. A gap or a number out of diff order means the
+Step 3 loop dropped or added a finding without renumbering (§4.5) — fix the bodies
+and the checklist before posting anything.
+
 Order of operations:
 
-1. Post inline comments first (one POST per issue); record each returned `id` and
-   `html_url`.
+1. Post inline comments first (one POST per issue, in ascending issue number,
+   which is diff order per §4.5); record each returned `id` and `html_url`.
 2. Patch any inline-comment bodies that need cross-links to siblings (you only
    know the URLs after they exist).
 3. Post the summary review last, with all checklist URLs filled in.
@@ -831,7 +861,12 @@ worktree: it uses the GitHub head SHA via the `contents` API.
 - ❌ A "Problem" longer than one sentence, or one that already carries the
   mechanism "Why it matters" then repeats.
 - ❌ Marking an issue resolved without reading the file at HEAD.
-- ❌ Resetting issue numbers between revisions.
+- ❌ Resetting issue numbers between revisions, or reassigning a number that was
+  already published.
+- ❌ Treating a draft number as spent — dropping Issue 7 in the Step 3 loop and
+  publishing 6, 8, 9. An unpublished number costs nothing; renumber the survivors.
+- ❌ Numbering in discovery order, so the numbers jump while the reader scrolls the
+  diff (5, 6, 1, 9). The batch is numbered in diff position order (§4.5).
 - ❌ Drafting an audit without first reading existing PR comments / reviews.
 - ❌ Echoing or logging the tracker token.
 - ❌ Adding a user-proposed issue without investigating it against HEAD first.
@@ -862,7 +897,8 @@ worktree: it uses the GitHub head SHA via the `contents` API.
 - [ ] Draft presented (review-state digest first) — in chat, or in Plannotator if
       installed (Step 3); user explicitly approved.
 - [ ] Pre-publish guard: every body has its disclosure prefix AND `### Issue N`
-      heading (§4.1).
+      heading (§4.1); the batch's numbers are contiguous, ascending from
+      `max(published) + 1`, and in diff position order (§4.5).
 - [ ] Inline comments posted; `id` + `html_url` recorded.
 - [ ] Summary posted (`--request-changes` if blockers).
 - [ ] Final state verified.
