@@ -147,6 +147,8 @@ WT="$(mktemp -d)/prepush-$BRANCH"
 git worktree add --detach "$WT" "$SNAP"
 trap 'git worktree remove --force "$WT" 2>/dev/null' EXIT   # always clean up
 ```
+Put `$WT` in the panel request on its own line — `WORKTREE: <absolute path>` (core §7).
+Confined verifiers cannot read the snapshot without it.
 All of the above are reads or a throwaway worktree — none mutate GitHub, the tracker,
 or the branch, and none push.
 

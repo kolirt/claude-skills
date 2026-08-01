@@ -159,7 +159,8 @@ Always put the PR on disk at the exact head SHA — the searchers (below) and th
 verifier panel read code from disk, and a detached worktree pins one snapshot for
 everyone. Bindings: `../../references/pr-worktree.md` (existing-remote fetch for
 fork heads, `--detach` at the SHA, `trap` cleanup). Reuse the same `HEAD_SHA` for
-your own `contents`-API reads.
+your own `contents`-API reads. Declare the worktree to the panel on its own line —
+`WORKTREE: <absolute path>` (core §7) — or the confined verifiers cannot read it.
 
 ### Searcher fan-out (core §4)
 

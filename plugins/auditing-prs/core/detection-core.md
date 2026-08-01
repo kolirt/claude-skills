@@ -178,6 +178,17 @@ independent check.
 - **Materialize the snapshot** as a detached worktree at its exact SHA, so a head
   that moves mid-audit cannot change what was verified. (The adapter supplies the
   concrete SHA and worktree command; the SHA source differs per adapter.)
+- **Declare that worktree to the panel** — the request MUST carry its absolute path
+  on a line of its own:
+  ```
+  WORKTREE: /absolute/path/to/the/snapshot
+  ```
+  This is what makes the snapshot readable, not just findable. The panel's default
+  workspace is the repo the session sits in; verifiers that run confined to it are
+  denied the worktree without this line — one returns an empty `FAIL`, another
+  silently judges the working tree instead of the pinned SHA, and the unconfined ones
+  answer normally, so the panel comes back partly right and looks merely flaky.
+  Mentioning the path only in prose is not enough — the line is the declaration.
 - **Hand the panel raw context, never your conclusions** (the independence
   invariant): the full tracker ticket, the full PR conversation verbatim, and the
   list of asks — plus the code. Do not provide your own verdicts; let each verifier

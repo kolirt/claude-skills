@@ -36,6 +36,17 @@ case "$cmd" in
       }
     fi
 
+    # The snapshot under review is not always $PWD: an audit of a PR head SHA is judged at a
+    # DETACHED WORKTREE under a temp dir, named by the request's `WORKTREE:` line. Without it in
+    # the workspace codex does not fail — it silently judges what it CAN read, i.e. the session's
+    # working tree instead of the pinned SHA, and reports findings against the wrong code.
+    # verify.sh validates the path and passes it here; empty when the request declares none.
+    # `${extra[@]+...}`: under `set -u` bash 3.2 errors on an empty array's `"${extra[@]}"`.
+    extra=()
+    if [ -n "${AGENT_COMPANION_EXTRA_DIR:-}" ] && [ -d "${AGENT_COMPANION_EXTRA_DIR}" ]; then
+      extra=(--add-dir "$AGENT_COMPANION_EXTRA_DIR")
+    fi
+
     # --- read confinement (R2) --------------------------------------------------------
     # DO NOT pass --sandbox here. `--sandbox` switches codex to its sandbox model, which
     # supersedes permission profiles — and the sandbox model's `read-only` restricts WRITES
@@ -69,14 +80,14 @@ case "$cmd" in
     # a bad model id surfaces as a codex error → non-zero rc → verdict FAIL (visible).
     if [ -n "$model" ]; then
       codex exec --ignore-user-config --ephemeral --skip-git-repo-check \
-        -C "$PWD" --add-dir "$run_dir" \
+        -C "$PWD" --add-dir "$run_dir" ${extra[@]+"${extra[@]}"} \
         -c 'approval_policy="never"' \
         -c 'default_permissions="readonly_selected"' \
         -c "$perm_fs" -c "$perm_net" \
         -m "$model" -c model_reasoning_effort="$effort" -o "$out" - < "$prompt" >/dev/null
     else
       codex exec --ignore-user-config --ephemeral --skip-git-repo-check \
-        -C "$PWD" --add-dir "$run_dir" \
+        -C "$PWD" --add-dir "$run_dir" ${extra[@]+"${extra[@]}"} \
         -c 'approval_policy="never"' \
         -c 'default_permissions="readonly_selected"' \
         -c "$perm_fs" -c "$perm_net" \

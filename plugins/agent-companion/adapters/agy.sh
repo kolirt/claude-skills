@@ -82,6 +82,21 @@ case "$cmd" in
       }
     fi
     #
+    # A THIRD WORKSPACE ENTRY, when the request declares one. $PWD is the repo the session sits
+    # in — which is NOT always the tree under review: an audit of a PR head SHA is judged at a
+    # DETACHED WORKTREE under a temp dir, named by the request's `WORKTREE:` line. Outside the
+    # workspace every read of that snapshot is auto-denied, and by the rule below one denial ends
+    # the whole run — so agy returned an empty FAIL on every PR audit while grok and kimi (both
+    # unconfined) answered normally. verify.sh validates the path (absolute, resolves to an
+    # existing directory, never `/` or `$HOME`) and passes it here; it is empty when the request
+    # declares no snapshot, and then nothing below changes.
+    # `${extra[@]+...}` guards the expansion: under `set -u` bash 3.2 (the macOS system bash)
+    # errors on an empty array's `"${extra[@]}"`.
+    extra=()
+    if [ -n "${AGENT_COMPANION_EXTRA_DIR:-}" ] && [ -d "${AGENT_COMPANION_EXTRA_DIR}" ]; then
+      extra=(--add-dir "$AGENT_COMPANION_EXTRA_DIR")
+    fi
+    #
     # --mode plan is NOT a write barrier (verified: in a scratch project it happily creates
     # files). What actually stops writes here is headless permission handling: inside the
     # workspace a write_file call cannot be prompted for and is auto-denied. We simply never
@@ -143,11 +158,13 @@ single denied call aborts this entire run with no output. Do not run shell comma
 grep, cat, find, rg). Use your file tools (list_dir, view_file, grep_search) inside the
 --add-dir workspace, where reads are auto-allowed.'
     if [ -n "$model" ]; then
-      agy --mode plan --sandbox --add-dir "$PWD" --add-dir "$run_dir" --print-timeout 25m --model "$model" -p "$guard
+      agy --mode plan --sandbox --add-dir "$PWD" --add-dir "$run_dir" \
+        ${extra[@]+"${extra[@]}"} --print-timeout 25m --model "$model" -p "$guard
 
 $(cat "$prompt")" > "$out"
     else
-      agy --mode plan --sandbox --add-dir "$PWD" --add-dir "$run_dir" --print-timeout 25m -p "$guard
+      agy --mode plan --sandbox --add-dir "$PWD" --add-dir "$run_dir" \
+        ${extra[@]+"${extra[@]}"} --print-timeout 25m -p "$guard
 
 $(cat "$prompt")" > "$out"
     fi

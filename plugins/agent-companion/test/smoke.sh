@@ -220,6 +220,55 @@ RUNA="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
 ! grep -q "^diff	" "$RUNA/manifest" && [ ! -f "$RUNA/diff.patch" ] \
   && echo "OK prepare-audit-no-diff" || { echo "FAIL prepare-audit-no-diff"; exit 1; }
 
+# ---- WORKTREE: extra workspace dir (validated at prepare, handed to the adapter at run) ----
+# An adapter that echoes what it was given, so the test can assert the env var actually arrives.
+cat > "$ROOT/adapters/mws.sh" <<'A'
+#!/usr/bin/env bash
+[ "$1" = probe ] && exit 0
+printf 'STATUS: PASS\nREQUEST_ID: %s\nEXTRA=[%s]\n' \
+  "$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')" "${AGENT_COMPANION_EXTRA_DIR:-}" > "$4"
+A
+chmod +x "$ROOT/adapters/mws.sh"
+WT="$TMP/snapshot/wt-1"; mkdir -p "$WT"
+# The manifest must carry the DECLARED path, byte-identical to the one in the prompt — NOT the
+# resolved one ($TMPDIR on macOS is /var/folders/… -> /private/var/folders/…, the same dir under
+# two names). A workspace root spelled differently from the path the verifier is told to read is
+# a permission check waiting to fail.
+WTR="$( cd "$WT" && pwd -P )"
+[ "$WTR" != "$WT" ] || { echo "NOTE worktree test: TMPDIR is not a symlink here, declared==resolved"; }
+set_verifiers mws
+
+# accepted: absolute, resolves to a directory -> manifest key + adapter env + stderr notice
+printf 'MODE: audit\nSCOPE:\n  WORKTREE: %s\n' "$WT" > "$TMP/req-wt.md"
+err="$( cd "$TMP" && run prepare audit high "$TMP/req-wt.md" 2>&1 >/dev/null )"
+out="$( cd "$TMP" && run prepare audit high "$TMP/req-wt.md" 2>/dev/null )"
+RUNW="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+( cd "$TMP" && run run-one "$RUNW" 1-mws ) >/dev/null 2>&1
+grep -q "^workspace	$WT$" "$RUNW/manifest" \
+  && grep -q "WORKTREE: accepted" <<<"$err" \
+  && grep -qx "EXTRA=\[$WT\]" "$RUNW/1-mws/verdict" \
+  && grep -q "WORKTREE: $WT" "$RUNW/prompt.txt" \
+  && echo "OK worktree-accepted" || { echo "FAIL worktree-accepted"; cat "$RUNW/manifest"; exit 1; }
+
+# no WORKTREE: line -> no manifest key, adapter sees an EMPTY value (never a stale one)
+out="$( cd "$TMP" && run prepare audit high "$TMP/req.md" 2>/dev/null )"
+RUNN="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+( cd "$TMP" && run run-one "$RUNN" 1-mws ) >/dev/null 2>&1
+! grep -q "^workspace	" "$RUNN/manifest" && grep -qx 'EXTRA=\[\]' "$RUNN/1-mws/verdict" \
+  && echo "OK worktree-absent" || { echo "FAIL worktree-absent"; exit 1; }
+
+# rejected values: relative, missing, a regular file, $HOME, and a single-segment root.
+# Each must DROP the value (no manifest key) and let the run proceed on the repo alone.
+: > "$TMP/notadir"
+for bad in "relative/path" "$TMP/does-not-exist" "$TMP/notadir" "$HOME" "/Users"; do
+  printf 'MODE: audit\nWORKTREE: %s\n' "$bad" > "$TMP/req-bad.md"
+  out="$( cd "$TMP" && run prepare audit high "$TMP/req-bad.md" 2>/dev/null )"; rc=$?
+  RUNB="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+  [ "$rc" = 0 ] && [ -n "$RUNB" ] && ! grep -q "^workspace	" "$RUNB/manifest" \
+    || { echo "FAIL worktree-rejected ($bad)"; exit 1; }
+done
+echo "OK worktree-rejected"
+
 # safe cleanup: only (complete && !inflight) OR (invalid manifest), and only when old (-mtime +1).
 # An old in-flight run WITH a valid manifest must survive.
 H="$DATA/handoff/fakekey"; mkdir -p "$H/run-old-complete" "$H/run-old-orphan" "$H/run-old-inflight"

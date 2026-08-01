@@ -23,6 +23,10 @@ git worktree add --detach "$WT" "$HEAD_SHA"
 trap 'git worktree remove --force "$WT" 2>/dev/null' EXIT   # clean up always
 ```
 
+When the verifier panel runs, put `$WT` in its request as its own line —
+`WORKTREE: <absolute path>` — per core §7. Without it the confined verifiers cannot
+read the snapshot at all.
+
 `--detach` at the exact head SHA means a head that moves mid-audit can't change what
 was verified. Reuse this `HEAD_SHA` for your own `contents`-API reads so you and the
 panel judge one snapshot. Remove the worktree **after** synthesis + the gate + any

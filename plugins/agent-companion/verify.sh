@@ -12,11 +12,18 @@ DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
 # grok ~290s) — anything still alive past 30 min is hung, not slow.
 T="${AGENT_COMPANION_TIMEOUT:-1800}"
 
-# run_adapter <timeout> <adapter-sh> <prompt> <effort> <out> <model> <stderr-log>
+# run_adapter <timeout> <adapter-sh> <prompt> <effort> <out> <model> <stderr-log> [extra-dir]
 # Invoke an adapter's `run`, passing the model as a 4th arg ONLY when non-empty (a bare
 # spec keeps the exact 3-arg call contract). stdout silenced; diagnostics to the stderr log.
+#
+# The extra dir travels as an ENVIRONMENT variable, not a 5th argument: the adapter contract
+# is `run <prompt> <effort> <out> [model]` and every custom adapter on disk implements exactly
+# that. An adapter that ignores the variable keeps working unchanged. Exported here rather
+# than by each caller, and ALWAYS assigned (empty when there is none), so a value can never
+# leak from one verifier's run into the next.
 run_adapter() {
   local to="$1" sh="$2" p="$3" e="$4" o="$5" m="$6" errlog="$7"
+  export AGENT_COMPANION_EXTRA_DIR="${8:-}"
   if [ -n "$m" ]; then
     _with_timeout "$to" bash "$sh" run "$p" "$e" "$o" "$m" >/dev/null 2>"$errlog"
   else
@@ -183,6 +190,60 @@ freeze_skills() {
   fi
 }
 
+# extra_workspace_dir <request-file>
+# Prints ONE validated absolute directory — the snapshot the request asks the panel to judge,
+# declared as a `WORKTREE: <absolute path>` line — or nothing when the request declares none.
+# Unlike SKILL_FILES the line SURVIVES into the prompt: a verifier is told to read that tree,
+# so it needs the path. This only makes the tree readable.
+#
+# WHY IT EXISTS: agy and codex run CONFINED — their workspace is exactly the repo (the caller's
+# cwd) plus the run dir. A request that points the panel at a DETACHED WORKTREE — an audit of a
+# PR head SHA, materialized under a temp dir — names code in neither, and the two behave very
+# differently about it: codex silently judges what it can still read (the working tree, not the
+# pinned snapshot), while agy dies outright — one denied read ends its run, it exits 0 having
+# printed nothing, and the empty verdict is reported as FAIL. grok and kimi are unconfined and
+# never noticed, which is why this presented as "agy is broken" rather than as a scope bug.
+#
+# FAIL CLOSED and never widen past ONE directory. This grants READ access to a tree the panel
+# would otherwise not see, so it accepts only an absolute path that RESOLVES to an existing
+# directory, and refuses the roots whose contents are not "a snapshot of code" under any
+# reading: `/`, `$HOME`, and any single-segment path (`/Users`, `/etc`). A rejected value is
+# reported and DROPPED — the panel then runs on the repo alone, exactly as it did before.
+extra_workspace_dir() { # <request-file>
+  local line path resolved rest
+  # First occurrence wins; leading indentation allowed (the field is usually nested under
+  # SCOPE). Everything after the colon is the path, trailing whitespace stripped.
+  line="$(awk 'match($0, /^[[:space:]]*WORKTREE:[[:space:]]*/) {print substr($0, RLENGTH + 1); exit}' "$1")"
+  [ -n "$line" ] || return 0
+  path="${line%"${line##*[![:space:]]}"}"
+  [ -n "$path" ] || return 0
+  case "$path" in "~/"*) path="${HOME}/${path#\~/}";; esac   # ~/ expansion, no eval
+  case "$path" in
+    /*) : ;;
+    *) echo "agent-companion: WORKTREE: ignored (not absolute): $path" >&2; return 0;;
+  esac
+  if ! resolved="$(resolve_path "$path")"; then
+    echo "agent-companion: WORKTREE: ignored (unresolvable): $path" >&2; return 0
+  fi
+  if [ ! -d "$resolved" ]; then
+    echo "agent-companion: WORKTREE: ignored (not a directory): $path" >&2; return 0
+  fi
+  rest="${resolved#/}"
+  if [ "$resolved" = "/" ] || [ "$resolved" = "$HOME" ] || [ "$rest" = "${rest%%/*}" ]; then
+    echo "agent-companion: WORKTREE: refused (too broad to expose to a verifier): $resolved" >&2
+    return 0
+  fi
+  # Emit the DECLARED path, not the resolved one, even though every check above ran on the
+  # resolved form. The prompt carries the declared spelling (a verifier is told to read exactly
+  # that), and a workspace root written differently from the path in the text is a permission
+  # check waiting to fail: on macOS `mktemp -d` hands out /var/folders/… while resolution
+  # returns /private/var/folders/… — the same directory under two names. Keeping both sides on
+  # one spelling removes that class of mismatch, and grants nothing extra: a symlink still
+  # lands on the same tree the resolved checks approved.
+  echo "agent-companion: WORKTREE: accepted — verifier workspace extended (read-only) to $path" >&2
+  printf '%s' "$path"
+}
+
 # strip_skill_files <request-file>
 # Emits the request WITHOUT its `SKILL_FILES:` block, using the SAME grammar freeze_skills
 # parses with (header line, then `^[[:space:]]*-[[:space:]]+<path>` lines, stopping at the
@@ -250,14 +311,18 @@ synth_available() {
   esac
 }
 run_synth() { # <prompt-file> <out-file> <run>
-  local p="$1" o="$2" run="$3" eff a m seff
+  local p="$1" o="$2" run="$3" eff a m seff ws
   eff="$(manifest_get "$run" effort)"; [ -n "$eff" ] || eff=medium  # frozen effort; medium fallback
+  # The synthesizer reads only the verdicts it is handed, but a confined CLI still needs the
+  # same workspace: it may follow a `file:line` locator back to the snapshot to resolve a
+  # disagreement between two agents.
+  ws="$(manifest_get "$run" workspace)"
   IFS=$'\037' read -r a m seff < <(manifest_synth "$run" | panel_us)
   [ -n "${seff:-}" ] || seff="$eff"          # a per-entry effort overrides the frozen dispatch one
   if [ "$a" = claude ]; then
     _with_timeout "$T" claude -p "$(cat "$p")" --allowedTools "Read Grep Glob" > "$o" 2>"$run/synth.stderr.log"
   else
-    run_adapter "$T" "$ROOT/adapters/$a.sh" "$p" "$seff" "$o" "${m:-}" "$run/synth.stderr.log"
+    run_adapter "$T" "$ROOT/adapters/$a.sh" "$p" "$seff" "$o" "${m:-}" "$run/synth.stderr.log" "$ws"
   fi
 }
 
@@ -396,6 +461,9 @@ cmd_prepare() {
   case "$mode" in review|consult) build_diff "$repo" "$run/diff.patch";; esac
   freeze_skills "$req" "$run"
   build_prompt "$mode" "$req" "$reqid" "$repo" "$run"
+  # Resolved once, at freeze time, and carried in the manifest: `run-one` runs in its own
+  # process (a separate background task) and must not re-read — or re-trust — the request.
+  local workspace; workspace="$(extra_workspace_dir "$req")"
 
   panel_warn_legacy   # obsolete .conf files present -> loud notice, then bundled default
 
@@ -457,6 +525,7 @@ cmd_prepare() {
     printf 'root\t%s\n' "$ROOT"
     printf 'prompt\t%s\n' "$run/prompt.txt"
     [ -f "$run/diff.patch" ] && printf 'diff\t%s\n' "$run/diff.patch"
+    [ -n "$workspace" ] && printf 'workspace\t%s\n' "$workspace"
     printf 'timeout\t%s\n' "$T"
     printf 'synthesizer\t%s\t%s\t%s\n' "$synth" "${sm:-}" "${se:-}"
     # runnable record: label<TAB>adapter<TAB>model<TAB>effort (label first — it is the key
@@ -486,10 +555,11 @@ cmd_run_one() {
   # that IS runnable. This runs on every single spawn, so the race must not exist here at all.
   local runnable_list; runnable_list="$(manifest_list "$run" runnable)" || true
   grep -qxF -- "$v" <<<"$runnable_list" || { echo "verifier not in runnable: $v" >&2; exit 64; }
-  local effort prompt to adapter model eff
+  local effort prompt to adapter model eff ws
   effort="$(manifest_get "$run" effort)"
   prompt="$(manifest_get "$run" prompt)"
   to="$(manifest_get "$run" timeout)"; [ -n "$to" ] || to="$T"
+  ws="$(manifest_get "$run" workspace)"   # optional; empty for a request with no WORKTREE:
   # $v is the entry's LABEL — a generated, path-safe identity. Adapter/model/effort come
   # from the manifest as data; nothing is re-derived by parsing the name.
   IFS=$'\037' read -r adapter model eff < <(manifest_entry "$run" "$v" | panel_us)
@@ -500,7 +570,7 @@ cmd_run_one() {
   : > "$vdir/started"
   # adapter writes its verdict to the FILE; its stdout is silenced (no context leak),
   # diagnostics go to stderr.log. run-one itself prints nothing to stdout.
-  run_adapter "$to" "$ROOT/adapters/$adapter.sh" "$prompt" "$eff" "$vdir/verdict" "$model" "$vdir/stderr.log"
+  run_adapter "$to" "$ROOT/adapters/$adapter.sh" "$prompt" "$eff" "$vdir/verdict" "$model" "$vdir/stderr.log" "$ws"
   printf '%s' "$?" > "$vdir/rc.tmp"; mv "$vdir/rc.tmp" "$vdir/rc"
   : > "$vdir/finished"
   exit 0

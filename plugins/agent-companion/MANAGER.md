@@ -107,6 +107,19 @@ without the project's conventions — `prepare` prints `N file(s) frozen` on suc
 that line rather than assuming.
 Do NOT read the content of these files yourself before listing them — that is the entire point: their content must never enter the main session's context, only the verifier's.
 
+## Judging code outside the repo (`WORKTREE:`)
+The panel's default workspace is the repo you invoked from — `verify.sh` takes the caller's cwd, so do NOT `cd`. When the code to judge lives somewhere ELSE — a detached worktree pinned at a PR's head SHA, materialized under a temp dir — you MUST declare that directory in the request on its own line:
+
+```
+WORKTREE: /absolute/path/to/the/snapshot
+```
+
+One line, one directory, absolute path. `prepare` validates it (must resolve to an existing directory; `/`, `$HOME` and single-segment paths are refused) and prints `WORKTREE: accepted …` or the reason it was dropped on stderr — check that line, exactly as you check `N file(s) frozen`.
+
+This is not cosmetic. Two of the bundled CLIs run CONFINED to the workspace, and they fail differently without the declaration: `agy` dies on the first denied read and returns an empty verdict the panel reports as `FAIL`; `codex` says nothing and judges whatever it can still read — the session's working tree, not the snapshot you pinned. `grok` and `kimi` are unconfined and would answer normally, so a partially-correct panel is exactly what this looks like from the outside.
+
+Naming the path in prose (inside `SCOPE`) is what makes it readable — the line survives into the prompt on purpose, because the verifier is told to read that tree.
+
 ## Reminders (durable manager mode)
 Manager mode is delivered by plugin hooks: a `SessionStart` hook re-injects a protocol skeleton after `/compact` or `/resume` when the mode is active, and a `UserPromptSubmit` hook periodically reminds you during a long session. `/clear` turns the mode off (start a new `/agent-companion:on` after clearing). This is best-effort — hooks can fail open silently, and `disableAllHooks` disables the mechanism entirely — so treat a missing reminder as inconclusive, not as proof the mode is off; when in doubt, re-read this file.
 
