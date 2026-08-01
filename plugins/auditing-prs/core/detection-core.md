@@ -228,9 +228,10 @@ Every finding the engine produces carries these fields:
 - `remediation` — the direction to the fix.
 
 The core defines the **fields**. Each adapter decides how to render them — in
-particular how `remediation` is expressed (`audit-pr` renders it as a named outcome
-without the edit; `prepush-audit` renders it as a concrete fix) and the presentation
-scaffold (headings, emoji). Presentation does not live in the core.
+particular how `remediation` is expressed (`audit-pr` renders it as a precise
+target state plus necessary acceptance criteria — "done when" — never the edit
+itself; `prepush-audit` renders it as a concrete fix) and the presentation
+scaffold. Presentation does not live in the core.
 
 ## 9. Stacked-branch base discovery
 

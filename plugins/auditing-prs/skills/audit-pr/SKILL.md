@@ -430,20 +430,21 @@ order, every time**:
   composing the scaffold without first writing the heading is the easy mistake;
   write the heading first. Step 5 will not post a body that lacks it.
 
-### 4.2 — Educational tone, expressed minimally
+### 4.2 — Precision scaffold (target state + acceptance criteria)
 
-Each issue uses the same three-section scaffold — this adapter's rendering of the
-core neutral finding model (core §8): `problem` → 🚫 Problem, `mechanism` → 💡 Why it
-matters, `remediation` → 🔍 Where to dig. The scaffold IS the educational part — it
-forces the reader to encounter the problem, its mechanism, and a direction. Inside
-each section, write as little as possible to land the point. This adapter renders
-`remediation` as a **named outcome without the edit** — never the final fix.
+Each issue uses the same four-section scaffold — this adapter's rendering of the
+core neutral finding model (core §8): `problem` → **Problem**, `mechanism` →
+**Why**, `remediation` → **Target** + **Done when**. The reader is an executor who
+will hand the issue to their own agents: the target state must be complete enough
+that nothing is left to guess, while HOW to reach it stays theirs — never include
+the final corrected code, a before/after substitution, or ordered edit steps.
+Inside each section, write as little as possible to land the point.
 
 When a stack parent was detected (Step 2), which lines may carry a finding's evidence
 is governed by **core §10** — read it there.
 
-- 🚫 **Problem** — one sentence, what's wrong.
-- 💡 **Why it matters** — the mechanism, and the cost. Two things only: how the
+- **Problem** — one sentence, what's wrong.
+- **Why** — the mechanism, and the cost. Two things only: how the
   wrong behaviour happens, and what it costs. State the mechanism in the code's
   own words — the option, flag, or call that produces it — never a paraphrase of
   what it lets happen.
@@ -467,48 +468,55 @@ is governed by **core §10** — read it there.
     — states no cost at all
   - ✅ "The user reads `0` as a real score of zero, not as data that failed to
     load."
-  - ❌ "A developer who searches for `profileStats` by filename will not find
+  - ❌ "A developer who searches for `orderMetrics` by filename will not find
     it." — an invented person
-  - ✅ "`stats.ts` exports `profileStats()`; the export is not reachable by
+  - ✅ "`stats.ts` exports `orderMetrics()`; the export is not reachable by
     filename and the two can drift with nothing to catch it."
   - ❌ "`stats.ts:12-14` deliberately lets this request not go through." — a
     paraphrase; name the option that does it
-- 🔍 **Where to dig** — name the outcome, never the edit. Say what must become
-  true, using the real names: which entity is wrong, which property must change,
-  or which layer the decision belongs in. Then stop. Do not supply the change
-  itself — no corrected code, no before/after substitution, no ordered refactor
-  steps. When the outcome is architectural (move a decision to another layer,
-  split a component, make something reusable), naming the outcome IS the whole
-  section; the shape of the refactor is the reviewer's. When more than one
-  outcome is acceptable, present them as alternatives from the first word
-  ("Either X, or Y") — never one stated as an instruction and the other appended
-  after an "or", which reads as the first sentence contradicting itself.
+- **Target** — the full target state, without the how:
+  - Say WHAT must be true using the real names — entities, properties, files.
+  - Name **every site** the state covers: the sibling sites of core §13 are
+    enumerated here, in the issue itself, not discovered by the next revision.
+  - **Cite the established pattern when one exists.** If a closed issue, a
+    convention, or a sanctioned sibling already fixed how this state is presented
+    or handled — any kind of pattern: a presentation, an error format, a
+    validation approach, a naming scheme — the Target names it with its source
+    ("failures are reported the way Issue 4 established: through the shared
+    notifier") — an established pattern is part of the target state, not the
+    executor's choice.
+  - **Mark the freedom explicitly.** Aspects with no precedent are the executor's
+    call, and the Target says so ("the error state's look is the executor's
+    choice, as long as it differs from loading and from success").
+- **Done when** — 1–3 short, checkable, NECESSARY conditions, each verifiable by a
+  command or an observable behaviour ("`grep '?? 0'` over these two files is
+  empty"; "with `isError` neither site renders a number"). Print the semantics
+  next to the label: **not met → certainly not done; met → subject to
+  verification**. These conditions are a floor, not a spec — passing them never
+  auto-closes the issue (core §12–13 still verify the closure), but failing any
+  of them means the fix is not done. The executor's agents self-check against
+  them before pushing (`prepush-audit` runs the same conditions), and the next
+  audit revision runs them first (core §17 — most are one command).
 
-  Outcome vs edit:
-  - ❌ "use `hidden md:flex` on `Button`" — that is the edit
-  - ✅ "`Button` must be hidden below `md`; the wrapper already decides
-    visibility by breakpoint"
-  - ❌ "add `required: true` to `stats`" — that is the edit
-  - ✅ "`stats` must not be optional, or the decision to render `ProfileButton`
-    must move to the component that knows whether stats exist"
+  Target precision:
+  - ❌ "the absent total must be its own state" — a direction: which sites?
+    which pattern?
+  - ✅ "the absent total is its own state in `CartBadge.vue:18` AND
+    `CartPanel.vue:19`; `0` renders only from data that actually arrived;
+    loading is presented the way Issue 7 established (skeleton)"
 
-DO NOT include the final corrected code. The reader must always finish the section
-knowing WHAT has to change; how to change it is theirs to work out. An issue the
-reader can read twice and still not know what is being asked of them has failed,
-however educational it feels.
+**Target ≤ 12 lines of body text per issue** (excluding disclosure prefix and
+code-quote blocks). If you exceed that, you're explaining, not specifying.
 
-**Target ≤ 8–10 lines of body text per issue** (excluding disclosure prefix and
-code-quote blocks). If you exceed that, you're explaining, not pointing.
-
-**Optional supplementary markers** — only when they carry information the
-scaffold can't, one per issue at most: `🎯 Architectural`, `📌 Side note`,
-`⏳ If left as-is`. If a marker doesn't carry weight, omit it.
+**Optional supplementary markers** — plain bold, one per issue at most:
+**Architectural**, **Side note:**, **If left as-is:**. If a marker doesn't carry
+weight, omit it.
 
 **One confidence per issue.** Every sentence in the body carries the same
 certainty about whether the failure happens. A finding whose harm depends on a
 precondition you could not check is not confirmed: either verify the
-precondition, or state it once in 🚫 as part of what is wrong. Never assert the
-harm in 💡 and then take it back in ⏳, a footnote, or a parenthetical, and never
+precondition, or state it once in Problem as part of what is wrong. Never assert
+the harm in Why and then take it back in a footnote or a parenthetical, and never
 in the first person ("I could not check this offline") — the issue reads as if
 written cold.
 
@@ -522,27 +530,14 @@ Convention files are written for AI agents — verbatim quotes feel robotic in a
 human PR comment. Say "project conventions don't allow this" rather than quoting.
 Name a convention file only if the reader genuinely needs to open it.
 
-### 4.4 — Emoji markers (visual structure)
+### 4.4 — Markers (published bodies are emoji-free)
 
-GitHub has no coloured text, so emojis are the only scan-friendly differentiator.
-Fixed scheme, same meaning every time:
-
-| Emoji | Meaning |
-|-------|---------|
-| ⚠️ | **Blocker** severity label |
-| 🚫 | Problem |
-| 💡 | Why it matters |
-| 🔍 | Where to dig |
-| 🎯 | Architectural |
-| 📌 | Side note |
-| ⏳ | If left as-is (consequence) |
-| ✅ | Resolved |
-| 📋 | Checklist (summary only) |
-| 📮 | Follow-up — out of ticket scope (digest + summary only) |
-| 📂 | Coverage — files examined / gaps (digest only) |
-| 🏁 | Convergence state (digest only) |
-
-One marker per section heading. Do not sprinkle into prose.
+Published bodies — inline issues, the summary review, resolution edits — use
+**plain bold labels** and no emoji anywhere: **Problem**, **Why**, **Target**,
+**Done when**, **Blocker**, **Architectural**, **Side note:**, **If left as-is:**.
+Emoji are chat-only chrome: the Step 3 digest keeps its bucket icons
+(✅ 🆕 ⏳ 🎯 📮 📂 🏁 🧬), and none of them may leak into a published body. One
+marker per section; do not sprinkle emphasis into prose.
 
 ### 4.5 — Issue numbering
 
@@ -597,7 +592,7 @@ Only in-scope findings become `Issue N`. A `follow-up` finding (core §14) is re
 checklist:
 
 ```
-### 📮 Follow-ups (out of ticket scope, non-blocking)
+### Follow-ups (out of ticket scope, non-blocking)
 
 - <one line each: the observation and the suggested separate ticket>
 ```
@@ -611,7 +606,7 @@ section exists to stop.
 
 The summary body always ends with the checklist (even for a single issue):
 ```
-### 📋 Checklist
+### Checklist
 
 - [ ] [**Issue 1**](inline-url) — concrete action: which file, which change
 - [ ] **Issue 2** — concrete action (no link if the issue lives in the summary)
@@ -675,7 +670,9 @@ verify first, then close).
 ```bash
 gh api repos/{owner}/{repo}/contents/{path}?ref={head-sha} -q .content | base64 -d
 ```
-Read the file at HEAD against the original issue yourself — in both directions (core
+When the issue carries Done-when conditions (§4.2), execute them first (core §17)
+— any failing condition ends the verification at `partial` immediately. Then read
+the file at HEAD against the original issue yourself — in both directions (core
 §12): the ask is satisfied AND the state the fix created is sound. For a contract
 rewrite, read every consumer of the contract at HEAD. Then the mechanism sweep (core
 §13) — BLOCKING: enumerate the sibling sites of the mechanism across the delta
@@ -689,7 +686,8 @@ Read `../../references/resolution.md` for the exact bodies and calls, then apply
 per closed issue, in order: verify → **Mechanism 2** (inline banner + collapsed
 original) → **Mechanism 1** (strikethrough checklist row in EVERY summary review
 that lists the issue — BLOCKING: the review `PUT` prompts for permission; batch all
-review IDs in one message; a `[x]` without `~~...~~ ✅ commit` is not a resolution)
+review IDs in one message; a `[x]` without the strikethrough + commit link is not a
+resolution)
 → **Mechanism 3** (GitHub native resolve via GraphQL). Partial resolution: apply
 the mechanisms only to closed issues; leave open ones untouched.
 
@@ -732,11 +730,15 @@ refuted → tell the user with evidence and do not add.
   its `### Issue N` heading; resetting or reassigning published numbers; treating a
   dropped draft's number as spent; numbering in discovery order instead of diff
   order (§4.5).
-- ❌ Final corrected code in a comment; a recipe-style "Where to dig"; or one so
-  vague ("this pair", "that layer") the reader cannot say what must change.
-- ❌ A "Why it matters" with no cost sentence, a cost carried by an invented person,
+- ❌ Final corrected code or ordered edit steps in a comment — the how is the
+  executor's (§4.2).
+- ❌ A Target that names a direction instead of the full state, omits a sibling
+  site, leaves an established pattern uncited, or hides where the executor's
+  freedom starts; a missing or unverifiable Done-when.
+- ❌ A Why with no cost sentence, a cost carried by an invented person,
   a cross-reference or diff-history filler, or an issue that asserts a failure in
   one section and doubts it in another.
+- ❌ Emoji in a published body — emoji are chat-only chrome (§4.4).
 - ❌ Closing an issue without reading the file at HEAD; on the original ask alone
   without the fix-impact check (core §12); or closing a contract rewrite without
   reading its consumers.

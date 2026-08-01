@@ -10,7 +10,7 @@ Update the body of **every** summary review that lists the issue (not just the
 latest) — via the review-update call in SKILL Step 5. Change the matching row to:
 
 ```
-- [x] ~~[**Issue N**](inline-url) — original action~~ ✅ fixed in [`{short-sha}`](https://{host}/{owner}/{repo}/commit/{full-sha})
+- [x] ~~[**Issue N**](inline-url) — original action~~ fixed in [`{short-sha}`](https://{host}/{owner}/{repo}/commit/{full-sha})
 ```
 
 Strikethrough preserves history; the resolution note carries a clickable SHA.
@@ -19,14 +19,14 @@ Strikethrough preserves history; the resolution note carries a clickable SHA.
 pre-existing PR review on the user's account and will prompt for permission. That is
 expected. Surface it in one batched message naming every review ID you need to
 update (rev 1, rev 2, …) so they approve in one shot. A `[x]` without
-`~~...~~ ✅ commit` is not a resolution.
+the strikethrough + commit link is not a resolution.
 
 ## Mechanism 2 — inline comment banner
 
 PATCH the inline comment body. Prepend a banner and collapse the original:
 
 ```
-> ✅ **RESOLVED** in commit [`{short-sha}`](https://{host}/{owner}/{repo}/commit/{full-sha}) (rev {N})
+> **RESOLVED** in commit [`{short-sha}`](https://{host}/{owner}/{repo}/commit/{full-sha}) (rev {N})
 
 <details>
 <summary>Original review (click to expand)</summary>
