@@ -388,6 +388,13 @@ first seen. The sweep runs in **both directions**:
   boundary (§14). The question is not only "is the defect elsewhere?" but "is the
   accepted fix applied everywhere it applies?".
 
+**A sibling site is never a new finding of its own.** An unfixed sibling of an
+existing issue's mechanism IS that issue's `partial` — its evidence belongs in
+that issue's thread, not under a new number. A new finding number requires a
+**different mechanism**, never another site of the same one. Tracking one
+mechanism under two numbers gives the executor two checkboxes for one fix and
+desynchronizes their closure.
+
 **Ownership is explicit — three nets, one definition:**
 
 1. **The manager, at closure — BLOCKING.** No prior issue reaches `matches` (§6)

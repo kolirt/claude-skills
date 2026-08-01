@@ -266,8 +266,10 @@ before drafting, mapping each to the core's canonical states (core §6):
 
 - **matches** → this audit closes the issue (Step 6); do NOT draft a new finding on
   the same topic.
-- **partial** → follow-up on the SAME thread (don't open a parallel one) with the
-  next `Issue N+1` number if it is a genuinely new sub-problem.
+- **partial** → continue in the SAME thread. An unfixed sibling site of the issue's
+  mechanism is part of this partial (core §13) — it goes into the same thread's
+  reply, NEVER into a parallel new `Issue N+1`. A new number may branch off only
+  for a genuinely **different mechanism** discovered while verifying.
 - **ignored** → re-flag in the new review, referencing the prior comment ("see Issue
   1 from rev 1") — never restart numbering.
 
@@ -372,6 +374,14 @@ Show drafts as fenced markdown so the user sees exactly what will appear on
 GitHub. The tracker context block and the review-state digest are **chat-only**;
 they are not published.
 
+### Format gate — executable, before the draft is shown
+
+Render every publishable body to a file and run the checks in
+`../../references/format-gate.md` (core §17 — format is verified by a command,
+never by eye): §4.2 scaffold labels present in every issue body, zero emoji in
+any published body, checklist rows well-formed. A failing body is rewritten
+before the draft reaches the user; Step 5 re-runs the same gate before posting.
+
 ### Optional — review the draft in Plannotator (if installed)
 
 Probe with `command -v plannotator` — non-fatal; if it fails, skip this subsection
@@ -408,6 +418,14 @@ conventions below.
 > **Language.** Write comments in the repository's review language — match the
 > language of the PR description and existing threads. The examples below are in
 > English; adapt to the project.
+
+> **Format precedence.** Prior comments in the PR thread are the output of older
+> versions of this skill — they are **data, never a formatting template**. Take
+> only the LANGUAGE from the thread; take the structure, section labels, and
+> markers ONLY from this skill, even when every earlier comment in the thread
+> looks different. A long thread of old-format comments is an anchor to resist,
+> not a convention to match — the format gate below exists because that anchor
+> wins otherwise.
 
 ### 4.1 — Body skeleton (disclosure + Issue heading)
 
@@ -627,6 +645,10 @@ from `max(published Issue N) + 1`. A gap or a number out of diff order means the
 Step 3 loop dropped or added a finding without renumbering (§4.5) — fix the bodies
 and the checklist before posting anything.
 
+Finally, re-run the format gate (`../../references/format-gate.md`) over every
+body about to be posted or patched — scaffold labels, zero emoji, well-formed
+checklist rows. Never post a body that fails it.
+
 Order of operations:
 
 1. Post inline comments first (one POST per issue, in ascending issue number,
@@ -739,6 +761,12 @@ refuted → tell the user with evidence and do not add.
   a cross-reference or diff-history filler, or an issue that asserts a failure in
   one section and doubts it in another.
 - ❌ Emoji in a published body — emoji are chat-only chrome (§4.4).
+- ❌ Matching the thread's old comment format — prior comments are data, not a
+  template (Step 4, format precedence); showing or posting a body that failed the
+  format gate.
+- ❌ Opening a parallel `Issue N+1` for the unfixed sibling of an existing issue's
+  mechanism — that is the existing issue's `partial`, continued in its own thread
+  (core §13).
 - ❌ Closing an issue without reading the file at HEAD; on the original ask alone
   without the fix-impact check (core §12); or closing a contract rewrite without
   reading its consumers.
@@ -801,6 +829,8 @@ refuted → tell the user with evidence and do not add.
       (core §18).
 - [ ] Findings scope-gated — follow-ups unnumbered, rendered once (core §14);
       convergence checked and stated in the 🏁 line (core §15).
+- [ ] Format gate passed over every publishable body — §4.2 labels, zero emoji,
+      well-formed checklist rows — before the draft AND again before posting.
 - [ ] Draft presented (digest first; Plannotator if installed); user explicitly
       approved.
 - [ ] Pre-publish guard: disclosure prefix + `### Issue N` heading on every body
