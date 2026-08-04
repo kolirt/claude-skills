@@ -120,6 +120,11 @@ This is not cosmetic. Two of the bundled CLIs run CONFINED to the workspace, and
 
 Naming the path in prose (inside `SCOPE`) is what makes it readable — the line survives into the prompt on purpose, because the verifier is told to read that tree.
 
+### Symlinks that leave the tree (automatic, but not total)
+A confined CLI is confined on REAL paths, so a symlink inside the repo grants nothing by itself: a monorepo's `node_modules -> /elsewhere/node_modules` is NAMED inside the workspace and READ outside it, and the first read through it is denied — which kills `agy` outright. `prepare` handles the common shape for you: it scans the FIRST LEVEL of the repo (and of the declared `WORKTREE:`) for symlinks that escape, and adds each resolved target as its own read-only root, printing `symlink root accepted …` on stderr for every one.
+
+What it does NOT cover, and what therefore stays yours: a symlink deeper in the tree, and any path you name in the request that has nothing to do with the repo (a plugin cache, another project). Those are still unreadable, and for `agy` one unreadable path named anywhere in the request ends the run with no output at all. Before pointing the panel at a path, check it sits under the repo, under the `WORKTREE:`, or behind a first-level symlink.
+
 ## Reminders (durable manager mode)
 Manager mode is delivered by plugin hooks: a `SessionStart` hook re-injects a protocol skeleton after `/compact` or `/resume` when the mode is active, and a `UserPromptSubmit` hook periodically reminds you during a long session. `/clear` turns the mode off (start a new `/agent-companion:on` after clearing). This is best-effort — hooks can fail open silently, and `disableAllHooks` disables the mechanism entirely — so treat a missing reminder as inconclusive, not as proof the mode is off; when in doubt, re-read this file.
 

@@ -82,7 +82,7 @@ case "$cmd" in
       }
     fi
     #
-    # A THIRD WORKSPACE ENTRY, when the request declares one. $PWD is the repo the session sits
+    # FURTHER WORKSPACE ENTRIES, when verify.sh resolved any. $PWD is the repo the session sits
     # in — which is NOT always the tree under review: an audit of a PR head SHA is judged at a
     # DETACHED WORKTREE under a temp dir, named by the request's `WORKTREE:` line. Outside the
     # workspace every read of that snapshot is auto-denied, and by the rule below one denial ends
@@ -90,11 +90,23 @@ case "$cmd" in
     # unconfined) answered normally. verify.sh validates the path (absolute, resolves to an
     # existing directory, never `/` or `$HOME`) and passes it here; it is empty when the request
     # declares no snapshot, and then nothing below changes.
+    #
+    # The list also carries the resolved targets of symlinks that LEAVE the tree — a monorepo's
+    # `node_modules -> /elsewhere/node_modules` is named inside the workspace but read outside it,
+    # and --sandbox confines on REAL paths, so without the target here the first read through the
+    # link is denied and, by the rule below, kills the whole run.
+    #
+    # EXTRA_DIRS (plural, newline-separated) is what verify.sh feeds the bundled adapters;
+    # EXTRA_DIR (singular, the declared WORKTREE only) stays the contract for custom adapters
+    # and is the fallback when an older verify.sh exports just that one.
     # `${extra[@]+...}` guards the expansion: under `set -u` bash 3.2 (the macOS system bash)
     # errors on an empty array's `"${extra[@]}"`.
     extra=()
-    if [ -n "${AGENT_COMPANION_EXTRA_DIR:-}" ] && [ -d "${AGENT_COMPANION_EXTRA_DIR}" ]; then
-      extra=(--add-dir "$AGENT_COMPANION_EXTRA_DIR")
+    dirs="${AGENT_COMPANION_EXTRA_DIRS:-${AGENT_COMPANION_EXTRA_DIR:-}}"
+    if [ -n "$dirs" ]; then
+      while IFS= read -r d; do
+        [ -n "$d" ] && [ -d "$d" ] && extra+=(--add-dir "$d")
+      done <<<"$dirs"
     fi
     #
     # --mode plan is NOT a write barrier (verified: in a scratch project it happily creates

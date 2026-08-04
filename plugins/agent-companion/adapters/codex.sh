@@ -41,10 +41,22 @@ case "$cmd" in
     # the workspace codex does not fail — it silently judges what it CAN read, i.e. the session's
     # working tree instead of the pinned SHA, and reports findings against the wrong code.
     # verify.sh validates the path and passes it here; empty when the request declares none.
+    #
+    # The same list carries the resolved targets of symlinks that LEAVE the tree (a monorepo's
+    # `node_modules -> /elsewhere/node_modules`): named inside the workspace, read outside it.
+    # codex does not die on the denial the way agy does — it reports the failed read and judges
+    # on what it could reach, which is worse in one way: the verdict looks complete.
+    #
+    # EXTRA_DIRS (plural, newline-separated) is what verify.sh feeds the bundled adapters;
+    # EXTRA_DIR (singular, the declared WORKTREE only) stays the contract for custom adapters
+    # and is the fallback when an older verify.sh exports just that one.
     # `${extra[@]+...}`: under `set -u` bash 3.2 errors on an empty array's `"${extra[@]}"`.
     extra=()
-    if [ -n "${AGENT_COMPANION_EXTRA_DIR:-}" ] && [ -d "${AGENT_COMPANION_EXTRA_DIR}" ]; then
-      extra=(--add-dir "$AGENT_COMPANION_EXTRA_DIR")
+    dirs="${AGENT_COMPANION_EXTRA_DIRS:-${AGENT_COMPANION_EXTRA_DIR:-}}"
+    if [ -n "$dirs" ]; then
+      while IFS= read -r d; do
+        [ -n "$d" ] && [ -d "$d" ] && extra+=(--add-dir "$d")
+      done <<<"$dirs"
     fi
 
     # --- read confinement (R2) --------------------------------------------------------

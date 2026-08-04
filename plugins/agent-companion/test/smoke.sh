@@ -225,8 +225,9 @@ RUNA="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
 cat > "$ROOT/adapters/mws.sh" <<'A'
 #!/usr/bin/env bash
 [ "$1" = probe ] && exit 0
-printf 'STATUS: PASS\nREQUEST_ID: %s\nEXTRA=[%s]\n' \
-  "$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')" "${AGENT_COMPANION_EXTRA_DIR:-}" > "$4"
+printf 'STATUS: PASS\nREQUEST_ID: %s\nEXTRA=[%s]\nDIRS=[%s]\n' \
+  "$(grep '^REQUEST_ID:' "$2" | tail -1 | awk '{print $2}')" "${AGENT_COMPANION_EXTRA_DIR:-}" \
+  "$(printf '%s' "${AGENT_COMPANION_EXTRA_DIRS:-}" | tr '\n' ',')" > "$4"
 A
 chmod +x "$ROOT/adapters/mws.sh"
 WT="$TMP/snapshot/wt-1"; mkdir -p "$WT"
@@ -268,6 +269,41 @@ for bad in "relative/path" "$TMP/does-not-exist" "$TMP/notadir" "$HOME" "/Users"
     || { echo "FAIL worktree-rejected ($bad)"; exit 1; }
 done
 echo "OK worktree-rejected"
+
+# ---- symlinks that leave the tree become read roots of their own ----
+# A monorepo's node_modules is a symlink out of the repo: NAMED inside a confined verifier's
+# workspace, READ outside it. Without the resolved target added as its own root, agy dies on the
+# first read through it (one denied read ends its run with no output at all).
+EXT="$(mktemp -d)"; trap 'rm -rf "$TMP" "$EXT"' EXIT
+mkdir -p "$EXT/nm" "$TMP/inside"
+EXTR="$( cd "$EXT/nm" && pwd -P )"        # the manifest carries the RESOLVED target
+ln -s "$EXT/nm"     "$TMP/node_modules"   # escapes  -> a read root
+ln -s "$TMP/inside" "$TMP/link-inside"    # stays in -> nothing to add
+: > "$EXT/afile"
+ln -s "$EXT/afile"  "$TMP/link-file"      # not a directory -> not exposable via its parent
+ln -s /             "$TMP/link-root"      # too broad -> refused, loudly
+set_verifiers mws
+err="$( cd "$TMP" && run prepare audit high "$TMP/req.md" 2>&1 >/dev/null )"
+out="$( cd "$TMP" && run prepare audit high "$TMP/req.md" 2>/dev/null )"
+RUNS="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+( cd "$TMP" && run run-one "$RUNS" 1-mws ) >/dev/null 2>&1
+grep -q "^readroot	$EXTR$" "$RUNS/manifest" \
+  && [ "$(grep -c '^readroot	' "$RUNS/manifest")" = 1 ] \
+  && grep -q "symlink root accepted" <<<"$err" \
+  && grep -q "symlink root refused" <<<"$err" \
+  && grep -qx "DIRS=\[$EXTR\]" "$RUNS/1-mws/verdict" \
+  && grep -qx 'EXTRA=\[\]' "$RUNS/1-mws/verdict" \
+  && echo "OK symlink-roots" || { echo "FAIL symlink-roots"; cat "$RUNS/manifest"; echo "$err"; exit 1; }
+
+# WORKTREE comes FIRST in the list, and the singular variable keeps its original meaning — a
+# custom adapter written against AGENT_COMPANION_EXTRA_DIR must see exactly what it saw before.
+out="$( cd "$TMP" && run prepare audit high "$TMP/req-wt.md" 2>/dev/null )"
+RUNS2="$(printf '%s\n' "$out" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+( cd "$TMP" && run run-one "$RUNS2" 1-mws ) >/dev/null 2>&1
+grep -qx "DIRS=\[$WT,$EXTR\]" "$RUNS2/1-mws/verdict" \
+  && grep -qx "EXTRA=\[$WT\]" "$RUNS2/1-mws/verdict" \
+  && echo "OK symlink-roots-order" || { echo "FAIL symlink-roots-order"; cat "$RUNS2/1-mws/verdict"; exit 1; }
+rm -f "$TMP/node_modules" "$TMP/link-inside" "$TMP/link-file" "$TMP/link-root"
 
 # safe cleanup: only (complete && !inflight) OR (invalid manifest), and only when old (-mtime +1).
 # An old in-flight run WITH a valid manifest must survive.

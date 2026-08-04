@@ -12,18 +12,27 @@ DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
 # grok ~290s) — anything still alive past 30 min is hung, not slow.
 T="${AGENT_COMPANION_TIMEOUT:-1800}"
 
-# run_adapter <timeout> <adapter-sh> <prompt> <effort> <out> <model> <stderr-log> [extra-dir]
+# run_adapter <timeout> <adapter-sh> <prompt> <effort> <out> <model> <stderr-log> [worktree] [read-roots]
 # Invoke an adapter's `run`, passing the model as a 4th arg ONLY when non-empty (a bare
 # spec keeps the exact 3-arg call contract). stdout silenced; diagnostics to the stderr log.
 #
-# The extra dir travels as an ENVIRONMENT variable, not a 5th argument: the adapter contract
+# The extra dirs travel as ENVIRONMENT variables, not as further arguments: the adapter contract
 # is `run <prompt> <effort> <out> [model]` and every custom adapter on disk implements exactly
-# that. An adapter that ignores the variable keeps working unchanged. Exported here rather
+# that. An adapter that ignores the variables keeps working unchanged. Exported here rather
 # than by each caller, and ALWAYS assigned (empty when there is none), so a value can never
 # leak from one verifier's run into the next.
+#
+# TWO variables, because one of them is a published contract. AGENT_COMPANION_EXTRA_DIR keeps
+# its exact original meaning — the declared WORKTREE, or empty — so a custom adapter written
+# against it is untouched. AGENT_COMPANION_EXTRA_DIRS is the full read-root list, newline
+# separated, WORKTREE first: the bundled adapters read that one. A path containing a newline is
+# never admitted upstream (escaping_symlink_dirs drops it), so the separator is unambiguous.
 run_adapter() {
-  local to="$1" sh="$2" p="$3" e="$4" o="$5" m="$6" errlog="$7"
+  local to="$1" sh="$2" p="$3" e="$4" o="$5" m="$6" errlog="$7" dirs=""
   export AGENT_COMPANION_EXTRA_DIR="${8:-}"
+  [ -n "${8:-}" ] && dirs="$8"
+  [ -n "${9:-}" ] && dirs="${dirs:+$dirs$'\n'}$9"
+  export AGENT_COMPANION_EXTRA_DIRS="$dirs"
   if [ -n "$m" ]; then
     _with_timeout "$to" bash "$sh" run "$p" "$e" "$o" "$m" >/dev/null 2>"$errlog"
   else
@@ -120,6 +129,19 @@ resolve_path() {
   return 1
 }
 
+# root_exposable <resolved-abs-path> -> rc 0 when the path may be handed to a verifier as a read
+# root, rc 1 when it is too broad. Refuses what is not "a snapshot of code" under any reading:
+# `/`, `$HOME`, and any single-segment path (`/Users`, `/etc`).
+# Defined ONCE and shared by every caller that widens a confined verifier's workspace: a second
+# copy of this bar is a second place to get it wrong.
+root_exposable() { # <resolved-abs-path>
+  local resolved="$1" rest="${1#/}"
+  [ "$resolved" = "/" ] && return 1
+  [ "$resolved" = "$HOME" ] && return 1
+  [ "$rest" = "${rest%%/*}" ] && return 1
+  return 0
+}
+
 # freeze_skills <request-file> <run-dir>
 # Parses a `SKILL_FILES:` block (grammar: starts at a literal `SKILL_FILES:` line, consumes
 # subsequent `^[[:space:]]*-[[:space:]]+<path>` lines, stops at the first non-matching line)
@@ -210,7 +232,7 @@ freeze_skills() {
 # reading: `/`, `$HOME`, and any single-segment path (`/Users`, `/etc`). A rejected value is
 # reported and DROPPED — the panel then runs on the repo alone, exactly as it did before.
 extra_workspace_dir() { # <request-file>
-  local line path resolved rest
+  local line path resolved
   # First occurrence wins; leading indentation allowed (the field is usually nested under
   # SCOPE). Everything after the colon is the path, trailing whitespace stripped.
   line="$(awk 'match($0, /^[[:space:]]*WORKTREE:[[:space:]]*/) {print substr($0, RLENGTH + 1); exit}' "$1")"
@@ -228,8 +250,7 @@ extra_workspace_dir() { # <request-file>
   if [ ! -d "$resolved" ]; then
     echo "agent-companion: WORKTREE: ignored (not a directory): $path" >&2; return 0
   fi
-  rest="${resolved#/}"
-  if [ "$resolved" = "/" ] || [ "$resolved" = "$HOME" ] || [ "$rest" = "${rest%%/*}" ]; then
+  if ! root_exposable "$resolved"; then
     echo "agent-companion: WORKTREE: refused (too broad to expose to a verifier): $resolved" >&2
     return 0
   fi
@@ -242,6 +263,83 @@ extra_workspace_dir() { # <request-file>
   # lands on the same tree the resolved checks approved.
   echo "agent-companion: WORKTREE: accepted — verifier workspace extended (read-only) to $path" >&2
   printf '%s' "$path"
+}
+
+# escaping_symlink_dirs <root>...
+# Prints, one absolute path per line, the RESOLVED targets of FIRST-LEVEL symlinks inside the
+# given roots whose target directory lands OUTSIDE every root. Prints nothing when there are none.
+#
+# WHY IT EXISTS: a confined verifier's workspace is a set of directories, and confinement is
+# enforced on REAL paths — agy runs under `--sandbox`, an OS-level jail. A symlink inside the repo
+# therefore grants nothing on its own: `node_modules -> /elsewhere/node_modules` is NAMED inside
+# the workspace but READ outside it, so every read through it needs a permission decision,
+# headless mode auto-DENIES it, and for agy one denial ends the run with no output at all (see
+# adapters/agy.sh). That is not a corner case — it is a monorepo's normal shape, and it made agy
+# return an empty FAIL on a request that told the panel to read package sources under
+# node_modules, while codex only complained and judged on.
+#
+# The targets are emitted RESOLVED, the opposite of extra_workspace_dir's declared-path rule and
+# for the same underlying reason: here the declared spelling ("$repo/node_modules") is already
+# inside the workspace by name and grants nothing, so only the real path can widen it.
+#
+# FAIL CLOSED, exactly as WORKTREE does. First-level entries only (no recursion); symlinks only;
+# targets that are DIRECTORIES only (exposing a symlinked FILE would mean exposing its parent —
+# far more than the link itself reaches); each target through root_exposable; at most $max of
+# them. Every accepted target is announced on stderr — widening a verifier's workspace is never
+# silent — and so is every one dropped by the cap.
+#
+# WHAT IT DOES NOT COVER, by design: a symlink deeper in the tree, and any path the REQUEST names
+# that has nothing to do with the repo. Neither is a workspace problem — the request itself must
+# stop naming paths the verifier cannot read.
+escaping_symlink_dirs() { # <root>...
+  local -a rroots=() out=()
+  local r root entry resolved inside dup n=0 max=8
+  for root in "$@"; do
+    [ -n "$root" ] || continue
+    r="$(resolve_path "$root")" || continue
+    [ -d "$r" ] || continue
+    rroots+=("$r")
+  done
+  [ "${#rroots[@]}" -gt 0 ] || return 0
+  for root in "${rroots[@]}"; do
+    for entry in "$root"/* "$root"/.*; do
+      case "${entry##*/}" in .|..) continue;; esac
+      # An unmatched glob stays literal here (no nullglob), and a literal `…/*` is not a symlink,
+      # so this same test also discards it.
+      [ -L "$entry" ] || continue
+      resolved="$(resolve_path "$entry")" || continue
+      [ -d "$resolved" ] || continue
+      # A newline in a path would split into two roots downstream (the list is newline
+      # separated). Drop it rather than emit something a reader would mis-parse.
+      [[ "$resolved" == *$'\n'* ]] && continue
+      inside=0
+      for r in "${rroots[@]}"; do
+        # The variable is QUOTED inside the pattern, so only the trailing `*` is a glob: a root
+        # whose own name contains `*` or `?` still matches literally.
+        case "$resolved/" in "$r"/*) inside=1; break;; esac
+      done
+      [ "$inside" -eq 1 ] && continue
+      dup=0
+      for r in "${out[@]:-}"; do [ "$r" = "$resolved" ] && { dup=1; break; }; done
+      [ "$dup" -eq 1 ] && continue
+      if ! root_exposable "$resolved"; then
+        echo "agent-companion: symlink root refused (too broad to expose to a verifier):" \
+             "$entry -> $resolved" >&2
+        continue
+      fi
+      if [ "$n" -ge "$max" ]; then
+        # Keep scanning instead of breaking: a cap that hides what it dropped reads as
+        # "nothing else was there".
+        echo "agent-companion: symlink root DROPPED (cap of $max reached): $entry -> $resolved" >&2
+        continue
+      fi
+      out+=("$resolved"); n=$((n + 1))
+      echo "agent-companion: symlink root accepted — verifier workspace extended (read-only)" \
+           "to $resolved (via $entry)" >&2
+    done
+  done
+  [ "${#out[@]}" -gt 0 ] && printf '%s\n' "${out[@]}"
+  return 0
 }
 
 # strip_skill_files <request-file>
@@ -464,6 +562,12 @@ cmd_prepare() {
   # Resolved once, at freeze time, and carried in the manifest: `run-one` runs in its own
   # process (a separate background task) and must not re-read — or re-trust — the request.
   local workspace; workspace="$(extra_workspace_dir "$req")"
+  # Symlinks that leave the tree are resolved into read roots of their own, or a confined
+  # verifier dies on the first read through one. Scanned from the roots an adapter actually adds:
+  # the caller's cwd (which is what `--add-dir` receives), the repo top level, and the declared
+  # snapshot. Frozen here with everything else — run-one must not re-scan a tree that may have
+  # changed since prepare.
+  local readroots; readroots="$(escaping_symlink_dirs "$PWD" "$repo" "$workspace")"
 
   panel_warn_legacy   # obsolete .conf files present -> loud notice, then bundled default
 
@@ -526,6 +630,9 @@ cmd_prepare() {
     printf 'prompt\t%s\n' "$run/prompt.txt"
     [ -f "$run/diff.patch" ] && printf 'diff\t%s\n' "$run/diff.patch"
     [ -n "$workspace" ] && printf 'workspace\t%s\n' "$workspace"
+    # Multi-valued, like `runnable`: one line per extra read root, order preserved.
+    [ -n "$readroots" ] && printf '%s\n' "$readroots" \
+      | while IFS= read -r v; do [ -n "$v" ] && printf 'readroot\t%s\n' "$v"; done
     printf 'timeout\t%s\n' "$T"
     printf 'synthesizer\t%s\t%s\t%s\n' "$synth" "${sm:-}" "${se:-}"
     # runnable record: label<TAB>adapter<TAB>model<TAB>effort (label first — it is the key
@@ -555,11 +662,12 @@ cmd_run_one() {
   # that IS runnable. This runs on every single spawn, so the race must not exist here at all.
   local runnable_list; runnable_list="$(manifest_list "$run" runnable)" || true
   grep -qxF -- "$v" <<<"$runnable_list" || { echo "verifier not in runnable: $v" >&2; exit 64; }
-  local effort prompt to adapter model eff ws
+  local effort prompt to adapter model eff ws rr
   effort="$(manifest_get "$run" effort)"
   prompt="$(manifest_get "$run" prompt)"
   to="$(manifest_get "$run" timeout)"; [ -n "$to" ] || to="$T"
   ws="$(manifest_get "$run" workspace)"   # optional; empty for a request with no WORKTREE:
+  rr="$(manifest_list "$run" readroot)"   # optional; newline-separated, empty when none
   # $v is the entry's LABEL — a generated, path-safe identity. Adapter/model/effort come
   # from the manifest as data; nothing is re-derived by parsing the name.
   IFS=$'\037' read -r adapter model eff < <(manifest_entry "$run" "$v" | panel_us)
@@ -570,7 +678,7 @@ cmd_run_one() {
   : > "$vdir/started"
   # adapter writes its verdict to the FILE; its stdout is silenced (no context leak),
   # diagnostics go to stderr.log. run-one itself prints nothing to stdout.
-  run_adapter "$to" "$ROOT/adapters/$adapter.sh" "$prompt" "$eff" "$vdir/verdict" "$model" "$vdir/stderr.log" "$ws"
+  run_adapter "$to" "$ROOT/adapters/$adapter.sh" "$prompt" "$eff" "$vdir/verdict" "$model" "$vdir/stderr.log" "$ws" "$rr"
   printf '%s' "$?" > "$vdir/rc.tmp"; mv "$vdir/rc.tmp" "$vdir/rc"
   : > "$vdir/finished"
   exit 0
