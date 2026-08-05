@@ -56,6 +56,8 @@ const hasSkills = computed(() => (plugin.value?.skills.length ?? 0) > 0)
           <dd v-html="t('skill.cmd.verifiers')" />
           <dt><span class="accent">/agent-companion:synthesizer</span> <span class="dim">[show | set &lt;name&gt; | off]</span></dt>
           <dd>{{ t('skill.cmd.synth') }}</dd>
+          <dt><span class="accent">/agent-companion:stats</span> <span class="dim">[--since &lt;days&gt; | --by-model]</span></dt>
+          <dd>{{ t('skill.cmd.stats') }}</dd>
         </dl>
       </section>
 

@@ -91,6 +91,61 @@ in your reply** — it is not optional and must not stay hidden under the collap
 harness collapses long `collect` stdout, so reproduce the `=== verdicts ===` rows (agent · state ·
 clickable path) in your own message every time, so the user can open any agent's raw verdict.
 
+## Scoring the panel (MANDATORY, after every collect)
+
+Each verifier is a paid subscription, and nothing else in this plugin records whether a given one
+ever produced a finding worth acting on. You are the only observer positioned to say — you have
+just read the reports and decided what to do with them.
+
+After `collect` returns a terminal result, run ONE `score` per verifier it lists under
+`=== scoring required ===`:
+
+```bash
+bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" score <REQUEST_ID> --label <label> \
+  --accepted N --rejected N --duplicate N [--dup-of <label>] \
+  [--top-severity blocker|major|minor|none] --report useful|noise|empty|duplicate
+```
+
+The rubric — apply it to the findings as YOU resolved them, not as the verifier framed them:
+
+- `--accepted` — findings you acted on or accepted as real: a fix, a plan change, a correction to
+  your own conclusion. A finding you agree with but consciously defer still counts as accepted.
+- `--rejected` — findings you examined and dismissed: wrong, inapplicable, or out of scope.
+- `--duplicate` — real findings another verifier in the SAME run reported first. Name that
+  verifier with `--dup-of`. This is what separates "found nothing" from "found the same thing
+  second", so do not fold duplicates into `rejected`.
+- `--top-severity` — the highest severity among the ACCEPTED findings, or `none`.
+- `--report` — one label for the report as a whole: `useful` (at least one accepted finding, or
+  advice that changed your decision), `noise` (nothing accepted and reading it cost time),
+  `empty` (no substantive content), `duplicate` (everything it said, another verifier said first).
+
+Modes without an itemised `Findings` list (`consult`, and often `research`) still get counts: an
+accepted recommendation is one accepted finding.
+
+`score <REQUEST_ID> --skip [reason]` records a deliberate waiver. It is a legitimate move when a
+run genuinely cannot be judged — but it is DATA, not an escape: a panel graded mostly by waivers
+shows up as such in the stats and is worth nothing as evidence.
+
+Read the numbers back with `/agent-companion:stats`.
+
+### The gate: exit 65 is a STOP, not a graceful degrade
+
+An unscored run blocks the next `prepare` in the same repo, which exits **65** with `UNSCORED` on
+stderr and prints the exact command that unblocks it.
+
+Do NOT treat this like a `64`. Every `64` in this plugin is an environment condition you are told
+to degrade past and proceed unverified; `65` is the opposite — the tooling works fine and is
+telling you that you skipped a step. Score the named run (or record a deliberate `--skip`), then
+re-run `prepare`. Never work around the gate by abandoning the panel.
+
+### Attribution when a synthesizer is configured
+
+The consolidated report tags every finding with its source agents; those tags ARE the attribution
+you score from. When a merged finding lists several sources, credit the FIRST-LISTED source with
+`accepted` and score the others `duplicate` against it (`--dup-of`). That is a convention, not a
+truth — the synthesizer's ordering decides it — so when a specific attribution matters, open the
+raw verdicts and check who actually said it first.
+
 ## Passing skill context to the panel
 Before EVERY panel invocation, semantically select the skills relevant to this request: skills active in the current session plus any that match the task's domain (Vue code → `knowledge-vue:...`, SEO → `knowledge-seo:...`, UI work → `frontend-design`/`ui-ux-pro-max`, etc.). This is a judgment call each time — there is no autodetector.
 Resolve each selected skill to its `SKILL.md` path in the plugin cache: `~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/skills/<name>/SKILL.md`. You may add relevant `references/*.md` files from the same skill alongside it. List every resolved path under a `SKILL_FILES:` field in the request, **one per line, each prefixed with `- `** (`.md` files only — `verify.sh` freezes and splices their content into each verifier's prompt itself):
@@ -135,6 +190,8 @@ Manager mode is delivered by plugin hooks: a `SessionStart` hook re-injects a pr
    Parse stdout TSV: `RUN_DIR\t<path>`, one `RUNNABLE\t<v>` + `SPAWN\t<v>\t<command>` per runnable
    agent, plus `SKIP`/`FAIL` lines. Exit 64 here = env/invocation error (not a git repo, bad mode,
    missing request file) — degrade gracefully, do not proceed as verified.
+   Exit **65** (`UNSCORED` on stderr) is NOT that: an earlier run in this repo was never scored.
+   Score it as the message instructs, then re-run `prepare` (see "Scoring the panel").
    If stderr warns "per-verifier timeout is DISABLED": still proceed with the dispatch, but ASK the
    user (once per session) to run `brew install coreutils` — without `timeout`/`gtimeout` the hard
    cap cannot be enforced and a hung verifier CLI would stall the panel indefinitely.
@@ -153,6 +210,8 @@ Manager mode is delivered by plugin hooks: a `SessionStart` hook re-injects a pr
    verdict path) from `collect`'s stdout in your reply, plus your synthesis of the findings. Do
    NOT leave the table hidden under the collapsed tool output — the user needs the clickable
    paths. (See "Reading the output".)
+7. SCORE — MANDATORY: one `verify.sh score` per verifier listed under `=== scoring required ===`,
+   using the rubric in "Scoring the panel". Until you do, the next `prepare` in this repo exits 65.
 
 Non-Claude-Code / scripted callers may still use the synchronous form
 `bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" <mode> <effort> <request-file>` (or `run <mode> <effort>

@@ -7,6 +7,7 @@ ROOT="${CLAUDE_PLUGIN_ROOT:-$SELF}"
 DATA="${CLAUDE_PLUGIN_DATA:-$HOME/.claude/plugins/data/agent-companion}"
 . "$ROOT/lib/verdict.sh"
 . "$ROOT/lib/panel.sh"
+. "$ROOT/lib/metrics.sh"
 # Per-verifier hard cap, seconds. A generous SAFETY NET, not a pacing tool: it wraps BOTH
 # retry attempts of an adapter, and honest reviews run 4-12 min (codex 169-688s observed,
 # grok ~290s) — anything still alive past 30 min is hung, not slow.
@@ -535,6 +536,104 @@ emit_table() { # <run> <runnable_nl> <skip_nl> <fail_nl>
   done
 }
 
+# ---------- metrics ----------
+# manifest_entry_meta <run> <label> -> adapter<TAB>model<TAB>effort for ANY partition.
+# manifest_entry() answers the same question for runnable entries only, because run-one has no
+# use for a skipped entry's model. The metrics do: "codex was unavailable nine times running" is
+# exactly the kind of fact that decides a subscription.
+manifest_entry_meta() { # <run> <label>
+  awk -F'\t' -v l="$2" '$1=="entry" && $2==l{print $3"\t"$4"\t"$5; exit}' "$1/manifest" 2>/dev/null
+}
+
+# record_run_metrics <run>
+# Appends one runs-row per panel entry and, when at least one entry actually produced a report,
+# arms the scoring gate with a snapshot of those entries.
+#
+# CALLED ONLY WHERE `complete` IS WRITTEN — the two terminal exits of cmd_collect. The INCOMPLETE
+# exit is deliberately NOT one of them: it is a retry state (the manager re-spawns the MISSING
+# agents into the SAME run dir and collects again), and a row written there would be frozen by
+# the idempotency check, permanently recording a verifier as having produced nothing when it went
+# on to return a full report seconds later.
+record_run_metrics() { # <run>
+  local run="$1" reqid repo key mode
+  reqid="$(manifest_get "$run" reqid)"
+  repo="$(manifest_get "$run" repo)"
+  mode="$(manifest_get "$run" mode)"
+  [ -n "$reqid" ] && [ -n "$repo" ] || return 1
+  key="$(repo_key "$repo")"
+
+  local runnable skiplist labels
+  runnable="$(manifest_list "$run" runnable)"
+  skiplist="$(awk -F'\t' '$1=="skip"{print $2}' "$run/manifest")"
+  labels="$(awk -F'\t' '$1=="entry"{print $2}' "$run/manifest")"
+  # A run frozen before entry rows existed still records, with unknown adapter metadata.
+  if [ -z "$labels" ]; then
+    labels="$(printf '%s\n%s\n%s\n' "$runnable" "$skiplist" \
+      "$(awk -F'\t' '$1=="fail"{print $2}' "$run/manifest")" | grep -v '^$')"
+  fi
+
+  local label a m e outcome cls snapshot="" rc=0
+  while IFS= read -r label; do
+    [ -n "$label" ] || continue
+    IFS=$'\037' read -r a m e < <(manifest_entry_meta "$run" "$label" | panel_us)
+    [ -n "${a:-}" ] || a='-'
+    if grep -qxF -- "$label" <<<"$runnable"; then
+      outcome=report
+      cls="$(cat "$run/$label/cls" 2>/dev/null)"; [ -n "$cls" ] || cls='-'
+      snapshot="$snapshot$label	$a	${m:--}	${e:--}	$outcome
+"
+    elif grep -qxF -- "$label" <<<"$skiplist"; then
+      outcome=skip; cls='-'
+    else
+      outcome=fail; cls='-'
+    fi
+    metrics_record_run "$key" "$reqid" "$mode" "$label" "$a" "${m:--}" "${e:--}" "$outcome" "$cls" \
+      || { [ "$?" = 2 ] || rc=1; }
+  done <<EOF
+$labels
+EOF
+
+  if [ "$rc" != 0 ]; then
+    echo "agent-companion: failed to record run metrics for $reqid — the gate stays DISARMED" \
+         "(no metric, no scoring obligation)." >&2
+    return 1
+  fi
+  # No report, nothing to grade: an all-skip or all-probe-fail run is already fully described by
+  # its runs-rows. Arming the gate there would block the next prepare over a judgement nobody
+  # can make.
+  [ -n "$snapshot" ] || return 0
+  if ! printf '%s' "$snapshot" | metrics_pending_write "$key" "$reqid" "$mode"; then
+    # Loud, and on STDOUT: a silently unarmed gate is precisely the hole the gate exists to
+    # close, and stderr is where this manager's protocol expects only diagnostics.
+    printf '\nagent-companion: WARNING — could not arm the scoring gate for %s.\n' "$reqid"
+    printf 'agent-companion: score this run manually, or the metrics will be missing it.\n'
+    return 1
+  fi
+  return 0
+}
+
+# emit_scoring_required <run> — the copy-paste block the manager acts on.
+# Addressed by REQID, never by run path: `cleanup_old` deletes the directory about a day later,
+# and a printed command that stops working is worse than none.
+emit_scoring_required() { # <run>
+  local run="$1" reqid key repo label a m e outcome
+  reqid="$(manifest_get "$run" reqid)"; repo="$(manifest_get "$run" repo)"
+  [ -n "$reqid" ] && [ -n "$repo" ] || return 0
+  key="$(repo_key "$repo")"
+  local entries; entries="$(metrics_pending_entries "$key" "$reqid" 2>/dev/null)" || return 0
+  [ -n "$entries" ] || return 0
+  printf '\n=== scoring required ===\n'
+  printf 'Record what each verifier was actually worth, then the gate clears:\n'
+  while IFS=$'\t' read -r label a m e outcome; do
+    [ -n "$label" ] || continue
+    printf '  bash %s score %s --label %s --accepted N --rejected N --duplicate N --report useful|noise|empty|duplicate\n' \
+      "$(sq "$ROOT/verify.sh")" "$(sq "$reqid")" "$(sq "$label")"
+  done <<EOF
+$entries
+EOF
+  printf '  (or, deliberately: bash %s score %s --skip [reason])\n' "$(sq "$ROOT/verify.sh")" "$(sq "$reqid")"
+}
+
 # ---------- subcommands ----------
 cleanup_old() {
   [ -d "$DATA/handoff" ] || return 0
@@ -551,9 +650,29 @@ cmd_prepare() {
   validate_invocation "$mode" "$req"
   warn_no_timeout   # prepare is the entry point the manager actually calls — warn where it is seen
   local repo; repo="$(git rev-parse --show-toplevel 2>/dev/null)" || { echo "not a git repo" >&2; exit 64; }
-  cleanup_old
   local reqid key run
-  reqid="$(gen_reqid)"; key="$(repo_key "$repo")"
+  key="$(repo_key "$repo")"
+  # THE SCORING GATE — first, before cleanup_old, the run directory, the diff, or the skill
+  # freeze. A blocked prepare must leave nothing behind, so it runs ahead of every side effect.
+  #
+  # Exit 65, NOT 64: every existing 64 in this file is documented in MANAGER.md as an
+  # environment condition the manager should degrade past ("continue and tell the user the step
+  # ran unverified"). A gate that exits 64 would be routed around by a manager following its
+  # own protocol. 65 has no such history and is defined as a stop.
+  local pending; pending="$(metrics_pending_list "$key")"
+  if [ -n "$pending" ]; then
+    echo "agent-companion: refusing to start — earlier panel run(s) in this repo were collected" >&2
+    echo "agent-companion: but never scored, and unscored runs silently hollow out the metrics." >&2
+    printf '%s\n' "$pending" | while IFS=$'\t' read -r _k r; do
+      [ -n "$r" ] || continue
+      echo "agent-companion:   $r — score it, or record a deliberate skip:" >&2
+      echo "agent-companion:     bash $(sq "$ROOT/verify.sh") score $(sq "$r") --skip" >&2
+    done
+    echo "UNSCORED" >&2
+    exit 65
+  fi
+  cleanup_old
+  reqid="$(gen_reqid)"
   run="$DATA/handoff/$key/run-$reqid"; mkdir -p "$run"
   : > "$run/.inflight"
   case "$mode" in review|consult) build_diff "$repo" "$run/diff.patch";; esac
@@ -587,14 +706,23 @@ cmd_prepare() {
   # probe/partition. Entries arrive as panel records (index/adapter/model/effort/label);
   # runnable carries the full record, skip/fail carry `label<TAB>reason`. Identity is the
   # LABEL everywhere — the model text is data and never becomes a path or a key.
-  local idx a m e label ad prc runnable="" skip="" fail=""
+  # `entries` is a parallel record of EVERY panel entry — runnable, skipped and probe-failed
+  # alike — carrying adapter/model/effort for each. The skip/fail partitions above deliberately
+  # stay `label<TAB>reason` (emit_status_lines and emit_table split on the first TAB and would
+  # mis-render a wider record), so the metadata the metrics need lives in its own manifest row
+  # rather than being crammed into theirs.
+  local idx a m e label ad prc runnable="" skip="" fail="" entries=""
   while IFS=$'\037' read -r idx a m e label; do
     [ -n "$label" ] || continue
     if [ -z "$a" ]; then
       # panel.sh emits an empty adapter for an entry that failed validation.
       fail="$fail$label	invalid-entry
+"
+      entries="$entries$label	-	-	-
 "; continue
     fi
+    entries="$entries$label	$a	$m	$e
+"
     ad="$ROOT/adapters/$a.sh"
     if [ ! -f "$ad" ]; then
       # A configured verifier whose adapter file is gone (renamed/removed between releases)
@@ -641,6 +769,10 @@ cmd_prepare() {
       [ -n "$label" ] && printf 'runnable\t%s\t%s\t%s\t%s\n' "$label" "$a" "$m" "$e"; done
     printf '%s' "$skip"     | while IFS= read -r v; do [ -n "$v" ] && printf 'skip\t%s\n' "$v"; done
     printf '%s' "$fail"     | while IFS= read -r v; do [ -n "$v" ] && printf 'fail\t%s\n' "$v"; done
+    # entry record: label<TAB>adapter<TAB>model<TAB>effort, for every partition. Purely
+    # additive — manifest_valid does not require it, so a run frozen by an older version still
+    # collects (it simply records no adapter/model against its metrics).
+    printf '%s' "$entries"  | while IFS= read -r v; do [ -n "$v" ] && printf 'entry\t%s\n' "$v"; done
   } > "$m"
   mv "$m" "$run/manifest"
 
@@ -750,6 +882,10 @@ cmd_collect() {
     echo "no verifier available — review skipped" >&2
     echo "NO_VERIFIER" >&2
     : > "$run/complete"; rm -f "$run/.inflight"
+    # Terminal, so it counts: a panel whose every entry was unavailable is exactly the evidence
+    # "this subscription is not earning its keep" is made of. No report means no gate.
+    record_run_metrics "$run" || true
+    metrics_gc || true
     exit 64
   fi
 
@@ -760,10 +896,151 @@ cmd_collect() {
 
   # finalize markers (terminal result) and gate
   : > "$run/complete"; rm -f "$run/.inflight"
+  record_run_metrics "$run" || true
+  emit_scoring_required "$run"
+  metrics_gc || true
   case "$mode" in
     review) { [ "$overall_fail" = 1 ] || [ "$overall_changes" = 1 ]; } && exit 10; exit 0;;
     *) exit 0;;
   esac
+}
+
+score_usage() {
+  cat >&2 <<'USAGE'
+usage:
+  verify.sh score <reqid|run-dir> --label <label> --accepted N --rejected N --duplicate N \
+                  [--dup-of <label>] [--top-severity blocker|major|minor|none] \
+                  --report useful|noise|empty|duplicate [--note <text>] [--force]
+  verify.sh score <reqid|run-dir> --skip [reason]
+
+Records what one verifier's report was actually worth, and clears the scoring gate once every
+verifier of the run has been accounted for.
+USAGE
+}
+
+# score_resolve <target> -> prints repo_key<TAB>reqid, rc 1 when the run is unknown.
+# Accepts a run directory (convenient while it still exists) or a bare reqid (which keeps
+# working after cleanup_old has deleted the directory — this is the addressing that matters).
+score_resolve() { # <target>
+  local target="$1" reqid key
+  if [ -d "$target" ] && [ -f "$target/manifest" ]; then
+    reqid="$(manifest_get "$target" reqid)"
+  else
+    reqid="$target"
+  fi
+  [ -n "$reqid" ] || return 1
+  if key="$(metrics_pending_find "$reqid")"; then
+    printf '%s\t%s' "$key" "$reqid"; return 0
+  fi
+  # No pending marker: already scored, or scored-and-cleared. Only a --force re-score has any
+  # business here, and it needs the repo key from the recorded history.
+  if key="$(metrics_repo_for_reqid "$reqid")"; then
+    printf '%s\t%s' "$key" "$reqid"; return 0
+  fi
+  return 1
+}
+
+# score_labels <repo_key> <reqid> -> the labels this run expects a score for.
+score_labels() {
+  local out
+  if out="$(metrics_pending_entries "$1" "$2" 2>/dev/null)" && [ -n "$out" ]; then
+    printf '%s\n' "$out" | cut -f1
+    return 0
+  fi
+  metrics_labels_for_reqid "$2"
+}
+
+# score_maybe_clear <repo_key> <reqid> — clear the gate once every expected label is scored.
+score_maybe_clear() {
+  local key="$1" reqid="$2" label pendingleft=0
+  metrics_pending_entries "$key" "$reqid" >/dev/null 2>&1 || return 0
+  while IFS= read -r label; do
+    [ -n "$label" ] || continue
+    metrics_has_row scores "$reqid" "$label" || pendingleft=1
+  done < <(score_labels "$key" "$reqid")
+  [ "$pendingleft" = 0 ] || return 0
+  metrics_pending_clear "$key" "$reqid"
+  echo "agent-companion: run $reqid fully scored — gate cleared." >&2
+}
+
+cmd_score() {
+  [ "$#" -ge 2 ] || { score_usage; exit 64; }
+  local target="$1"; shift
+  local resolved key reqid
+  resolved="$(score_resolve "$target")" || {
+    echo "agent-companion: unknown run: $target" >&2
+    echo "agent-companion: pass the REQUEST_ID printed by collect, or the run directory." >&2
+    exit 64; }
+  key="${resolved%%	*}"; reqid="${resolved#*	}"
+
+  local label="" acc="" rej="" dup="" dupof="-" sev="none" report="" note="-" force=0 skip=0 reason=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --label)        label="${2:-}"; shift 2 || true;;
+      --accepted)     acc="${2:-}"; shift 2 || true;;
+      --rejected)     rej="${2:-}"; shift 2 || true;;
+      --duplicate)    dup="${2:-}"; shift 2 || true;;
+      --dup-of)       dupof="${2:-}"; shift 2 || true;;
+      --top-severity) sev="${2:-}"; shift 2 || true;;
+      --report)       report="${2:-}"; shift 2 || true;;
+      --note)         note="${2:-}"; shift 2 || true;;
+      --force)        force=1; shift;;
+      --skip)         skip=1; shift; reason="${1:-}"; [ "$#" -gt 0 ] && shift;;
+      *) echo "agent-companion: unknown argument: $1" >&2; score_usage; exit 64;;
+    esac
+  done
+
+  local labels; labels="$(score_labels "$key" "$reqid")"
+  [ -n "$labels" ] || { echo "agent-companion: run $reqid recorded no report to score." >&2; exit 64; }
+
+  if [ "$skip" = 1 ]; then
+    # A deliberate skip is DATA, not an absence of it: `source=skip` is what tells the stats
+    # reader that these runs were waived rather than judged, so a panel graded mostly by shrugs
+    # cannot masquerade as evidence.
+    local n=0
+    while IFS= read -r label; do
+      [ -n "$label" ] || continue
+      metrics_has_row scores "$reqid" "$label" && continue
+      metrics_record_score "$key" "$reqid" "$label" 0 0 0 '-' none empty skip "${reason:--}" \
+        || { echo "agent-companion: failed to record the skip for $label" >&2; exit 64; }
+      n=$((n + 1))
+    done <<EOF
+$labels
+EOF
+    metrics_pending_clear "$key" "$reqid"
+    echo "agent-companion: run $reqid skipped ($n verifier(s) recorded as unscored) — gate cleared." >&2
+    exit 0
+  fi
+
+  [ -n "$label" ] || { echo "agent-companion: --label is required" >&2; score_usage; exit 64; }
+  grep -qxF -- "$label" <<<"$labels" || {
+    echo "agent-companion: \"$label\" is not a verifier of run $reqid. Expected one of:" >&2
+    printf '%s\n' "$labels" | sed 's/^/agent-companion:   /' >&2
+    exit 64; }
+  local n
+  for n in "$acc" "$rej" "$dup"; do
+    case "$n" in ''|*[!0-9]*) echo "agent-companion: --accepted/--rejected/--duplicate must each be a non-negative integer" >&2; exit 64;; esac
+  done
+  case "$sev" in blocker|major|minor|none) ;;
+    *) echo "agent-companion: --top-severity must be blocker|major|minor|none" >&2; exit 64;; esac
+  case "$report" in useful|noise|empty|duplicate) ;;
+    *) echo "agent-companion: --report must be useful|noise|empty|duplicate" >&2; exit 64;; esac
+  if [ "$dupof" != '-' ]; then
+    grep -qxF -- "$dupof" <<<"$labels" || {
+      echo "agent-companion: --dup-of \"$dupof\" is not another verifier of this run" >&2; exit 64; }
+    [ "$dupof" != "$label" ] || {
+      echo "agent-companion: --dup-of cannot name the entry being scored" >&2; exit 64; }
+  fi
+
+  METRICS_FORCE="$force" metrics_record_score "$key" "$reqid" "$label" \
+    "$acc" "$rej" "$dup" "$dupof" "$sev" "$report" manager "$note"
+  case "$?" in
+    0) echo "agent-companion: scored $label (accepted=$acc rejected=$rej duplicate=$dup report=$report)" >&2;;
+    2) echo "agent-companion: $label is already scored for run $reqid — pass --force to supersede it." >&2; exit 64;;
+    *) echo "agent-companion: failed to record the score for $label" >&2; exit 64;;
+  esac
+  score_maybe_clear "$key" "$reqid"
+  exit 0
 }
 
 cmd_run() {
@@ -789,8 +1066,9 @@ case "$CMD" in
   prepare) shift; cmd_prepare "$@";;
   run-one) shift; cmd_run_one "$@";;
   collect) shift; cmd_collect "$@";;
+  score)   shift; cmd_score "$@";;
   run)     shift; cmd_run "$@";;
   review|consult|audit|diagnose|research) cmd_run "$@";;   # legacy 3-arg form
-  '') echo "usage: verify.sh <prepare|run-one|collect|run> ... | <mode> <effort> <request-file>" >&2; exit 64;;
+  '') echo "usage: verify.sh <prepare|run-one|collect|score|run> ... | <mode> <effort> <request-file>" >&2; exit 64;;
   *) echo "unknown subcommand/mode: $CMD" >&2; exit 64;;
 esac

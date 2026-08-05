@@ -93,11 +93,18 @@ independent pass, consolidate marking disputed items with your resolution, then 
 INVOCATION (do NOT cd first):
 1. bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" prepare <mode> <effort> <request-file>
    -> parse the TSV stdout: RUN_DIR, RUNNABLE/SPAWN pairs, SKIP, FAIL.
+   Exit 65 (`UNSCORED`) is NOT an environment error: an earlier run was never scored. Score it as
+   the message says, then re-run prepare. Never work around the gate by dropping the panel.
 2. Launch EACH `SPAWN` line VERBATIM as its own native background Bash task; wait for all.
 3. bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" collect <RUN_DIR>
    0 = pass/non-gating · 10 = review blocked · 64 = read the stderr token: `INCOMPLETE` -> re-spawn
    ONLY the MISSING agents in the SAME run dir and collect again (cap ~2 retries); `NO_VERIFIER` or
    "not a git repo" -> environment error, degrade gracefully and say the step ran unverified.
+4. SCORE every verifier `collect` lists under `=== scoring required ===`:
+   verify.sh score <REQUEST_ID> --label <label> --accepted N --rejected N --duplicate N
+   [--dup-of <label>] --report useful|noise|empty|duplicate   (or: score <REQUEST_ID> --skip)
+   accepted = you acted on it · rejected = you dismissed it · duplicate = another agent said it
+   first. This is the only record of whether a paid verifier earns its subscription.
 
 SKILL CONTEXT: before EVERY panel invocation, list the project convention skills relevant to the
 task (session-active + domain: Vue -> knowledge-vue, SEO -> knowledge-seo, UI -> frontend-design /

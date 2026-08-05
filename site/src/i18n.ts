@@ -55,6 +55,8 @@ const en: Dict = {
     "Manage which verifier agents are active. <code>add</code> needs a matching adapter.",
   'skill.cmd.synth':
     "Choose the agent that consolidates the verifiers’ reports into one (so 2+ reports don’t flood the session), or turn it off.",
+  'skill.cmd.stats':
+    "See what each verifier has actually been worth — accepted vs rejected vs duplicate findings per adapter, so you can drop a subscription that never finds anything.",
   'skill.mode.consult.tag': '— forward-looking',
   'skill.mode.consult':
     'At a decision fork, the verifier agents weigh in with advice; Claude synthesizes their input before choosing.',

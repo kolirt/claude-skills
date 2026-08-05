@@ -93,6 +93,6 @@ EOF
 
 bash "$STATE" should-inject "$pc" "$lt" >/dev/null 2>&1 || exit 0
 
-emit "agent-companion reminder: manager mode is ACTIVE — you are the MANAGER, not a solo implementer. The consult / review / audit / diagnose / research gates are MANDATORY, not optional: consult before every architecture, contract, security, migration, test-strategy or 2+-option fork; review after every completed logical unit and before declaring work done; always reproduce the \`=== verdicts ===\` table in your reply. If you no longer remember the protocol, re-read \${CLAUDE_PLUGIN_ROOT}/MANAGER.md before continuing."
+emit "agent-companion reminder: manager mode is ACTIVE — you are the MANAGER, not a solo implementer. The consult / review / audit / diagnose / research gates are MANDATORY, not optional: consult before every architecture, contract, security, migration, test-strategy or 2+-option fork; review after every completed logical unit and before declaring work done; always reproduce the \`=== verdicts ===\` table in your reply; and SCORE every collected run (\`verify.sh score <REQUEST_ID> --label ... --accepted N --rejected N --duplicate N --report ...\`) — an unscored run makes the next \`prepare\` exit 65, and that is a stop, not an environment error to degrade past. If you no longer remember the protocol, re-read \${CLAUDE_PLUGIN_ROOT}/MANAGER.md before continuing."
 bash "$STATE" mark-inject "$sid" >/dev/null 2>&1
 exit 0

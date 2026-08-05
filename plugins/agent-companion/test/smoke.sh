@@ -36,7 +36,20 @@ exit 0
 A
 chmod +x "$ROOT"/adapters/*.sh
 
-run() { CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$DATA" bash "$ROOT/verify.sh" "$@"; }
+# raw: the dispatcher, untouched. Use it wherever the SCORING GATE itself is under test.
+raw() { CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$DATA" bash "$ROOT/verify.sh" "$@"; }
+metrics_lib() { env ROOT="$ROOT" DATA="$DATA" bash -c '. "$ROOT/lib/metrics.sh"; '"$1"; }
+# Waive every pending run. The tests below predate the gate and fire dozens of panels at ONE
+# repo; none of them is about scoring, so the harness records each as a deliberate skip rather
+# than disabling the gate — which would leave the gate untested against the real code path.
+waive_all() {
+  local k r
+  while IFS=$'\t' read -r k r; do
+    [ -n "$r" ] || continue
+    raw score "$r" --skip harness >/dev/null 2>&1
+  done < <(metrics_lib 'metrics_pending_list')
+}
+run() { raw "$@"; local rc=$?; waive_all; return "$rc"; }
 
 # ---- panel config helpers (panel.json; the old .conf files are gone) ----
 # Entries are POSITIONAL, so a test can predict an entry's label: the Nth argument becomes
@@ -1221,5 +1234,152 @@ repo_ns="$(awk -F'\t' '$1=="repo"{print $2}' "$RUNNOSK/manifest")"
 diff -q "$TMP/expected-noskill-prompt.txt" "$RUNNOSK/prompt.txt" >/dev/null 2>&1 && [ ! -d "$RUNNOSK/skills" ] \
   && echo "OK skillfiles-noblock-byte-identical-prompt" \
   || { echo "FAIL skillfiles-noblock-byte-identical-prompt"; diff "$TMP/expected-noskill-prompt.txt" "$RUNNOSK/prompt.txt"; exit 1; }
+
+# ================= metrics + scoring gate =================
+# From here on the gate is EXERCISED, not waived: these tests use raw() throughout.
+runs_file() { metrics_lib 'metrics_files runs' | head -1; }
+scores_file() { metrics_lib 'metrics_files scores' | head -1; }
+row_count() { awk -F'\t' -v r="$1" -v l="$2" '$3==r && $4==l' "$(scores_file)" 2>/dev/null | wc -l | tr -d ' '; }
+
+# one row per manifest entry — runnable, skipped and probe-failed alike — with model metadata
+set_verifiers 'mpass|mA' mgone mprobe
+O="$( cd "$TMP" && raw prepare review medium "$TMP/req.md" 2>/dev/null )"
+RUNM="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+printf '%s\n' "$O" | awk -F'\t' '$1=="SPAWN"{print $2}' | while IFS= read -r v; do
+  ( cd "$TMP" && raw run-one "$RUNM" "$v" ) >/dev/null 2>&1
+done
+( cd "$TMP" && raw collect "$RUNM" ) >/dev/null 2>&1
+REQM="$(awk -F'\t' '$1=="reqid"{print $2}' "$RUNM/manifest")"
+n_rows="$(awk -F'\t' -v r="$REQM" '$3==r' "$(runs_file)" | wc -l | tr -d ' ')"
+[ "$n_rows" = 3 ] \
+  && awk -F'\t' -v r="$REQM" '$3==r && $5=="1-mpass-ma" && $6=="mpass" && $7=="mA" && $9=="report"' "$(runs_file)" | grep -q . \
+  && awk -F'\t' -v r="$REQM" '$3==r && $5=="2-mgone" && $6=="mgone" && $9=="skip"' "$(runs_file)" | grep -q . \
+  && awk -F'\t' -v r="$REQM" '$3==r && $5=="3-mprobe" && $6=="mprobe" && $9=="fail"' "$(runs_file)" | grep -q . \
+  && echo "OK metrics-row-per-entry" || { echo "FAIL metrics-row-per-entry (got $n_rows rows)"; exit 1; }
+
+# a second collect must not add rows (the manager may re-run it)
+( cd "$TMP" && raw collect "$RUNM" ) >/dev/null 2>&1
+n2="$(awk -F'\t' -v r="$REQM" '$3==r' "$(runs_file)" | wc -l | tr -d ' ')"
+[ "$n2" = 3 ] && echo "OK metrics-collect-idempotent" || { echo "FAIL metrics-collect-idempotent (got $n2)"; exit 1; }
+
+# the gate blocks the next prepare with 65 + UNSCORED, and leaves no run directory behind
+before="$(find "$DATA/handoff" -maxdepth 2 -name 'run-*' -type d 2>/dev/null | wc -l | tr -d ' ')"
+out="$( cd "$TMP" && raw prepare review medium "$TMP/req.md" 2>&1 )"; rc=$?
+after="$(find "$DATA/handoff" -maxdepth 2 -name 'run-*' -type d 2>/dev/null | wc -l | tr -d ' ')"
+[ "$rc" = 65 ] && echo "$out" | grep -q 'UNSCORED' && [ "$before" = "$after" ] \
+  && echo "OK gate-blocks-prepare" || { echo "FAIL gate-blocks-prepare (rc=$rc dirs $before->$after)"; exit 1; }
+
+# scoring the one report clears the gate and unblocks prepare
+( cd "$TMP" && raw score "$REQM" --label 1-mpass-ma --accepted 2 --rejected 1 --duplicate 0 \
+    --top-severity major --report useful ) >/dev/null 2>&1
+[ "$?" = 0 ] || { echo "FAIL score-accepted"; exit 1; }
+out="$( cd "$TMP" && raw prepare review medium "$TMP/req.md" 2>&1 )"; rc=$?
+[ "$rc" = 0 ] && echo "OK gate-clears-after-score" || { echo "FAIL gate-clears-after-score (rc=$rc)"; exit 1; }
+waive_all
+
+# re-scoring is refused without --force and supersedes with it
+( cd "$TMP" && raw score "$REQM" --label 1-mpass-ma --accepted 9 --rejected 0 --duplicate 0 --report useful ) >/dev/null 2>&1
+rc=$?
+[ "$rc" = 64 ] && [ "$(row_count "$REQM" 1-mpass-ma)" = 1 ] \
+  && echo "OK score-idempotent" || { echo "FAIL score-idempotent (rc=$rc rows=$(row_count "$REQM" 1-mpass-ma))"; exit 1; }
+( cd "$TMP" && raw score "$REQM" --label 1-mpass-ma --accepted 9 --rejected 0 --duplicate 0 --report useful --force ) >/dev/null 2>&1
+[ "$(row_count "$REQM" 1-mpass-ma)" = 2 ] \
+  && echo "OK score-force-supersedes" || { echo "FAIL score-force-supersedes"; exit 1; }
+
+# validation: unknown label, negative count, bad enum
+( cd "$TMP" && raw score "$REQM" --label nope --accepted 1 --rejected 0 --duplicate 0 --report useful ) >/dev/null 2>&1
+[ "$?" = 64 ] || { echo "FAIL score-rejects-unknown-label"; exit 1; }
+( cd "$TMP" && raw score "$REQM" --label 1-mpass-ma --accepted -1 --rejected 0 --duplicate 0 --report useful --force ) >/dev/null 2>&1
+[ "$?" = 64 ] || { echo "FAIL score-rejects-negative"; exit 1; }
+( cd "$TMP" && raw score "$REQM" --label 1-mpass-ma --accepted 1 --rejected 0 --duplicate 0 --report bogus --force ) >/dev/null 2>&1
+[ "$?" = 64 ] || { echo "FAIL score-rejects-bad-enum"; exit 1; }
+echo "OK score-validation"
+
+# scoring still works after the run directory is gone (cleanup_old deletes it after a day)
+set_verifiers mpass
+O="$( cd "$TMP" && raw prepare review medium "$TMP/req.md" 2>/dev/null )"
+RUNG="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+( cd "$TMP" && raw run-one "$RUNG" 1-mpass ) >/dev/null 2>&1
+( cd "$TMP" && raw collect "$RUNG" ) >/dev/null 2>&1
+REQG="$(awk -F'\t' '$1=="reqid"{print $2}' "$RUNG/manifest")"
+rm -rf "$RUNG"
+( cd "$TMP" && raw score "$REQG" --skip gone ) >/dev/null 2>&1
+[ "$?" = 0 ] && awk -F'\t' -v r="$REQG" '$3==r && $11=="skip"' "$(scores_file)" | grep -q . \
+  && echo "OK score-survives-gc" || { echo "FAIL score-survives-gc"; exit 1; }
+
+# two entries of the SAME adapter with different models stay separate
+set_verifiers 'mpass|mX' 'mpass|mY'
+O="$( cd "$TMP" && raw prepare review medium "$TMP/req.md" 2>/dev/null )"
+RUND="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+printf '%s\n' "$O" | awk -F'\t' '$1=="SPAWN"{print $2}' | while IFS= read -r v; do
+  ( cd "$TMP" && raw run-one "$RUND" "$v" ) >/dev/null 2>&1
+done
+( cd "$TMP" && raw collect "$RUND" ) >/dev/null 2>&1
+REQD="$(awk -F'\t' '$1=="reqid"{print $2}' "$RUND/manifest")"
+( cd "$TMP" && raw score "$REQD" --label 1-mpass-mx --accepted 3 --rejected 0 --duplicate 0 --report useful ) >/dev/null 2>&1
+( cd "$TMP" && raw score "$REQD" --label 2-mpass-my --accepted 0 --rejected 4 --duplicate 0 --report noise ) >/dev/null 2>&1
+[ "$(awk -F'\t' -v r="$REQD" '$3==r' "$(runs_file)" | wc -l | tr -d ' ')" = 2 ] \
+  && [ -z "$(metrics_lib "metrics_pending_list" )" ] \
+  && echo "OK same-adapter-two-models-separate" || { echo "FAIL same-adapter-two-models-separate"; exit 1; }
+
+# an all-skip run records its skips but arms NO gate (there is nothing to grade)
+set_verifiers mgone
+O="$( cd "$TMP" && raw prepare review medium "$TMP/req.md" 2>/dev/null )"
+RUNN="$(printf '%s\n' "$O" | awk -F'\t' '$1=="RUN_DIR"{print $2; exit}')"
+( cd "$TMP" && raw collect "$RUNN" ) >/dev/null 2>&1; rc=$?
+REQN="$(awk -F'\t' '$1=="reqid"{print $2}' "$RUNN/manifest")"
+[ "$rc" = 64 ] && awk -F'\t' -v r="$REQN" '$3==r && $9=="skip"' "$(runs_file)" | grep -q . \
+  && [ -z "$(metrics_lib 'metrics_pending_list')" ] \
+  && echo "OK no-verifier-recorded-no-gate" || { echo "FAIL no-verifier-recorded-no-gate (rc=$rc)"; exit 1; }
+
+# a pending run in ANOTHER repo must not block this one
+OTHER="$TMP/other"; mkdir -p "$OTHER" && ( cd "$OTHER" && git init -q )
+metrics_lib 'printf "L\tmpass\tm\t-\treport\n" | metrics_pending_write deadbeefdeadbeef abcdef01 review'
+out="$( cd "$TMP" && raw prepare review medium "$TMP/req.md" 2>&1 )"; rc=$?
+[ "$rc" = 0 ] && echo "OK gate-is-per-repo" || { echo "FAIL gate-is-per-repo (rc=$rc)"; exit 1; }
+waive_all
+metrics_lib 'metrics_pending_clear deadbeefdeadbeef abcdef01'
+
+# ---- retention + stats over a fixed fixture, in an isolated data dir ----
+MDATA="$TMP/mdata"; mkdir -p "$MDATA/metrics"
+mstat() { CLAUDE_PLUGIN_ROOT="$ROOT" CLAUDE_PLUGIN_DATA="$MDATA" bash "$ROOT/stats.sh" "$@"; }
+mlib()  { env ROOT="$ROOT" DATA="$MDATA" bash -c '. "$ROOT/lib/metrics.sh"; '"$1"; }
+for mo in 2001-01 2001-02 2001-03 2001-04; do
+  printf '2001-01-01T00:00:00Z\trepo1\tr-%s\treview\t1-a\ta\tm\thigh\treport\tPASS\n' "$mo" \
+    > "$MDATA/metrics/runs-$mo.tsv"
+  : > "$MDATA/metrics/scores-$mo.tsv"
+done
+mlib 'metrics_gc'
+kept="$(ls -1 "$MDATA"/metrics/runs-*.tsv 2>/dev/null | wc -l | tr -d ' ')"
+[ "$kept" = 3 ] && [ ! -f "$MDATA/metrics/runs-2001-01.tsv" ] && [ -f "$MDATA/metrics/runs-2001-04.tsv" ] \
+  && echo "OK metrics-gc-keeps-three" || { echo "FAIL metrics-gc-keeps-three (kept=$kept)"; exit 1; }
+
+rm -f "$MDATA"/metrics/*.tsv
+# alpha: 2 reports, both scored; beta: 1 report scored as noise; a cross-month score row; an orphan
+{ printf '2001-03-01T00:00:00Z\trepo1\trA\treview\t1-alpha\talpha\tm1\thigh\treport\tCHANGES\n'
+  printf '2001-03-01T00:00:00Z\trepo1\trA\treview\t2-beta\tbeta\tm2\thigh\treport\tPASS\n'
+  printf '2001-03-01T00:00:00Z\trepo1\trA\treview\t3-gamma\tgamma\tm3\thigh\tskip\t-\n'
+} > "$MDATA/metrics/runs-2001-03.tsv"
+printf '2001-04-01T00:00:00Z\trepo1\trB\treview\t1-alpha\talpha\tm1\thigh\treport\tCHANGES\n' \
+  > "$MDATA/metrics/runs-2001-04.tsv"
+# rA's scores live in the NEXT month's file — the join must not care
+{ printf '2001-04-01T00:00:00Z\trepo1\trA\t1-alpha\t4\t1\t1\t-\tblocker\tuseful\tmanager\t-\n'
+  printf '2001-04-01T00:00:00Z\trepo1\trA\t2-beta\t0\t3\t0\t-\tnone\tnoise\tmanager\t-\n'
+  printf '2001-04-01T00:00:00Z\trepo1\trB\t1-alpha\t2\t0\t0\t-\tmajor\tuseful\tmanager\t-\n'
+  printf '2001-04-01T00:00:00Z\trepo1\trZ\t9-ghost\t1\t0\t0\t-\tnone\tuseful\tmanager\t-\n'
+} > "$MDATA/metrics/scores-2001-04.tsv"
+out="$(mstat 2>&1)"
+# NF>=11 pins the match to a TABLE row: "alpha" also heads a line in the useful% section below.
+echo "$out" | awk 'NF>=11 && $1=="alpha"{ok = ($2==2 && $3==2 && $6==6 && $7==1 && $8==1 && $9=="3.00" && $10=="86%" && $11==2)} END{exit ok?0:1}' \
+  && echo "$out" | awk 'NF>=11 && $1=="beta"{ok = ($6==0 && $7==3 && $11==1)} END{exit ok?0:1}' \
+  && echo "$out" | grep -q '1 score row(s) had no surviving run row' \
+  && echo "OK stats-aggregation" || { echo "FAIL stats-aggregation"; printf '%s\n' "$out"; exit 1; }
+echo "$out" | grep -q 'Below the .*threshold' || { echo "FAIL stats-small-sample-footer"; exit 1; }
+echo "OK stats-small-sample-footer"
+out="$(mstat --by-model 2>&1)"
+echo "$out" | grep -q 'alpha/m1' && echo "OK stats-by-model" || { echo "FAIL stats-by-model"; printf '%s\n' "$out"; exit 1; }
+out="$(mstat --mode consult 2>&1)"
+echo "$out" | awk '$1=="alpha"{found=1} END{exit found?1:0}' \
+  && echo "OK stats-mode-filter" || { echo "FAIL stats-mode-filter"; printf '%s\n' "$out"; exit 1; }
 
 echo "ALL SMOKE OK"

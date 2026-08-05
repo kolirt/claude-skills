@@ -14,12 +14,21 @@ Then read `${CLAUDE_PLUGIN_ROOT}/MANAGER.md` and act STRICTLY as the MANAGER per
 
 At each verifier-protocol point defined by **MANAGER.md** (consult / review / audit / diagnose / research), follow it:
 `prepare` (freeze + list agents) → spawn each `SPAWN` line as a native background task → `collect`
-(gate). Do NOT cd first. `collect` exit codes: `0` pass/non-gating · `10` review blocked · `64`
-either env error or — per its stderr token `INCOMPLETE` — an unfinished run to retry (re-spawn the
-`MISSING` agents in the same run dir, then `collect` again).
+(gate) → `score` (record what each verifier was worth). Do NOT cd first. `collect` exit codes: `0`
+pass/non-gating · `10` review blocked · `64` either env error or — per its stderr token
+`INCOMPLETE` — an unfinished run to retry (re-spawn the `MISSING` agents in the same run dir, then
+`collect` again).
+
+**Scoring is mandatory.** `collect` prints a `=== scoring required ===` block; run one
+`verify.sh score <REQUEST_ID> --label <label> --accepted N --rejected N --duplicate N --report
+useful|noise|empty|duplicate` per verifier (rubric in MANAGER.md), or `score <REQUEST_ID> --skip`
+to waive it deliberately. This is the only record of whether a paid verifier subscription is
+earning its keep — read it back with `/agent-companion:stats`.
 
 **Graceful degrade:** a `64` with `NO_VERIFIER` or "not a git repo" is an environment error, not a
-verdict — continue and tell the user the step proceeded without verification.
+verdict — continue and tell the user the step proceeded without verification. A `65` from
+`prepare` (`UNSCORED`) is the OPPOSITE: the tooling is fine and an earlier run was never scored.
+Score it, then re-run `prepare` — never route around it by dropping the panel.
 
 Manage which agents are active with `/agent-companion:verifiers`. Plugin updates are handled by native `/plugin update`.
 
