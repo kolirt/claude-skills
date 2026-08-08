@@ -1293,7 +1293,20 @@ rc=$?
 [ "$?" = 64 ] || { echo "FAIL score-rejects-negative"; exit 1; }
 ( cd "$TMP" && raw score "$REQM" --label 1-mpass-ma --accepted 1 --rejected 0 --duplicate 0 --report bogus --force ) >/dev/null 2>&1
 [ "$?" = 64 ] || { echo "FAIL score-rejects-bad-enum"; exit 1; }
+# --redundant counts a SUBSET of --accepted, so exceeding it is a contradiction, not a big number.
+( cd "$TMP" && raw score "$REQM" --label 1-mpass-ma --accepted 2 --rejected 0 --duplicate 0 --redundant 3 --report useful --force ) >/dev/null 2>&1
+[ "$?" = 64 ] || { echo "FAIL score-rejects-redundant-over-accepted"; exit 1; }
+( cd "$TMP" && raw score "$REQM" --label 1-mpass-ma --accepted 2 --rejected 0 --duplicate 0 --redundant x --report useful --force ) >/dev/null 2>&1
+[ "$?" = 64 ] || { echo "FAIL score-rejects-redundant-non-integer"; exit 1; }
 echo "OK score-validation"
+# Recorded on the row, and omitting it stores "-" (not graded) rather than a zero.
+( cd "$TMP" && raw score "$REQM" --label 1-mpass-ma --accepted 3 --rejected 0 --duplicate 0 --redundant 2 --report useful --force ) >/dev/null 2>&1
+awk -F'\t' -v r="$REQM" '$3==r && $4=="1-mpass-ma"{last=$13} END{exit last=="2"?0:1}' "$(scores_file)" \
+  || { echo "FAIL score-records-redundant"; exit 1; }
+( cd "$TMP" && raw score "$REQM" --label 1-mpass-ma --accepted 3 --rejected 0 --duplicate 0 --report useful --force ) >/dev/null 2>&1
+awk -F'\t' -v r="$REQM" '$3==r && $4=="1-mpass-ma"{last=$13} END{exit last=="-"?0:1}' "$(scores_file)" \
+  || { echo "FAIL score-redundant-defaults-ungraded"; exit 1; }
+echo "OK score-redundant"
 
 # scoring still works after the run directory is gone (cleanup_old deletes it after a day)
 set_verifiers mpass
@@ -1369,11 +1382,15 @@ printf '2001-04-01T00:00:00Z\trepo1\trB\treview\t1-alpha\talpha\tm1\thigh\trepor
   printf '2001-04-01T00:00:00Z\trepo1\trZ\t9-ghost\t1\t0\t0\t-\tnone\tuseful\tmanager\t-\n'
 } > "$MDATA/metrics/scores-2001-04.tsv"
 out="$(mstat 2>&1)"
-# NF>=11 pins the match to a TABLE row: "alpha" also heads a line in the useful% section below.
-echo "$out" | awk 'NF>=11 && $1=="alpha"{ok = ($2==2 && $3==2 && $6==6 && $7==1 && $8==1 && $9=="3.00" && $10=="86%" && $11==2)} END{exit ok?0:1}' \
-  && echo "$out" | awk 'NF>=11 && $1=="beta"{ok = ($6==0 && $7==3 && $11==1)} END{exit ok?0:1}' \
+# NF>=12 pins the match to a TABLE row: "alpha" also heads a line in the useful% section below.
+# These fixture rows carry 12 columns — the pre-`redundant` layout — so this doubles as the
+# backward-compatibility check: they must still aggregate, with new% reported as ungraded.
+echo "$out" | awk 'NF>=12 && $1=="alpha"{ok = ($2==2 && $3==2 && $6==6 && $7==1 && $8==1 && $9=="3.00" && $10=="86%" && $11=="-" && $12==2)} END{exit ok?0:1}' \
+  && echo "$out" | awk 'NF>=12 && $1=="beta"{ok = ($6==0 && $7==3 && $12==1)} END{exit ok?0:1}' \
   && echo "$out" | grep -q '1 score row(s) had no surviving run row' \
   && echo "OK stats-aggregation" || { echo "FAIL stats-aggregation"; printf '%s\n' "$out"; exit 1; }
+echo "$out" | grep -q '3 scored report(s) carry no redundancy grade' \
+  && echo "OK stats-ungraded-footer" || { echo "FAIL stats-ungraded-footer"; printf '%s\n' "$out"; exit 1; }
 echo "$out" | grep -q 'Below the .*threshold' || { echo "FAIL stats-small-sample-footer"; exit 1; }
 echo "OK stats-small-sample-footer"
 out="$(mstat --by-model 2>&1)"
@@ -1381,5 +1398,31 @@ echo "$out" | grep -q 'alpha/m1' && echo "OK stats-by-model" || { echo "FAIL sta
 out="$(mstat --mode consult 2>&1)"
 echo "$out" | awk '$1=="alpha"{found=1} END{exit found?1:0}' \
   && echo "OK stats-mode-filter" || { echo "FAIL stats-mode-filter"; printf '%s\n' "$out"; exit 1; }
+
+# ---- new%: graded and half-graded rows in one group ----
+# delta is scored twice, once WITH a redundancy grade and once without. new% must be computed
+# from the graded row alone (4 accepted, 1 already known -> 75%), while accept/acc-run keep
+# counting both rows. A reader that folded the ungraded row in would print 6/10 = 60%.
+rm -f "$MDATA"/metrics/*.tsv
+{ printf '2001-03-01T00:00:00Z\trepo1\trD\treview\t1-delta\tdelta\tm1\thigh\treport\tCHANGES\n'
+  printf '2001-03-01T00:00:00Z\trepo1\trE\treview\t1-delta\tdelta\tm1\thigh\treport\tCHANGES\n'
+} > "$MDATA/metrics/runs-2001-03.tsv"
+{ printf '2001-03-01T00:00:00Z\trepo1\trD\t1-delta\t4\t0\t0\t-\tblocker\tuseful\tmanager\t-\t1\n'
+  printf '2001-03-01T00:00:00Z\trepo1\trE\t1-delta\t2\t0\t0\t-\tminor\tuseful\tmanager\t-\n'
+} > "$MDATA/metrics/scores-2001-03.tsv"
+out="$(mstat 2>&1)"
+echo "$out" | awk 'NF>=12 && $1=="delta"{ok = ($6==6 && $9=="3.00" && $11=="75%" && $12==2)} END{exit ok?0:1}' \
+  && echo "$out" | grep -q 'new/run 3.00' \
+  && echo "$out" | grep -q 'graded for redundancy: 1 of 2' \
+  && echo "OK stats-new-percent" || { echo "FAIL stats-new-percent"; printf '%s\n' "$out"; exit 1; }
+
+# A verifier that only ever repeated what the manager already had must read as 0%, not as "-".
+printf '2001-03-01T00:00:00Z\trepo1\trD\t1-delta\t4\t0\t0\t-\tblocker\tuseful\tmanager\t-\t4\n' \
+  > "$MDATA/metrics/scores-2001-03.tsv"
+printf '2001-03-01T00:00:00Z\trepo1\trD\treview\t1-delta\tdelta\tm1\thigh\treport\tCHANGES\n' \
+  > "$MDATA/metrics/runs-2001-03.tsv"
+out="$(mstat 2>&1)"
+echo "$out" | awk 'NF>=12 && $1=="delta"{ok = ($9=="4.00" && $11=="0%")} END{exit ok?0:1}' \
+  && echo "OK stats-new-percent-zero" || { echo "FAIL stats-new-percent-zero"; printf '%s\n' "$out"; exit 1; }
 
 echo "ALL SMOKE OK"

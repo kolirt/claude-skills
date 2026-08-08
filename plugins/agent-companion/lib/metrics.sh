@@ -21,7 +21,15 @@
 #
 # Row schemas (TAB-delimited, "-" meaning "no value" so every column is always occupied):
 #   runs    ts repo_key reqid mode label adapter model effort outcome cls
-#   scores  ts repo_key reqid label accepted rejected duplicate dup_of top_severity report source note
+#   scores  ts repo_key reqid label accepted rejected duplicate dup_of top_severity report source note redundant
+#
+# `redundant` is LAST because the column was added after months of rows already existed. Appending
+# keeps every stored row readable by the new reader; inserting it next to `duplicate`, where it
+# belongs semantically, would have shifted six columns and silently re-interpreted all of them.
+# It is a SUBSET of `accepted` (a finding that was real and acted on, but the manager already had
+# it before reading the report), never a fourth disjoint bucket — so no existing column changes
+# meaning. `-` means the score was recorded without grading redundancy, which is what every row
+# written before this column existed carries; readers must not read that as a zero.
 #
 # The pending file is plain `KEY=VALUE`, never sourced/eval'd, and carries a SNAPSHOT of the run's
 # entries. That snapshot is what makes scoring survive the handoff GC: `cleanup_old` deletes the
@@ -148,14 +156,14 @@ metrics_record_run() {
   _metrics_append runs "$(metrics_now)" "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9"
 }
 
-# metrics_record_score <repo_key> <reqid> <label> <acc> <rej> <dup> <dup_of> <severity> <report> <source> [note]
+# metrics_record_score <repo_key> <reqid> <label> <acc> <rej> <dup> <dup_of> <severity> <report> <source> [note] [redundant]
 # rc 0 written · rc 2 already scored (caller may retry with force) · rc 1 write failure.
 # A forced re-score appends a SUPERSEDING row rather than editing in place — the file stays
 # append-only, and readers keep the last row per `reqid + label`.
 metrics_record_score() {
   metrics_valid_token "$1" && metrics_valid_token "$2" || return 1
   [ "${METRICS_FORCE:-0}" = 1 ] || ! metrics_has_row scores "$2" "$3" || return 2
-  _metrics_append scores "$(metrics_now)" "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11:--}"
+  _metrics_append scores "$(metrics_now)" "$1" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" "${10}" "${11:--}" "${12:--}"
 }
 
 # ---------- retention ----------

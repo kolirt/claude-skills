@@ -100,6 +100,10 @@ awk -F'\t' \
     # the file in place.
     s_acc[k] = $5; s_rej[k] = $6; s_dup[k] = $7
     s_report[k] = $10; s_source[k] = $11
+    # Column 13 postdates the first months of data, so an absent field ("") and an explicit "-"
+    # both mean "redundancy was never graded" — neither may be read as a zero, which would claim
+    # the manager had found none of it himself.
+    s_red[k] = $13
     scored[k] = 1
     next
   }
@@ -111,27 +115,45 @@ awk -F'\t' \
       n[g]++
       acc[g] += s_acc[k]; rej[g] += s_rej[k]; dup[g] += s_dup[k]
       if (s_report[k] == "useful") useful[g]++
+      # new% is computed ONLY over rows that were actually graded for redundancy, and needs its
+      # own accepted total: dividing a graded redundancy count by the all-rows accepted total
+      # would dilute it with runs where the question was never asked.
+      if (s_red[k] ~ /^[0-9]+$/) {
+        ngraded[g]++; red[g] += s_red[k]; accgraded[g] += s_acc[k]
+      } else ungraded++
     }
-    fmt = "%-26s %5s %8s %8s %7s %8s %8s %10s %8s %8s %6s\n"
+    fmt = "%-26s %5s %8s %8s %7s %8s %8s %10s %8s %8s %6s %6s\n"
     printf fmt, (by_model ? "adapter/model" : "adapter"), "runs", "reports", "fail/sk", "waived", \
-      "accept", "reject", "duplicate", "acc/run", "unique%", "n"
+      "accept", "reject", "duplicate", "acc/run", "unique%", "new%", "n"
     for (g in groups) {
       a = acc[g] + 0; d = dup[g] + 0; c = n[g] + 0
+      ag = accgraded[g] + 0; r = red[g] + 0; cg = ngraded[g] + 0
       accrun = c ? sprintf("%.2f", a / c) : "-"
       uniq   = (a + d) ? sprintf("%.0f%%", 100 * a / (a + d)) : "-"
+      newpct = ag ? sprintf("%.0f%%", 100 * (ag - r) / ag) : "-"
+      newrun = cg ? sprintf("%.2f", (ag - r) / cg) : "-"
       usefulpct = c ? sprintf("%.0f%%", 100 * (useful[g] + 0) / c) : "-"
       printf fmt, g, runs[g] + 0, reports[g] + 0, unavail[g] + 0, waived[g] + 0, \
-        a, rej[g] + 0, d, accrun, uniq, c
+        a, rej[g] + 0, d, accrun, uniq, newpct, c
       if (c > 0 && c < min_sample) small = small "  " g " (n=" c ")\n"
       usefulline[g] = usefulpct
+      newrunline[g] = newrun
+      gradedline[g] = cg
     }
-    printf "\nuseful%% (share of scored reports the manager called useful):\n"
-    for (g in groups) if (n[g] + 0 > 0) printf "  %-26s %s\n", g, usefulline[g]
+    printf "\nuseful%% (share of scored reports the manager called useful) and new/run\n"
+    printf "(accepted findings per graded report that the manager did NOT already have):\n"
+    for (g in groups) if (n[g] + 0 > 0)
+      printf "  %-26s useful %-6s new/run %-6s (graded for redundancy: %d of %d)\n", \
+        g, usefulline[g], newrunline[g], gradedline[g] + 0, n[g] + 0
     if (small != "") {
       printf "\nBelow the %d-run threshold — not enough evidence to cancel anything:\n%s", min_sample, small
     }
     if (orphan + 0 > 0) {
       printf "\n%d score row(s) had no surviving run row (their month was rotated out) and were dropped.\n", orphan
+    }
+    if (ungraded + 0 > 0) {
+      printf "\n%d scored report(s) carry no redundancy grade (scored before --redundant existed,\n", ungraded
+      printf "or scored without it). They are counted everywhere EXCEPT new%% and new/run.\n"
     }
   }
 ' $RUNS $SCORES
@@ -151,3 +173,7 @@ fi
 printf '\nThese rates are confounded by task difficulty, reading order and mode mix. Compare\n'
 printf 'verifiers WITHIN a run, treat cross-period comparisons as weak, and read the table as\n'
 printf 'evidence for a decision rather than as the decision.\n'
+printf '\nunique%% depends on WHICH VERIFIER WAS LISTED FIRST in a merged finding, so it rewards a\n'
+printf 'panel position as much as a discovery. new%% does not: it compares the verifier against\n'
+printf 'the manager, who read nothing before writing his own findings. When the two disagree,\n'
+printf 'new%% is the one that answers "would this have been missed without the subscription".\n'

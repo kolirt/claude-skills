@@ -909,12 +909,18 @@ score_usage() {
   cat >&2 <<'USAGE'
 usage:
   verify.sh score <reqid|run-dir> --label <label> --accepted N --rejected N --duplicate N \
-                  [--dup-of <label>] [--top-severity blocker|major|minor|none] \
+                  [--redundant N] [--dup-of <label>] \
+                  [--top-severity blocker|major|minor|none] \
                   --report useful|noise|empty|duplicate [--note <text>] [--force]
   verify.sh score <reqid|run-dir> --skip [reason]
 
 Records what one verifier's report was actually worth, and clears the scoring gate once every
 verifier of the run has been accounted for.
+
+--redundant is how many of the ACCEPTED findings you already had in your own audit before you
+read the report. It answers "would I have missed this?", which --duplicate does not: --duplicate
+only ever compares one verifier against ANOTHER verifier, never against you. Omit it and the row
+records "not graded" rather than zero, and the run is left out of the new% column in stats.
 USAGE
 }
 
@@ -973,13 +979,14 @@ cmd_score() {
     exit 64; }
   key="${resolved%%	*}"; reqid="${resolved#*	}"
 
-  local label="" acc="" rej="" dup="" dupof="-" sev="none" report="" note="-" force=0 skip=0 reason=""
+  local label="" acc="" rej="" dup="" red="-" dupof="-" sev="none" report="" note="-" force=0 skip=0 reason=""
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --label)        label="${2:-}"; shift 2 || true;;
       --accepted)     acc="${2:-}"; shift 2 || true;;
       --rejected)     rej="${2:-}"; shift 2 || true;;
       --duplicate)    dup="${2:-}"; shift 2 || true;;
+      --redundant)    red="${2:-}"; shift 2 || true;;
       --dup-of)       dupof="${2:-}"; shift 2 || true;;
       --top-severity) sev="${2:-}"; shift 2 || true;;
       --report)       report="${2:-}"; shift 2 || true;;
@@ -1025,6 +1032,16 @@ EOF
     *) echo "agent-companion: --top-severity must be blocker|major|minor|none" >&2; exit 64;; esac
   case "$report" in useful|noise|empty|duplicate) ;;
     *) echo "agent-companion: --report must be useful|noise|empty|duplicate" >&2; exit 64;; esac
+  # `-` (the default) means "not graded" and stays out of new%. Anything else must be a count,
+  # and it cannot exceed --accepted: redundant findings are a SUBSET of the accepted ones, so a
+  # larger value would make "accepted findings you did NOT already have" come out negative.
+  if [ "$red" != '-' ]; then
+    case "$red" in ''|*[!0-9]*)
+      echo "agent-companion: --redundant must be a non-negative integer" >&2; exit 64;; esac
+    [ "$red" -le "$acc" ] || {
+      echo "agent-companion: --redundant ($red) cannot exceed --accepted ($acc) — it counts which of the ACCEPTED findings you already had." >&2
+      exit 64; }
+  fi
   if [ "$dupof" != '-' ]; then
     grep -qxF -- "$dupof" <<<"$labels" || {
       echo "agent-companion: --dup-of \"$dupof\" is not another verifier of this run" >&2; exit 64; }
@@ -1033,9 +1050,12 @@ EOF
   fi
 
   METRICS_FORCE="$force" metrics_record_score "$key" "$reqid" "$label" \
-    "$acc" "$rej" "$dup" "$dupof" "$sev" "$report" manager "$note"
+    "$acc" "$rej" "$dup" "$dupof" "$sev" "$report" manager "$note" "$red"
   case "$?" in
-    0) echo "agent-companion: scored $label (accepted=$acc rejected=$rej duplicate=$dup report=$report)" >&2;;
+    0) echo "agent-companion: scored $label (accepted=$acc rejected=$rej duplicate=$dup redundant=$red report=$report)" >&2
+       # Loud rather than fatal: a missing --redundant costs one run's worth of new%, while
+       # rejecting the call would leave the gate armed and the run unscorable by an older manager.
+       [ "$red" != '-' ] || echo "agent-companion: no --redundant given — this run is excluded from new% (how much the verifier found that you did not)." >&2;;
     2) echo "agent-companion: $label is already scored for run $reqid — pass --force to supersede it." >&2; exit 64;;
     *) echo "agent-companion: failed to record the score for $label" >&2; exit 64;;
   esac

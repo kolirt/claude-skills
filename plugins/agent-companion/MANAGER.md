@@ -102,7 +102,7 @@ After `collect` returns a terminal result, run ONE `score` per verifier it lists
 
 ```bash
 bash "${CLAUDE_PLUGIN_ROOT}/verify.sh" score <REQUEST_ID> --label <label> \
-  --accepted N --rejected N --duplicate N [--dup-of <label>] \
+  --accepted N --rejected N --duplicate N --redundant N [--dup-of <label>] \
   [--top-severity blocker|major|minor|none] --report useful|noise|empty|duplicate
 ```
 
@@ -114,6 +114,14 @@ The rubric — apply it to the findings as YOU resolved them, not as the verifie
 - `--duplicate` — real findings another verifier in the SAME run reported first. Name that
   verifier with `--dup-of`. This is what separates "found nothing" from "found the same thing
   second", so do not fold duplicates into `rejected`.
+- `--redundant` — how many of the ACCEPTED findings you had ALREADY WRITTEN DOWN in your own
+  audit/hypothesis file before you read this report. A subset of `--accepted`, never a separate
+  bucket, so it can never exceed it. This is the only counter that measures the verifier against
+  YOU rather than against the other verifiers, and it is what decides whether a subscription buys
+  anything: an entry whose findings you always already had is paying you to agree with yourself.
+  Pass it on EVERY non-skip score — omitting it drops that run out of `new%` entirely, and
+  `score` says so on stderr when you forget. If the mode produced no separate file of your own
+  (a `consult` you asked cold), `--redundant 0` is the honest value: you had nothing.
 - `--top-severity` — the highest severity among the ACCEPTED findings, or `none`.
 - `--report` — one label for the report as a whole: `useful` (at least one accepted finding, or
   advice that changed your decision), `noise` (nothing accepted and reading it cost time),
@@ -145,6 +153,14 @@ you score from. When a merged finding lists several sources, credit the FIRST-LI
 `accepted` and score the others `duplicate` against it (`--dup-of`). That is a convention, not a
 truth — the synthesizer's ordering decides it — so when a specific attribution matters, open the
 raw verdicts and check who actually said it first.
+
+`--redundant` grades only what landed in THAT verifier's `--accepted`, so on a merged finding it
+applies to the first-listed source and not to the ones scored `duplicate` — their copy of the
+finding was never counted as accepted, and `--redundant` may never exceed `--accepted`.
+
+The judgement it records is nonetheless order-independent, which is exactly why `new%` is worth
+more than `unique%`: whether the finding was in YOUR file is settled before the synthesizer ever
+runs, so no ordering convention can move it.
 
 ## Passing skill context to the panel
 Before EVERY panel invocation, semantically select the skills relevant to this request: skills active in the current session plus any that match the task's domain (Vue code → `knowledge-vue:...`, SEO → `knowledge-seo:...`, UI work → `frontend-design`/`ui-ux-pro-max`, etc.). This is a judgment call each time — there is no autodetector.
