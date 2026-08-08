@@ -4,7 +4,8 @@ Optional verifier-panel pass for an audit run, via the `agent-companion` plugin.
 
 **Dispatcher-only.** Only `skills/audit/SKILL.md` reads this file and feeds the panel. No
 domain skill (`security`, `performance`, `accessibility`, `reliability`, `code-quality`,
-`data`, `api-contracts`, or any other) invokes the panel, directly or through this document.
+`data`, `api-contracts`, `conventions`, or any other) invokes the panel, directly or through
+this document.
 A domain skill run on its own — outside the dispatcher — never touches this mechanism.
 
 ## Default: no panel is normal

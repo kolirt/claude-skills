@@ -34,6 +34,16 @@ MANIFESTS = ("package.json", "composer.json")
 FSD_LAYER = re.compile(r"^\d{1,2}-[a-z]")
 OPENAPI_FILE = re.compile(r"^(openapi|swagger)[\w.-]*\.(json|ya?ml)$", re.I)
 SQL_FILE = re.compile(r"\.sql$", re.I)
+MD_FILE = re.compile(r"\.md$", re.I)
+
+# Prose a project writes about ITSELF — what a new contributor or an agent is
+# expected to read before writing code. `README.md` is deliberately NOT here:
+# nearly every repository has one, so accepting it would make this fact true
+# everywhere and worthless as a verdict input. A README still belongs to the
+# evidence an audit reads — this fact decides applicability, not scope.
+CONVENTION_FILES = ("AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md", "CONVENTIONS.md")
+ADR_DIRS = ("adr", "adrs", "decisions")
+DOC_DIRS = ("docs", "doc")
 
 UI_DEPS = ("vue", "nuxt")
 I18N_DEPS = ("vue-i18n", "@nuxtjs/i18n")
@@ -261,6 +271,21 @@ def detect_unit(root, unit, files, dirs):
     elif lang_dir:
         i18n_marker = cite(lang_dir) + "/"
 
+    # A dedicated convention document, an ADR tree, or a documentation tree is
+    # what makes "did the project follow its own written rules" an answerable
+    # question at all. Matched on whole path COMPONENTS like the schema probe, so
+    # `documentation_backup/x.md` and a file merely NAMED `adr-notes` are not it.
+    conv_file = _first(ufiles, lambda p: os.path.basename(p) in CONVENTION_FILES)
+    adr_dir = _first(udirs, lambda d: _parts(d)[-1].lower() in ADR_DIRS)
+    docs_md = _first(ufiles, lambda p: _parts(p)[0] in DOC_DIRS and MD_FILE.search(p))
+    conventions_marker = None
+    if conv_file:
+        conventions_marker = cite(conv_file)
+    elif adr_dir:
+        conventions_marker = cite(adr_dir) + "/"
+    elif docs_md:
+        conventions_marker = cite(docs_md)
+
     # A test runner is legitimately a development-only dependency, so this one
     # surface reads every declared key. Script names are matched by PREFIX:
     # `test`, `test:unit`, `test:integration` and any other `test*` all count, in
@@ -288,6 +313,7 @@ def detect_unit(root, unit, files, dirs):
             "api_contract": _fact(api_marker),
             "i18n": _fact(i18n_marker),
             "test_harness": _fact(test_marker),
+            "convention_docs": _fact(conventions_marker),
         },
     }
 
@@ -402,6 +428,39 @@ def _self_test():
     s = snap({"package.json": json.dumps({"scripts": {"test": "vitest"}})})
     check("test harness: script detected",
           s["units"][0]["surfaces"]["test_harness"]["present"])
+
+    # --- convention documents ------------------------------------------------
+    # A README is not a convention document: this check fails the moment
+    # `README.md` is added to CONVENTION_FILES, which would set the fact for
+    # nearly every repository on earth and make the dispatcher's verdict useless.
+    s = snap({"README.md": "# x", "package.json": "{}"})
+    check("conventions: a README alone is not a convention document",
+          not s["units"][0]["surfaces"]["convention_docs"]["present"])
+
+    s = snap({"CLAUDE.md": "Never commit without asking."})
+    check("conventions: a named convention file is cited",
+          s["units"][0]["surfaces"]["convention_docs"]["marker"] == "CLAUDE.md")
+
+    s = snap({"package.json": "{}", "docs/architecture.md": "# how this is built"})
+    check("conventions: a documentation tree counts",
+          s["units"][0]["surfaces"]["convention_docs"]["present"])
+
+    s = snap({"package.json": "{}", "docs/adr/0001-use-postgres.md": "# 1. Use Postgres"})
+    check("conventions: an ADR tree counts",
+          s["units"][0]["surfaces"]["convention_docs"]["present"])
+
+    # path components again: a directory merely NAMED like a doc tree is not one
+    s = snap({"package.json": "{}", "documentation_backup/notes.md": "# old"})
+    check("conventions: `documentation_backup/` is not a documentation tree",
+          not s["units"][0]["surfaces"]["convention_docs"]["present"])
+
+    # a nested unit's convention file belongs to that unit, not to its parent
+    s = snap({"package.json": "{}", "site/package.json": "{}", "site/CLAUDE.md": "rules"})
+    root_u = next(u for u in s["units"] if u["path"] == ".")
+    site_u = next(u for u in s["units"] if u["path"] == "site")
+    check("conventions: a nested unit's convention file does not set the parent's fact",
+          site_u["surfaces"]["convention_docs"]["present"]
+          and not root_u["surfaces"]["convention_docs"]["present"])
 
     # --- the four facts a manifest alone cannot answer ----------------------
     # Each of these projects has a manifest that would mislead a manifest-only

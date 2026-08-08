@@ -100,6 +100,12 @@ Adding a framework here is a deliberate edit to the script, not something an aud
 | `api_contract` | an `openapi*.{json,yaml,yml}` or `swagger*.{json,yaml,yml}` file | `api-contracts` full mode |
 | `i18n` | `vue-i18n` or `@nuxtjs/i18n` in `package.json`; failing that a `lang/` or `locales/` directory | the hreflang checks in `seo` |
 | `test_harness` | a known runner declared in either manifest under any dependency key, or a script whose name starts with `test` (`test`, `test:unit`, `test:integration`) in either manifest | dead-code confidence in `code-quality` |
+| `convention_docs` | a `CLAUDE.md`, `AGENTS.md`, `CONVENTIONS.md` or `CONTRIBUTING.md` anywhere in the unit; failing that an `adr/`, `adrs/` or `decisions/` directory, or a `*.md` file under `docs/` or `doc/` | `conventions` |
+
+`README.md` is deliberately not a `convention_docs` marker. Nearly every repository has one, so
+accepting it would make the fact true everywhere and leave the dispatcher with a verdict that
+discriminates nothing. A README is still part of what `conventions` reads once it runs — this fact
+decides applicability, not scope.
 
 The runner list and the surface probes are enumerated in the script itself, which is the authority; a
 project that keeps a schema, an OpenAPI document or a server entry point somewhere the probes do not

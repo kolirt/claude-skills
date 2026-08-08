@@ -121,6 +121,12 @@ Severity is graded by business impact, never by code shape. The scale itself liv
   flow.
 - **SEO and accessibility** — owned entirely by `auditing:seo` and `auditing:accessibility`; not
   touched here even when a discoverability gap has business consequences.
+- **The project's own written engineering rules** — `auditing:conventions`. Both domains read the
+  repository's documents, so the seam is the audience of the sentence and it runs both ways: a
+  document promising **behaviour to a user** that the code does not implement is this domain's
+  intent-vs-implementation finding; a document stating an **engineering rule** — a mandated wrapper,
+  a placement rule, a forbidden construct — that the code does not follow is `CONV`. A stale sentence
+  about how the code is built is never a `BA` finding.
 
 ## 4. How to audit
 

@@ -98,6 +98,7 @@ made. That is recorded in coverage with its reason and is not a defect in this t
 | `api-contracts` | Whether the client-server contract is consistent: shapes, errors, status codes, pagination, versioning | `recommended` when `api_contract` is present — full contract mode when `server` or `ui` is present too, and contract-document-only mode when neither is, where the document is audited for internal consistency alone; `your call` when `api_contract` is absent but `server` or `ui` is present, since the domain drops to client-internal consistency mode; `not applicable` when `api_contract`, `server` and `ui` are all absent |
 | `accessibility` | Whether the interface can be operated without sight, colour, or a mouse | `recommended` when `ui` is present; `not applicable` when `ui` is absent |
 | `business-analysis` | Product integrity: broken flows, entities without lifecycle, monetization leaks, intent-vs-implementation contradictions | `recommended` when `ui` or `server` is present; `your call` when neither is but the unit declares a `manifest` or carries any other surface (a CLI tool, a library, a schema-only or contract-only package: a thinner product model, not no product model); `not applicable` only when the unit declares no `manifest` and has no surface at all. The reason line notes that a product/strategy description sharpens this domain and is asked in section 5 if it is selected |
+| `conventions` | Declared versus actual: rules the project wrote about itself in its own prose, contradicted by its own code | `recommended` when `convention_docs` is present; `not applicable` when it is absent — a project that declared nothing has nothing to be held to. The reason line cites the document the marker names. Whether a rule that defers to a `knowledge-*` plugin can be resolved depends on `convention_plugins`, which caps confidence rather than the verdict |
 | `seo` | Whether the crawler-facing baseline is closed: titles, canonicals, robots, sitemaps, structured data | `recommended` when `ui` is present; `not applicable` when `ui` is absent, whatever `server` says — the detector's `server` also covers an API-only backend with no page a crawler could fetch. The reason line notes that the SEO stake depends on whether the project is public, which is asked in section 5 if this domain is selected |
 
 Every verdict is **evidence-based, never a guess**: it cites the snapshot fact — and its marker — that
@@ -193,6 +194,7 @@ Finding ids are **domain-prefixed** and numbered within the domain: `SEC-1`, `PE
 | `api-contracts` | `API` |
 | `business-analysis` | `BA` |
 | `seo` | `SEO` |
+| `conventions` | `CONV` |
 
 The prefix is what makes parallel dispatch safe: two subagents numbering from 1 at the same time
 cannot collide, because their prefixes differ. **The dispatcher does not renumber.** An id assigned

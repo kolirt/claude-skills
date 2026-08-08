@@ -83,6 +83,10 @@ against it:
 - `security` lens → `auditing:security`
 - `performance` lens → `auditing:performance`
 - `architecture` + `code-quality` lenses → `auditing:code-quality`
+- `conventions` lens → `auditing:conventions`, which judges the same axis this lens
+  already runs on: a rule the project wrote down, contradicted by the change. Its
+  criteria sharpen the lens; they never replace the convention files themselves, which
+  stay the lens's evidence either way (§3)
 
 **Surface-triggered domains** join regardless of the chosen focus, but only when the
 changes touch their surface:
@@ -116,9 +120,10 @@ Rules of use:
 Lenses run as parallel **searcher** subagents — one per active lens, plus one per
 surface-triggered domain — not inline in the manager's context:
 
-- **Conventions is a searcher too.** Its criteria are the discovered convention
-  files (§3) instead of an `auditing` domain skill, so it runs regardless of whether
-  that plugin is installed.
+- **Conventions is a searcher too.** Its evidence is the discovered convention files
+  (§3), so it runs regardless of whether the `auditing` plugin is installed. When
+  `auditing:conventions` IS available it supplies the criteria on top of that evidence —
+  what counts as a rule, and what is a divergence rather than a preference.
 - **The manager gathers once; searchers never re-fetch.** Each searcher receives a
   prepared package: the asks, the audited range and changed-file list (the revision
   delta on repeat audits, §11), the mechanisms of issues being closed this revision

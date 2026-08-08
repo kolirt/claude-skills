@@ -205,6 +205,10 @@ not do it for you.
   - `code-quality` — structural harm, never style: god-modules, duplicated
     knowledge, dead code, hidden coupling, and the accumulated mess that
     `knowledge-principles`' boy-scout rule deliberately leaves out of a diff
+  - `conventions` — declared versus actual: rules the project wrote down in its own
+    prose (`CLAUDE.md`, `CONVENTIONS.md`, ADRs, `docs/`) that the code contradicts,
+    statements the codebase has outgrown, and documents that contradict each other.
+    Never judges whether a rule is a good one, and never what a linter settles
   - `business-analysis` — reconstructs the product model from code and reports
     broken flows, entities without a lifecycle, monetization leaks, and
     contradictions between stated intent and implementation
@@ -252,7 +256,7 @@ not do it for you.
 - [`plugins/planning/`](plugins/planning) — plan-then-build workflow
   ([`skills/brainstorm/`](plugins/planning/skills/brainstorm) · [`skills/implement/`](plugins/planning/skills/implement))
 - [`plugins/auditing/`](plugins/auditing) — whole-application audit plugin
-  ([`skills/audit/`](plugins/auditing/skills/audit) dispatcher · [`skills/`](plugins/auditing/skills) — 7 audit domains + `business-analysis` + `seo` + [`skills/remediate/`](plugins/auditing/skills/remediate) ·
+  ([`skills/audit/`](plugins/auditing/skills/audit) dispatcher · [`skills/`](plugins/auditing/skills) — 8 audit domains + `business-analysis` + `seo` + [`skills/remediate/`](plugins/auditing/skills/remediate) ·
   shared [`core/`](plugins/auditing/core): [`report-model.md`](plugins/auditing/core/report-model.md) · [`stack-detection.md`](plugins/auditing/core/stack-detection.md) · [`panel-integration.md`](plugins/auditing/core/panel-integration.md))
 - [`plugins/auditing-prs/`](plugins/auditing-prs) — GitHub PR review plugin
   ([`skills/audit-pr/`](plugins/auditing-prs/skills/audit-pr) · [`skills/prepush-audit/`](plugins/auditing-prs/skills/prepush-audit) · shared [`core/`](plugins/auditing-prs/core))

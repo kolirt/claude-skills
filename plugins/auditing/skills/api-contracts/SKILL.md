@@ -135,6 +135,10 @@ Severity is graded by contract impact, never by code shape. The scale itself liv
 - **Whether the endpoint set serves the product's flows** belongs to `auditing:business-analysis` — a
   missing capability is its finding, an incoherent shape is this one's.
 - Response size, payload weight and request volume belong to `auditing:performance`.
+- **The project's own written conventions** belong to `auditing:conventions` — a rule about how the
+  code must be built, contradicted by the code. This domain keeps the **documented API contract**
+  whichever file it lives in: a contract document contradicted by the implementation is `API`, not
+  `CONV`. Both files state this seam.
 
 ## 4. How to audit
 

@@ -106,6 +106,10 @@ behaviour and ships a defect.
 - Reportable **only when tier 3 is actually available this run**. Without it there is no codified
   convention to contradict, so this is **not a finding at all** — coverage states the tier was
   missing. An audit never invents a convention in order to find drift from it.
+- The convention must come from a `knowledge-*` plugin. A rule the audited repository wrote down in
+  its **own prose** — its `CLAUDE.md`, `CONVENTIONS.md`, ADRs, `docs/` — is not tier 3 and is not
+  judged here: that is `auditing:conventions`. This domain still reports the same call site when the
+  bypass harms safe change on its own, citing the harm rather than the document.
 
 ## 2. Impact dimensions
 
@@ -139,9 +143,14 @@ A 600-line module one caller uses is not a finding; a three-line duplicated busi
 - **Delta-scoped review of a diff or a PR** — the separate **`auditing-prs`** plugin. This domain never
   tries to be that: it reads the codebase as it stands, is not scoped to changed lines, does not
   comment on a change set.
+- **The project's own written conventions** — `auditing:conventions`. The seam runs both ways: a
+  bypassed wrapper is `CONV` when the audited repository's own prose mandates it, and `CQ` when the
+  bypass makes change unsafe regardless of any document. Both may file on one call site, each on its
+  own axis — a `CQ` finding never cites a project document as its authority.
 - **Out of scope with no owner in v1** — **test coverage and test quality** (no `testing` domain) and
-  **documentation** (no `docs` domain). Say so in coverage rather than filing it or implying a sibling
-  covers it.
+  **documentation quality** (no `docs` domain): readability, completeness, structure. Whether a
+  document is *accurate* about the code is `auditing:conventions`; whether it is *good* is nobody's.
+  Say so in coverage rather than filing it or implying a sibling covers it.
 
 ## 4. How to audit
 
