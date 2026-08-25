@@ -16,6 +16,38 @@ case "$cmd" in
   run)
     prompt="${1:?}"; effort="${2:?}"; out="${3:?}"; model="${4:-}"
 
+    # --- resolve the codex binary past any symlink shim -------------------------------
+    # codex 0.149.x, whenever a permission profile is active, re-execs ITSELF under
+    # sandbox-exec to serve the fs sandbox helper. It re-execs the path it was invoked by,
+    # but the generated sandbox profile grants exec only on the resolved install path
+    # (~/.codex/packages/standalone/releases/<ver>/bin/codex). Invoked through the usual
+    # shim (~/.local/bin/codex -> that path), the re-exec is DENIED and the session dies at
+    # startup with "fs sandbox helper failed ... execvp() ... Operation not permitted",
+    # before a single token is read. probe() does not catch this: the flags and config keys
+    # it checks are all still present, so a broken adapter looks healthy and fails only at
+    # run time. Resolving the symlink ourselves sidesteps it and leaves the read barrier
+    # intact (verified: a canary in $HOME still comes back DENIED).
+    # Hand-rolled loop, not `readlink -f`: BSD readlink on older macOS has no -f.
+    # Each round normalises the DIRECTORY with `pwd -P` before testing the leaf, because the
+    # shim points at a symlinked DIRECTORY, not just a symlinked file: ~/.local/bin/codex ->
+    # .../standalone/current/bin/codex, where `current` -> releases/<ver>. Resolving only the
+    # leaf leaves ".../current/..." in the path and the re-exec is denied exactly as before.
+    # The counter bounds a symlink cycle; on break we run whatever we resolved to and let
+    # codex report the failure itself.
+    bin="$(command -v codex)" || { echo "codex: not on PATH" >&2; exit 1; }
+    hops=0
+    while [ "$hops" -lt 32 ]; do
+      dir="$(cd "$(dirname "$bin")" 2>/dev/null && pwd -P)" || break
+      bin="$dir/$(basename "$bin")"
+      [ -L "$bin" ] || break
+      target="$(readlink "$bin")"
+      case "$target" in
+        /*) bin="$target";;
+        *)  bin="$dir/$target";;
+      esac
+      hops=$((hops + 1))
+    done
+
     # The run dir holds diff.patch — the artifact under review — and lives under
     # ~/.claude/plugins/data/..., NOT under the repo. Until the permission profile below
     # existed codex could read the whole disk, so this was free; a confined codex must be
@@ -91,14 +123,14 @@ case "$cmd" in
     # model is optional (4th arg): absent → codex's own default (its current frontier);
     # a bad model id surfaces as a codex error → non-zero rc → verdict FAIL (visible).
     if [ -n "$model" ]; then
-      codex exec --ignore-user-config --ephemeral --skip-git-repo-check \
+      "$bin" exec --ignore-user-config --ephemeral --skip-git-repo-check \
         -C "$PWD" --add-dir "$run_dir" ${extra[@]+"${extra[@]}"} \
         -c 'approval_policy="never"' \
         -c 'default_permissions="readonly_selected"' \
         -c "$perm_fs" -c "$perm_net" \
         -m "$model" -c model_reasoning_effort="$effort" -o "$out" - < "$prompt" >/dev/null
     else
-      codex exec --ignore-user-config --ephemeral --skip-git-repo-check \
+      "$bin" exec --ignore-user-config --ephemeral --skip-git-repo-check \
         -C "$PWD" --add-dir "$run_dir" ${extra[@]+"${extra[@]}"} \
         -c 'approval_policy="never"' \
         -c 'default_permissions="readonly_selected"' \
