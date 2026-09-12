@@ -719,6 +719,25 @@ out="$(vsh add mmodels --model 'gemini 3.5 flash' 2>&1)"; rc=$?
 vsh add mpass --model 'whatever-i-typed' >/dev/null 2>&1 \
   && [ "$(panel_lib panel_verifiers | sed -n '2p' | cut -f3)" = 'whatever-i-typed' ] \
   && echo "OK add-verbatim-when-no-models" || { echo "FAIL add-verbatim: $(panel_lib panel_verifiers)"; exit 1; }
+# the REAL agy adapter, against a stub CLI: `agy models` prints "<id><TAB><label>" and only the
+# id may reach the panel. TAB is the panel's record separator, so panel_valid_model rejects any
+# value carrying one — which is exactly how every `verifiers add agy --model …` once died.
+mkdir -p "$TMP/fakebin"
+cat > "$TMP/fakebin/agy" <<'A'
+#!/usr/bin/env bash
+[ "$1" = models ] && printf 'gemini-3.8-flash-high\tGemini 3.8 Flash (High)\ngemini-3.8-flash-low\tGemini 3.8 Flash (Low)\n'
+A
+chmod +x "$TMP/fakebin/agy"
+agy_models="$(PATH="$TMP/fakebin:$PATH" bash "$ROOT/adapters/agy.sh" models)"
+agy_resolved="$(PATH="$TMP/fakebin:$PATH" env ROOT="$ROOT" DATA="$DATA" \
+  bash -c '. "$ROOT/lib/panel.sh"
+           m="$(panel_resolve_model agy "gemini 3.8 flash high")" || exit 1
+           panel_valid_model "$m" || exit 1
+           printf %s "$m"')"
+[ "$agy_models" = "$(printf 'gemini-3.8-flash-high\ngemini-3.8-flash-low')" ] \
+  && [ "$agy_resolved" = 'gemini-3.8-flash-high' ] \
+  && echo "OK agy-models-id-column-only" \
+  || { echo "FAIL agy-models-id-column-only: $(printf '%s' "$agy_models" | od -c | head -3)"; exit 1; }
 # remove is by INDEX and keeps the synthesizer intact
 ssh_ set claude >/dev/null 2>&1
 vsh remove 1 >/dev/null 2>&1 \

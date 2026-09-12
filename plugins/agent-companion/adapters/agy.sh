@@ -5,7 +5,7 @@
 #         doubles as a version floor — older releases lack it). Auth is agy's own business:
 #         it is OAuth-browser-login only and exposes no reliable on-disk "logged in" marker,
 #         so probe does NOT test it. An unauthenticated agy passes probe and fails at run.
-# models: OPTIONAL in the adapter contract — prints one model display name per line. The
+# models: OPTIONAL in the adapter contract — prints one model id per line. The
 #         panel calls this ONCE, at `verifiers add` time, to resolve the user's loose input
 #         to agy's own spelling. It is never on the verification hot path.
 # run:    the prompt goes on argv (`-p` REQUIRES an argument — agy does not read stdin),
@@ -37,12 +37,17 @@ case "$cmd" in
     grep -qE -- '(^|[[:space:]])--mode([[:space:]]|=|$)' <<<"$help" || exit 64
     exit 0;;
   models)
-    # `agy models` prints display names only — there is no --json and unknown flags error
-    # out, so stdout is the only interface. Names look like "Gemini 3.5 Flash (Medium)":
-    # spaces and parentheses included, which is exactly why the panel stores models as
-    # free-form data instead of packing them into an identifier.
+    # `agy models` prints TWO TAB-separated columns — the id `--model` takes, and its display
+    # label: "gemini-3.8-flash-high<TAB>Gemini 3.8 Flash (High)". There is no --json and
+    # unknown flags error out, so stdout is the only interface.
+    # ONLY THE ID IS EMITTED. TAB is the panel's own record separator, so panel_valid_model
+    # rejects any value containing one: while the whole line was printed, panel_resolve_model
+    # returned "<id><TAB><label>" and EVERY `verifiers add agy --model …` died with "invalid
+    # model name (contains a control character)". The id is also the form `--model` accepts
+    # in run, so cutting the label loses nothing.
+    # `cut -f1` is safe on a build that prints one column: with no TAB it returns the line.
     command -v agy >/dev/null 2>&1 || exit 64
-    agy models 2>/dev/null | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v '^$'
+    agy models 2>/dev/null | cut -f1 | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -v '^$'
     exit 0;;
   run)
     prompt="${1:?}"; effort="${2:-}"; out="${3:?}"; model="${4:-}"
