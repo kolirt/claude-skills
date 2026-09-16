@@ -23,8 +23,8 @@ recommendations. Where a step below names a detection rule, the core is the auth
 
 - **Branch + base.** Current local branch; base per "Snapshot selection" below.
 - **Tracker key** from the branch name (same regex convention as `audit-pr`, e.g.
-  `^[A-Z][A-Z0-9]+-[0-9]+`); optional tracker fetch (all comments, paginated — core
-  §1) — non-fatal if unavailable.
+  `^[A-Z][A-Z0-9]+-[0-9]+`); optional tracker fetch (all comments, paginated, plus
+  every attachment downloaded and read — core §1) — non-fatal if unavailable.
 - **PR discovery (read-only).** Look up a PR for the current branch
   (`gh pr list --head "$(git branch --show-current)"`); if one exists, read its
   conversation and the reviewer's published audit (this drives delta mode). If none
@@ -122,8 +122,9 @@ gh api graphql --paginate -f query='
   -f owner="${REPO%/*}" -f repo="${REPO#*/}" -F pr="$PR_N" \
   --jq '.data.repository.pullRequest.reviewThreads.nodes[] | {comment_id: .comments.nodes[0].databaseId, isResolved}'
 ```
-Tracker fetch is the same read-only GET (with comment pagination) as `audit-pr`'s
-Step 0.5 — never a write.
+Tracker fetch is the same read-only GET (with comment pagination **and attachment
+download**) as `audit-pr`'s Step 0.5 — never a write. Attachments land in a temp
+directory, never in the repo.
 
 **Snapshot diff (per "Snapshot selection"):**
 ```bash
@@ -159,8 +160,9 @@ never changes shared state:
 
 - NO GitHub writes (no `gh pr review`, no `gh api` POST/PATCH/PUT/DELETE).
 - NO Jira writes. NO `git push`.
-- **Permitted reads:** read-only `gh api` GETs, `gh pr view/list`, tracker GETs, and
-  all local git reads — the core's source-gathering needs these.
+- **Permitted reads:** read-only `gh api` GETs, `gh pr view/list`, tracker GETs
+  (attachment downloads into a temp directory included), and all local git reads —
+  the core's source-gathering needs these.
 - **Permitted:** a temporary detached worktree for the panel (this is how the core
   materializes a snapshot; it is not a mutation of the repo or branch).
 - The audit report stays in chat.

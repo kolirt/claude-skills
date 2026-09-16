@@ -21,12 +21,12 @@ redact it (`-u "$JIRA_EMAIL:***"`).
 
 ## Fetch the issue
 
-Summary, status, type, assignee, description, comments:
+Summary, status, type, assignee, description, comments, attachments:
 
 ```bash
 curl -s -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
   -H "Accept: application/json" \
-  "$JIRA_BASE_URL/rest/api/3/issue/{KEY}?fields=summary,status,issuetype,assignee,description,comment"
+  "$JIRA_BASE_URL/rest/api/3/issue/{KEY}?fields=summary,status,issuetype,assignee,description,comment,attachment"
 ```
 
 ## Parse
@@ -45,6 +45,43 @@ return only the first page of comments on heavily-discussed issues; if the retur
 `comment.total` exceeds the items present, page the dedicated endpoint
 `$JIRA_BASE_URL/rest/api/3/issue/{KEY}/comment?startAt=…&maxResults=…` until you
 have them all.
+
+## Attachments — fetch them and read them
+
+Attachments carry asks (core §1). `fields=attachment` lists every file on the issue:
+
+```bash
+jq -r '.fields.attachment[] | [.id, .filename, .mimeType, .size, .content] | @tsv'
+```
+
+ADF also embeds a file inline in the description or a comment as a `media` node whose
+`attrs.id` matches an id above:
+
+```bash
+jq -r '[.. | objects | select(.type? == "media") | .attrs.id] | unique[]'
+```
+
+The text extractor in "Parse" does not see a `media` node — an issue whose description
+is one dropped-in spec file extracts as empty text. List the attachments before
+judging the description empty.
+
+Download each one into the session scratchpad, never into the repo:
+
+```bash
+curl -sL -u "$JIRA_EMAIL:$JIRA_API_TOKEN" "{content-url}" -o "{scratchpad}/{filename}"
+```
+
+Then read it by type:
+
+- text (`.md`, `.txt`, `.json`, `.csv`, `.yml`, `.sql`, …) → read the file directly;
+- `image/*` → read it with the Read tool, which renders it visually;
+- `application/pdf` → the Read tool with a `pages` range;
+- `.docx` / `.xlsx` / `.pptx` → `unzip -p {file}.docx word/document.xml` (or
+  `xl/sharedStrings.xml`) and strip the tags for a rough read;
+- anything still unreadable → name the file, its type, and say it could not be read.
+
+A failed download or an unreadable format is non-fatal like everything else here —
+report it in the draft and proceed.
 
 ## Failure modes — all non-fatal
 

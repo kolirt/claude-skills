@@ -33,6 +33,18 @@ The audit input is the union of three sources, gathered up-front:
    reviewer's **published audit report** (its `Issue N` blocks with full
    descriptions) — the most valuable input for an executor's delta check.
 
+**Attachments are part of a source, not decoration.** A ticket description, a ticket
+comment, or a PR body can carry the actual specification as an attached or linked
+file — a document, a spreadsheet, a screenshot of the expected screen, a log. Whenever
+a source embeds or links a file, fetch it and read its content, and extract its
+requirements into the asks exactly like inline text. An attached spec nobody opened is
+an ask nobody saw, and the audit then judges the snapshot against the wrong criteria.
+Two traps: a description whose whole content is an embedded file extracts as empty
+text, so never conclude "no description" from the extracted text alone; and when an
+attachment cannot be read (unsupported binary format, fetch denied, a link outside the
+tracker), name the file and what blocked it in the draft. Silently skipping an
+attachment is a detection bug.
+
 **A prior summary review constrains new findings.** If an earlier review specified
 the expected shape, the tracker ticket alone is not the source of truth — the
 PR-level decision overrides. Read both before judging.

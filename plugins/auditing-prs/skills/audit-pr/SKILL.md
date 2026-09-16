@@ -82,9 +82,12 @@ gh pr view {N} --repo {owner}/{repo} --json headRefName -q .headRefName
 ```
 
 When triggered, read `../../references/jira-context.md` — credentials (environment
-only), token safety, the fetch/parse commands with full comment pagination, and the
-non-fatal failure modes. Summarize the tracker context as the first part of the
-Step 3 draft.
+only), token safety, the fetch/parse commands with full comment pagination,
+attachment listing/download/reading, and the non-fatal failure modes. The ticket's
+attachments are asks like any other (core §1): fetch and read every one, and never
+read an empty text extraction as "no description" before listing them. Summarize the
+tracker context as the first part of the Step 3 draft, naming each attachment and any
+that could not be read.
 
 ## Step 1 — Confirm focus
 
@@ -152,6 +155,11 @@ gh api graphql --paginate -f query='
 Record the **head SHA** — this is the snapshot under review (required for inline
 comments). Identify changed files and open the conventions for those paths per core
 §3 (convention discovery).
+
+A PR body or a PR comment can also embed a file or an image (a mockup, a spec, a log).
+Those are sources too (core §1): fetch what is fetchable — `curl -sL` with the `gh`
+token for a `github.com/user-attachments/...` asset, into a temp directory — and name
+in the draft any attachment you could not read.
 
 ### Materialize the snapshot (worktree)
 
